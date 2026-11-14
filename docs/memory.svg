@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 236" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+  <style>
+    .t { fill: #1f2328; font-size: 15px; }
+    .v { fill: #1f2328; font-size: 15px; font-weight: 600; }
+    .s { fill: #59636e; font-size: 12px; }
+    .track { fill: #eef1f4; }
+    @media (prefers-color-scheme: dark) {
+      .t, .v { fill: #e6edf3; }
+      .s { fill: #9198a1; }
+      .track { fill: #21262d; }
+    }
+  </style>
+  <defs>
+    <linearGradient id="g" x1="0" x2="1">
+      <stop offset="0" stop-color="#2fd2c6"/><stop offset="1" stop-color="#2a8cf0"/>
+    </linearGradient>
+  </defs>
+  <!-- scale: 100 MB = 400 px, bars start at x=250 -->
+  <g>
+    <text class="t" x="0" y="30">Window open</text>
+    <rect class="track" x="250" y="14" width="400" height="22" rx="6"/>
+    <rect fill="url(#g)" x="250" y="14" width="284" height="22" rx="6"/>
+    <text class="v" x="546" y="31">71 MB</text>
+  </g>
+  <g>
+    <text class="t" x="0" y="84">Window minimized</text>
+    <rect class="track" x="250" y="68" width="400" height="22" rx="6"/>
+    <rect fill="url(#g)" x="250" y="68" width="220" height="22" rx="6"/>
+    <text class="v" x="482" y="85">55 MB</text>
+  </g>
+  <g>
+    <text class="t" x="0" y="138">Closed to the tray</text>
+    <rect class="track" x="250" y="122" width="400" height="22" rx="6"/>
+    <rect fill="url(#g)" x="250" y="122" width="20" height="22" rx="6"/>
+    <text class="v" x="282" y="139">5 MB</text>
+  </g>
+  <g>
+    <text class="t" x="0" y="192">Started with the system</text>
+    <rect class="track" x="250" y="176" width="400" height="22" rx="6"/>
+    <rect fill="url(#g)" x="250" y="176" width="16" height="22" rx="6"/>
+    <text class="v" x="278" y="193">4 MB</text>
+  </g>
+  <text class="s" x="0" y="228">Private working set of the app and all WebView processes, Windows 11, release build. Scale: 0–100 MB.</text>
+</svg>

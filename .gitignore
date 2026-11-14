@@ -1,0 +1,20 @@
+# Dependencies and build output
+node_modules
+/dist
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Secrets and local account data: never commit these
+.env
+.env.*
+!.env.example
+*.session
+*.db
+*.db-wal
+*.db-shm
+
+# OS
+.DS_Store
+
+# Demo screenshots are regenerated on demand
+demo/screens/
