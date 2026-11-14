@@ -475,25 +475,36 @@ component MessageView inherits VerticalLayout {
                 visible: false;
             }
 
+            // Widths of the optional lines, measured outside the layout.
+            sender := Text {
+                text: root.m.sender;
+                font-size: 13px;
+                font-weight: 600;
+                visible: false;
+            }
+
+            kind := Text {
+                text: root.m.media;
+                font-size: 14px;
+                visible: false;
+            }
+
             VerticalLayout {
                 padding-left: parent.pad-x;
                 padding-right: parent.pad-x;
                 padding-top: 6px;
                 padding-bottom: 6px;
                 spacing: 3px;
-                sender := Text {
+                // Conditional, not hidden: a hidden child still gets the
+                // layout's spacing and leaves a gap above the text.
+                if root.m.sender != "": Text {
                     text: root.m.sender;
-                    visible: root.m.sender != "";
-                    height: root.m.sender != "" ? self.preferred-height : 0;
                     color: root.m.sender-color;
                     font-size: 13px;
                     font-weight: 600;
                 }
-
-                kind := Text {
+                if root.m.media != "": Text {
                     text: root.m.media;
-                    visible: root.m.media != "";
-                    height: root.m.media != "" ? self.preferred-height : 0;
                     color: root.m.outgoing ? #a9d4ff : Theme.accent;
                     font-size: 14px;
                 }
