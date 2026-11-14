@@ -98,6 +98,8 @@ pub struct Telegram {
     pub downloads: Semaphore,
     /// Where live events for the window go.
     pub ui: Arc<UiSink>,
+    /// Files uploaded for an album and not sent yet, by their upload token.
+    pub uploads: std::sync::Mutex<std::collections::HashMap<String, grammers_client::media::Uploaded>>,
 }
 
 impl Telegram {
@@ -115,6 +117,7 @@ impl Telegram {
             cache_dir,
             downloads: Semaphore::new(PARALLEL_DOWNLOADS),
             ui: Arc::new(UiSink::default()),
+            uploads: Default::default(),
         }
     }
 

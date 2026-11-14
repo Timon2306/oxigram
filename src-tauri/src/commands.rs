@@ -122,8 +122,37 @@ pub async fn send_file(
         reply_to: header("x-reply-to").parse().ok(),
         as_photo: header("x-as-photo") == "1",
         token: header("x-token"),
+        video: actions::parse_video(&header("x-video")),
     };
     actions::send_file(&tg, file, bytes.clone()).await
+}
+
+/// Uploads one file of an album; `send_album` sends them together.
+#[tauri::command]
+pub async fn upload_file(tg: State<'_, Telegram>, request: tauri::ipc::Request<'_>) -> Done {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(UiError::new("BAD_REQUEST", "expected file bytes"));
+    };
+    let header = |name: &str| {
+        request
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(decode_header)
+            .unwrap_or_default()
+    };
+    actions::upload_file(&tg, &header("x-name"), &header("x-token"), bytes.clone()).await
+}
+
+#[tauri::command]
+pub async fn send_album(
+    tg: State<'_, Telegram>,
+    peer_id: i64,
+    items: Vec<actions::AlbumItem>,
+    caption: String,
+    reply_to: Option<i32>,
+) -> Result<Vec<MessageRow>, UiError> {
+    actions::send_album(&tg, peer_id, items, &caption, reply_to).await
 }
 
 /// Undoes JavaScript's `encodeURIComponent` (headers must stay ASCII).
@@ -254,6 +283,14 @@ pub async fn react(tg: State<'_, Telegram>, peer_id: i64, message_id: i32, emoji
 }
 
 #[tauri::command]
+pub async fn allowed_reactions(
+    tg: State<'_, Telegram>,
+    peer_id: i64,
+) -> Result<Option<Vec<String>>, UiError> {
+    actions::allowed_reactions(&tg, peer_id).await
+}
+
+#[tauri::command]
 pub async fn edit_message(
     tg: State<'_, Telegram>,
     peer_id: i64,
@@ -305,6 +342,11 @@ pub async fn message_image(
     message_id: i32,
 ) -> Result<String, UiError> {
     chats::message_image(&tg, peer_id, message_id).await
+}
+
+#[tauri::command]
+pub async fn custom_emoji(tg: State<'_, Telegram>, id: String) -> Result<String, UiError> {
+    chats::custom_emoji(&tg, &id).await
 }
 
 #[tauri::command]

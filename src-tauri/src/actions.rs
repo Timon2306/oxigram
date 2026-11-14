@@ -112,13 +112,69 @@ pub async fn set_typing(tg: &Telegram, peer_id: i64) -> Result<(), UiError> {
 pub async fn react(tg: &Telegram, peer_id: i64, message_id: i32, emoji: &str) -> Result<(), UiError> {
     let handles = tg.handles().await?;
     let peer = resolve_peer(&handles, peer_id).await?;
-    let reactions = if emoji.is_empty() {
-        InputReactions::remove()
-    } else {
-        InputReactions::emoticon(emoji)
+    // Telegram names its reactions without the "emoji presentation" mark
+    // that keyboards and pickers add (the red heart is the usual victim).
+    let emoji = emoji.replace('\u{fe0f}', "");
+    // A custom emoji already under the message can be added by anyone; it
+    // is named "custom:<document ID>" (see `chats::reactions`).
+    if emoji == "paid" {
+        return Err(UiError::new("REACTION_INVALID", "paid reactions are not sent"));
+    }
+    let custom = emoji.strip_prefix("custom:").and_then(|id| id.parse::<i64>().ok());
+    let reactions = match custom {
+        Some(document_id) => InputReactions::custom_emoji(document_id),
+        None if emoji.is_empty() => InputReactions::remove(),
+        None => InputReactions::emoticon(emoji),
     };
     handles.client.send_reactions(peer, message_id, reactions).await?;
     Ok(())
+}
+
+/// The reactions a chat allows: `None` when any emoji goes, otherwise the
+/// list its admins chose (empty when reactions are switched off).
+pub async fn allowed_reactions(tg: &Telegram, peer_id: i64) -> Result<Option<Vec<String>>, UiError> {
+    use tl::enums::{ChatFull, ChatReactions};
+
+    let handles = tg.handles().await?;
+    let peer = resolve_peer(&handles, peer_id).await?;
+    let available = match peer.id.kind() {
+        PeerKind::User => return Ok(None),
+        PeerKind::Chat => {
+            let request = tl::functions::messages::GetFullChat {
+                chat_id: peer.id.bare_id().unwrap_or_default(),
+            };
+            let tl::enums::messages::ChatFull::Full(full) = handles.client.invoke(&request).await?;
+            match full.full_chat {
+                ChatFull::Full(chat) => chat.available_reactions,
+                ChatFull::ChannelFull(channel) => channel.available_reactions,
+                _ => None,
+            }
+        }
+        PeerKind::Channel => {
+            let request = tl::functions::channels::GetFullChannel {
+                channel: (&peer).into(),
+            };
+            let tl::enums::messages::ChatFull::Full(full) = handles.client.invoke(&request).await?;
+            match full.full_chat {
+                ChatFull::Full(chat) => chat.available_reactions,
+                ChatFull::ChannelFull(channel) => channel.available_reactions,
+                _ => None,
+            }
+        }
+    };
+    Ok(match available {
+        Some(ChatReactions::All(_)) => None,
+        Some(ChatReactions::Some(some)) => Some(
+            some.reactions
+                .into_iter()
+                .filter_map(|reaction| match reaction {
+                    tl::enums::Reaction::Emoji(emoji) => Some(emoji.emoticon),
+                    _ => None,
+                })
+                .collect(),
+        ),
+        Some(ChatReactions::None) | None => Some(Vec::new()),
+    })
 }
 
 pub async fn edit_message(
@@ -319,6 +375,9 @@ pub struct OutgoingFile {
     pub as_photo: bool,
     /// Ties upload progress events to this file.
     pub token: String,
+    /// For a video the window could read: seconds, width, height. With it
+    /// the file is sent as a playable video rather than as a plain file.
+    pub video: Option<(u64, i32, i32)>,
 }
 
 /// Uploads `bytes` and sends them as a photo or a document.
@@ -329,32 +388,12 @@ pub async fn send_file(
 ) -> Result<MessageRow, UiError> {
     use grammers_client::message::InputMessage;
 
-    if bytes.is_empty() {
-        return Err(UiError::new("FILE_EMPTY", "the file is empty"));
-    }
-    if bytes.len() > MAX_SEND_BYTES {
-        return Err(UiError::new("FILE_TOO_BIG", "the file is too big"));
-    }
     if file.caption.encode_utf16().count() > 1024 {
         return Err(UiError::new("CAPTION_TOO_LONG", "the caption is too long"));
     }
     let handles = tg.handles().await?;
     let peer = resolve_peer(&handles, file.peer_id).await?;
-
-    let size = bytes.len();
-    let ui = std::sync::Arc::clone(&tg.ui);
-    let token = file.token.clone();
-    let mut reader = Counting {
-        inner: std::io::Cursor::new(bytes),
-        read: 0,
-        reported: 0,
-        report: Box::new(move |done| ui.upload_progress(&token, done)),
-    };
-    let uploaded = handles
-        .client
-        .upload_stream(&mut reader, size, file.name.clone())
-        .await
-        .map_err(|err| UiError::new("UPLOAD_FAILED", err.to_string()))?;
+    let uploaded = upload(tg, &handles, &file.name, &file.token, bytes).await?;
 
     let (caption, entities) = crate::markup::parse(file.caption.trim());
     let message = InputMessage::new()
@@ -363,6 +402,18 @@ pub async fn send_file(
         .reply_to(file.reply_to);
     let message = if file.as_photo {
         message.photo(uploaded)
+    } else if let Some((seconds, w, h)) = file.video {
+        // Without this attribute Telegram files the upload under documents:
+        // no inline player, no preview, in every client.
+        message
+            .document(uploaded)
+            .attribute(grammers_client::media::Attribute::Video {
+                round_message: false,
+                supports_streaming: true,
+                duration: std::time::Duration::from_secs(seconds),
+                w,
+                h,
+            })
     } else {
         message.document(uploaded)
     };
@@ -370,6 +421,129 @@ pub async fn send_file(
     let row = chats::message_row(&sent, file.peer_id);
     with_db(&handles.db, |conn| cache::save_messages(conn, std::slice::from_ref(&row)))?;
     Ok(row)
+}
+
+/// Uploads `bytes` to Telegram, reporting progress under `token`.
+async fn upload(
+    tg: &Telegram,
+    handles: &crate::tg::Handles,
+    name: &str,
+    token: &str,
+    bytes: Vec<u8>,
+) -> Result<grammers_client::media::Uploaded, UiError> {
+    if bytes.is_empty() {
+        return Err(UiError::new("FILE_EMPTY", "the file is empty"));
+    }
+    if bytes.len() > MAX_SEND_BYTES {
+        return Err(UiError::new("FILE_TOO_BIG", "the file is too big"));
+    }
+    let size = bytes.len();
+    let ui = std::sync::Arc::clone(&tg.ui);
+    let token = token.to_owned();
+    let mut reader = Counting {
+        inner: std::io::Cursor::new(bytes),
+        read: 0,
+        reported: 0,
+        report: Box::new(move |done| ui.upload_progress(&token, done)),
+    };
+    handles
+        .client
+        .upload_stream(&mut reader, size, name.to_owned())
+        .await
+        .map_err(|err| UiError::new("UPLOAD_FAILED", err.to_string()))
+}
+
+/// Uploads one file of an album and keeps it until `send_album` asks for it.
+pub async fn upload_file(tg: &Telegram, name: &str, token: &str, bytes: Vec<u8>) -> Result<(), UiError> {
+    let handles = tg.handles().await?;
+    let uploaded = upload(tg, &handles, name, token, bytes).await?;
+    tg.uploads
+        .lock()
+        .map_err(|_| UiError::internal("uploads lock is poisoned"))?
+        .insert(token.to_owned(), uploaded);
+    Ok(())
+}
+
+/// One file of an album, already uploaded under `token`.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumItem {
+    pub token: String,
+    pub as_photo: bool,
+    /// "seconds,width,height" for a video, empty otherwise.
+    #[serde(default)]
+    pub video: String,
+}
+
+/// Sends files uploaded with `upload_file` as one album (2 to 10 photos and
+/// videos, or 2 to 10 files). The caption goes under the first one.
+pub async fn send_album(
+    tg: &Telegram,
+    peer_id: i64,
+    items: Vec<AlbumItem>,
+    caption: &str,
+    reply_to: Option<i32>,
+) -> Result<Vec<MessageRow>, UiError> {
+    use grammers_client::media::{Attribute, InputMedia};
+
+    // Whatever happens next, the uploads leave the waiting room.
+    let mut uploaded = Vec::with_capacity(items.len());
+    {
+        let mut waiting = tg
+            .uploads
+            .lock()
+            .map_err(|_| UiError::internal("uploads lock is poisoned"))?;
+        for item in &items {
+            uploaded.push(waiting.remove(&item.token));
+        }
+    }
+    if caption.encode_utf16().count() > 1024 {
+        return Err(UiError::new("CAPTION_TOO_LONG", "the caption is too long"));
+    }
+    let handles = tg.handles().await?;
+    let peer = resolve_peer(&handles, peer_id).await?;
+    let (caption, entities) = crate::markup::parse(caption.trim());
+
+    let mut medias = Vec::with_capacity(items.len());
+    for (index, (item, file)) in items.iter().zip(uploaded).enumerate() {
+        let file = file.ok_or_else(|| UiError::new("UPLOAD_FAILED", "the upload is gone"))?;
+        let mut media = InputMedia::new();
+        if index == 0 {
+            media = media.caption(caption.clone()).fmt_entities(entities.clone()).reply_to(reply_to);
+        }
+        media = if item.as_photo {
+            media.photo(file)
+        } else if let Some((seconds, w, h)) = parse_video(&item.video) {
+            media.document(file).attribute(Attribute::Video {
+                round_message: false,
+                supports_streaming: true,
+                duration: std::time::Duration::from_secs(seconds),
+                w,
+                h,
+            })
+        } else {
+            media.document(file)
+        };
+        medias.push(media);
+    }
+
+    let sent = handles.client.send_album(peer, medias).await?;
+    let rows: Vec<MessageRow> = sent
+        .iter()
+        .flatten()
+        .map(|message| chats::message_row(message, peer_id))
+        .collect();
+    with_db(&handles.db, |conn| cache::save_messages(conn, &rows))?;
+    Ok(rows)
+}
+
+/// "seconds,width,height" of a video, as the window measured them.
+pub fn parse_video(value: &str) -> Option<(u64, i32, i32)> {
+    let mut parts = value.split(',');
+    let seconds = parts.next()?.parse().ok()?;
+    let width: i32 = parts.next()?.parse().ok()?;
+    let height: i32 = parts.next()?.parse().ok()?;
+    (width > 0 && height > 0).then_some((seconds, width, height))
 }
 
 /// A chat found by its public @username.

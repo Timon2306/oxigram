@@ -77,7 +77,7 @@ pub fn set_unread<R: Runtime>(app: &AppHandle<R>, unread: u32) {
 /// Brings the main window to the front, recreating it (and its WebView) from
 /// the config if it was closed. `from_config` keeps `additionalBrowserArgs`,
 /// and the builder-level window-event hook applies to the new window as well.
-fn show_main<R: Runtime>(app: &AppHandle<R>) {
+pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window(MAIN) {
         let _ = window.unminimize();
         let _ = window.show();

@@ -4,13 +4,30 @@
   let {
     files,
     onsend,
+    onadd,
+    onpick,
+    onremove,
     onclose,
   }: {
     files: File[];
     /** `asPhoto`: send pictures compressed as photos rather than as files. */
     onsend: (files: File[], caption: string, asPhoto: boolean) => void;
+    /** Opens the file picker to add more. */
+    onadd: () => void;
+    /** Files pasted while the box is open. */
+    onpick: (files: FileList) => void;
+    onremove: (index: number) => void;
     onclose: () => void;
   } = $props();
+
+  function onpaste(event: ClipboardEvent) {
+    const pasted = event.clipboardData?.files;
+    if (pasted && pasted.length > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      onpick(pasted);
+    }
+  }
 
   /** Formats Telegram accepts as a compressed photo. */
   const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp"]);
@@ -50,7 +67,7 @@
   }
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window {onkeydown} onpastecapture={onpaste} />
 
 <div class="backdrop" onclick={onclose} role="presentation"></div>
 <div class="sendbox" role="dialog" aria-label={title}>
@@ -77,6 +94,7 @@
             <span class="size">{formatFileSize(file.size)}</span>
           </span>
         {/if}
+        <button class="remove" onclick={() => onremove(index)} aria-label="Убрать">✕</button>
       </div>
     {/each}
   </div>
@@ -92,6 +110,7 @@
   <textarea bind:value={caption} rows="1" maxlength="1024" placeholder="Подпись" autofocus></textarea>
 
   <div class="actions">
+    <button class="ghost add" onclick={onadd}>Добавить</button>
     <button class="ghost" onclick={onclose}>Отмена</button>
     <button class="primary" onclick={submit}>Отправить</button>
   </div>
@@ -140,6 +159,27 @@
     display: flex;
     align-items: center;
     gap: 12px;
+  }
+
+  .remove {
+    flex: none;
+    margin-left: auto;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+
+  .remove:hover {
+    background: var(--bg-input);
+    color: var(--text);
+  }
+
+  .add {
+    margin-right: auto;
   }
 
   .item img {

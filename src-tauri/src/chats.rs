@@ -278,6 +278,33 @@ pub async fn avatar(tg: &Telegram, peer_id: i64, photo_id: &str) -> Result<Strin
     Ok(path_string(path))
 }
 
+/// Path of a custom emoji's picture, downloading it on first use.
+pub async fn custom_emoji(tg: &Telegram, id: &str) -> Result<String, UiError> {
+    let document_id: i64 = id.parse().map_err(|_| no_picture())?;
+    let path = tg.cache_dir.join("emoji").join(format!("{document_id}.webp"));
+    if path.is_file() {
+        return Ok(path_string(path));
+    }
+
+    let handles = tg.handles().await?;
+    let _permit = tg.downloads.acquire().await.map_err(UiError::internal)?;
+    let documents = handles
+        .client
+        .invoke(&tl::functions::messages::GetCustomEmojiDocuments {
+            document_id: vec![document_id],
+        })
+        .await?;
+    let source = documents
+        .iter()
+        .find_map(|document| match document {
+            tl::enums::Document::Document(document) => media::custom_emoji(document),
+            tl::enums::Document::Empty(_) => None,
+        })
+        .ok_or_else(no_picture)?;
+    media::fetch(&handles.client, &source, &path).await?;
+    Ok(path_string(path))
+}
+
 /// Path of the full file behind a message (video, audio, original photo),
 /// downloading it on first use.
 /// Downloads the full file behind a message into the cache, reporting the
@@ -969,22 +996,28 @@ pub fn reactions(raw: Option<&tl::enums::MessageReactions>) -> Vec<cache::Reacti
     let Some(tl::enums::MessageReactions::Reactions(raw)) = raw else {
         return Vec::new();
     };
-    raw.results
-        .iter()
-        .filter_map(|tl::enums::ReactionCount::Count(count)| {
-            let emoji = match &count.reaction {
-                tl::enums::Reaction::Emoji(emoji) => emoji.emoticon.clone(),
-                tl::enums::Reaction::CustomEmoji(_) => String::new(),
-                tl::enums::Reaction::Paid => "⭐".to_owned(),
-                tl::enums::Reaction::Empty => return None,
-            };
-            Some(cache::Reaction {
-                emoji,
-                count: count.count,
-                mine: count.chosen_order.is_some(),
-            })
-        })
-        .collect()
+    let mut list: Vec<cache::Reaction> = Vec::new();
+    for tl::enums::ReactionCount::Count(count) in &raw.results {
+        let emoji = match &count.reaction {
+            tl::enums::Reaction::Emoji(emoji) => emoji.emoticon.clone(),
+            // A custom emoji is named by its document; the window draws its
+            // picture when that is switched on, a sparkle otherwise.
+            tl::enums::Reaction::CustomEmoji(custom) => format!("custom:{}", custom.document_id),
+            // Telegram Stars: shown, never sent from here (they cost money).
+            tl::enums::Reaction::Paid => "paid".to_owned(),
+            tl::enums::Reaction::Empty => continue,
+        };
+        let mine = count.chosen_order.is_some();
+        // One entry per emoji: the window keys the list by it.
+        match list.iter_mut().find(|reaction| reaction.emoji == emoji) {
+            Some(same) => {
+                same.count += count.count;
+                same.mine |= mine;
+            }
+            None => list.push(cache::Reaction { emoji, count: count.count, mine }),
+        }
+    }
+    list
 }
 
 /// Turns Telegram's user status into what the window shows.

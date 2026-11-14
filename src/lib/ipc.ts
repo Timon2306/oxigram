@@ -328,6 +328,8 @@ export const api = {
   clearHistory: (peerId: number) => invoke<void>("clear_history", { peerId }),
   deleteChat: (peerId: number) => invoke<void>("delete_chat", { peerId }),
   /** `emoji: ""` removes the own reaction. */
+  /** `null`: any emoji is allowed; a list: only these (empty: none). */
+  allowedReactions: (peerId: number) => invoke<string[] | null>("allowed_reactions", { peerId }),
   react: (peerId: number, messageId: number, emoji: string) =>
     invoke<void>("react", { peerId, messageId, emoji }),
   editMessage: (peerId: number, messageId: number, text: string) =>
@@ -363,10 +365,18 @@ export const api = {
   sendFile: async (
     peerId: number,
     file: File,
-    options: { caption: string; asPhoto: boolean; replyTo: number | null; token: string },
+    options: {
+      caption: string;
+      asPhoto: boolean;
+      /** From `videoInfo`: sends the file as a playable video. */
+      video: string;
+      replyTo: number | null;
+      token: string;
+    },
   ) =>
     invoke<Message>("send_file", new Uint8Array(await file.arrayBuffer()), {
       headers: {
+        "x-video": options.video,
         "x-peer": String(peerId),
         "x-name": encodeURIComponent(file.name || "file"),
         "x-caption": encodeURIComponent(options.caption),
@@ -375,6 +385,17 @@ export const api = {
         "x-token": options.token,
       },
     }),
+  /** Uploads one file of an album; `sendAlbum` then sends them together. */
+  uploadFile: async (file: File, token: string) =>
+    invoke<void>("upload_file", new Uint8Array(await file.arrayBuffer()), {
+      headers: { "x-name": encodeURIComponent(file.name || "file"), "x-token": token },
+    }),
+  sendAlbum: (
+    peerId: number,
+    items: { token: string; asPhoto: boolean; video: string }[],
+    caption: string,
+    replyTo: number | null,
+  ) => invoke<Message[]>("send_album", { peerId, items, caption, replyTo }),
   peerPresence: (peerId: number) => invoke<Presence | null>("peer_presence", { peerId }),
   /** Saves the attachment to Downloads; resolves to the saved file's path. */
   saveFile: (peerId: number, messageId: number) =>
@@ -387,7 +408,39 @@ export const api = {
   },
 };
 
+/**
+ * "seconds,width,height" of a video file the WebView can open, or "" for
+ * anything else. Telegram needs these to treat an upload as a video.
+ */
+export function videoInfo(file: File): Promise<string> {
+  if (!file.type.startsWith("video/")) return Promise.resolve("");
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    const finish = (value: string) => {
+      clearTimeout(timer);
+      video.removeAttribute("src");
+      video.load();
+      URL.revokeObjectURL(url);
+      resolve(value);
+    };
+    // A format the WebView cannot read is simply sent as a file.
+    const timer = setTimeout(() => finish(""), 5000);
+    video.preload = "metadata";
+    video.muted = true;
+    video.onloadedmetadata = () =>
+      finish(
+        video.videoWidth > 0 && Number.isFinite(video.duration)
+          ? `${Math.round(video.duration)},${video.videoWidth},${video.videoHeight}`
+          : "",
+      );
+    video.onerror = () => finish("");
+    video.src = url;
+  });
+}
+
 const MESSAGES: Record<string, string> = {
+  REACTION_INVALID: "В этом чате такая реакция недоступна.",
   KEYS_INVALID: "Проверьте ключи: api_id — число, api_hash — 32 символа (0–9, a–f).",
   API_ID_INVALID: "Telegram не принял эти api_id / api_hash. Проверьте их и введите заново.",
   API_ID_PUBLISHED_FLOOD: "Этот api_id ограничен Telegram. Нужен другой ключ.",
@@ -527,6 +580,11 @@ export function avatarUrl(peerId: number, photoId: string): Promise<string> {
   return cachedUrl(`a:${peerId}:${photoId}`, () =>
     invoke<string>("avatar", { peerId, photoId }),
   );
+}
+
+/** The picture of a custom emoji (premium reactions), by its document ID. */
+export function customEmojiUrl(id: string): Promise<string> {
+  return cachedUrl(`e:${id}`, () => invoke<string>("custom_emoji", { id }));
 }
 
 export function messageImageUrl(peerId: number, messageId: number): Promise<string> {

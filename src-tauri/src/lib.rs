@@ -18,6 +18,11 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // A second copy would share the database and the session with the
+        // first; starting Oxigram again just brings the running one forward.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tray::show_main(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         // Started with Windows, the app opens straight to the tray with no
@@ -77,6 +82,7 @@ pub fn run() {
             commands::mark_read,
             commands::message_image,
             commands::avatar,
+            commands::custom_emoji,
             commands::message_file,
             commands::save_file,
             commands::peer_info,
@@ -87,6 +93,8 @@ pub fn run() {
             commands::set_active_chat,
             commands::set_unread,
             commands::send_file,
+            commands::upload_file,
+            commands::send_album,
             commands::set_typing,
             commands::folders,
             commands::cache_size,
@@ -100,6 +108,7 @@ pub fn run() {
             commands::clear_history,
             commands::delete_chat,
             commands::react,
+            commands::allowed_reactions,
             commands::edit_message,
             commands::delete_messages,
             commands::pin_message,

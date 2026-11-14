@@ -1,5 +1,6 @@
 <script lang="ts">
   import { avatarUrl } from "./ipc";
+  import { settings } from "./settings.svelte";
 
   let {
     peerId,
@@ -24,7 +25,7 @@
   // is requested only for chats the user actually sees.
   $effect(() => {
     src = null;
-    if (saved || !photoId) return;
+    if (saved || !photoId || !settings.avatars) return;
     let current = true;
     avatarUrl(peerId, photoId).then(
       (url) => current && (src = url),

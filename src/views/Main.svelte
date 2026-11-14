@@ -39,7 +39,43 @@
   let chat = $state<ReturnType<typeof Chat>>();
 
   /** Unsent texts by chat, kept for this computer only. */
+  /** The "Экономия памяти" window. */
+  let saver = $state(false);
+  const SAVER = [
+    {
+      key: "avatars",
+      title: "Фото на аватарках",
+      note: "Без них — цветной кружок с буквой.",
+    },
+    {
+      key: "autoloadImages",
+      title: "Загружать картинки в чатах сами",
+      note: "Без этого картинка и превью видео грузятся по клику.",
+    },
+    {
+      key: "autoplayGifs",
+      title: "Проигрывать GIF и видеостикеры",
+      note: "Без этого они стоят на месте, пока не откроешь.",
+    },
+    {
+      key: "customEmoji",
+      title: "Кастомные эмодзи в реакциях",
+      note: "Картинки таких реакций, по клику можно поставить такую же. Без этого — одна ✨ с общим числом.",
+    },
+    {
+      key: "prefetchChats",
+      title: "Подгружать верхние чаты заранее",
+      note: "Десять верхних чатов открываются сразу, без ожидания сети.",
+    },
+  ] as const;
+
   const DRAFTS_KEY = "oxigram.drafts";
+  /** How many chats from the top get their history fetched ahead of time. */
+  const PREFETCH_CHATS = 10;
+  /** Matches the first page a chat loads when opened. */
+  const PREFETCH_PAGE = 50;
+  let destroyed = false;
+  $effect(() => () => (destroyed = true));
   function loadDrafts(): Record<number, string> {
     try {
       return JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}");
@@ -411,6 +447,25 @@
     } catch (err) {
       error = describeError(err);
     }
+    prefetch();
+  }
+
+  /**
+   * Warms the message cache of the chats at the top of the list, one at a
+   * time in the background, so opening them shows messages at once instead
+   * of waiting for the network. Nothing is marked read.
+   */
+  async function prefetch() {
+    if (!prefs.prefetchChats) return;
+    const top = dialogs.filter((dialog) => !dialog.archived).slice(0, PREFETCH_CHATS);
+    for (const dialog of top) {
+      if (destroyed) return;
+      try {
+        await api.history(dialog.id, null, PREFETCH_PAGE);
+      } catch {
+        return; // Offline or rate-limited: opening a chat loads it anyway.
+      }
+    }
   }
 
   function open(dialog: Dialog) {
@@ -642,6 +697,7 @@
   function closeOverlays() {
     drawer = false;
     settings = false;
+    saver = false;
     confirmSignOut = false;
   }
 
@@ -670,7 +726,7 @@
     }
     if (event.key !== "Escape" || event.repeat) return;
     if (contactsOpen) return;
-    if (drawer || settings) {
+    if (drawer || settings || saver) {
       closeOverlays();
       return;
     }
@@ -852,6 +908,12 @@
     <button
       onclick={() => {
         drawer = false;
+        saver = true;
+      }}>Экономия памяти</button
+    >
+    <button
+      onclick={() => {
+        drawer = false;
         settings = true;
       }}>Настройки</button
     >
@@ -861,6 +923,37 @@
 
 {#if contactsOpen}
   <Contacts {now} onpick={openContact} onclose={() => (contactsOpen = false)} />
+{/if}
+
+{#if saver}
+  <div class="backdrop" onclick={closeOverlays} role="presentation"></div>
+  <div class="modal" role="dialog" aria-label="Экономия памяти">
+    <h2>Экономия памяти</h2>
+    <p class="dim hint">
+      Что включено, то занимает память и трафик. Выключенное не загружается совсем.
+    </p>
+    <div class="prefs">
+      {#each SAVER as option (option.key)}
+        <label class="pref">
+          <span class="pref-text">
+            <span>{option.title}</span>
+            <span class="dim">{option.note}</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={prefs[option.key]}
+            onchange={(event) => {
+              prefs[option.key] = event.currentTarget.checked;
+              saveSettings();
+            }}
+          />
+        </label>
+      {/each}
+    </div>
+    <div class="actions">
+      <button class="ghost" onclick={closeOverlays}>Закрыть</button>
+    </div>
+  </div>
 {/if}
 
 {#if settings}
@@ -893,17 +986,6 @@
           {/each}
         </div>
       </div>
-      <label class="pref">
-        <span>Автовоспроизведение GIF и видеостикеров</span>
-        <input
-          type="checkbox"
-          checked={prefs.autoplayGifs}
-          onchange={(event) => {
-            prefs.autoplayGifs = event.currentTarget.checked;
-            saveSettings();
-          }}
-        />
-      </label>
       <label class="pref">
         <span>Запускать вместе с системой (сразу в трей)</span>
         <input type="checkbox" checked={autostart} onchange={toggleAutostart} />
@@ -1130,6 +1212,22 @@
     gap: 12px;
     padding-top: 12px;
     border-top: 1px solid var(--border);
+  }
+
+  .hint {
+    margin: -4px 0 14px;
+    font-size: 13px;
+  }
+
+  .pref-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .pref-text .dim {
+    font-size: 12.5px;
   }
 
   .pref {

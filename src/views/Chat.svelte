@@ -3,6 +3,7 @@
   import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
     api,
+    videoInfo,
     dayKey,
     describeError,
     dialogTitle,
@@ -23,6 +24,8 @@
     type UiEvent,
   } from "../lib/ipc";
   import Avatar from "../lib/Avatar.svelte";
+  import CustomEmoji from "../lib/CustomEmoji.svelte";
+  import { settings as prefs } from "../lib/settings.svelte";
   import MessageImage from "../lib/MessageImage.svelte";
   import Progress from "../lib/Progress.svelte";
   import SendFiles from "../lib/SendFiles.svelte";
@@ -68,6 +71,30 @@
   } = $props();
 
   const PAGE = 50;
+
+  /** How the backend names a custom emoji reaction: this, then its document ID. */
+  const CUSTOM = "custom:";
+  /** A paid (Telegram Stars) reaction: shown, but never set from here. */
+  const PAID = "paid";
+
+  /**
+   * The reactions to draw. Unless custom emoji are switched on, they are not
+   * fetched at all and are counted together as one sparkle.
+   */
+  function shownReactions(list: Message["reactions"]): Message["reactions"] {
+    if (prefs.customEmoji) return list;
+    const plain = list.filter((reaction) => reaction.emoji && !reaction.emoji.startsWith(CUSTOM));
+    const custom = list.filter((reaction) => !reaction.emoji || reaction.emoji.startsWith(CUSTOM));
+    if (custom.length === 0) return plain;
+    return [
+      ...plain,
+      {
+        emoji: "",
+        count: custom.reduce((sum, reaction) => sum + reaction.count, 0),
+        mine: custom.some((reaction) => reaction.mine),
+      },
+    ];
+  }
   /** Start fetching older messages this close to the top, in pixels. */
   const LOAD_MARGIN = 300;
   /** Closer than this to the end counts as "at the bottom". */
@@ -115,7 +142,17 @@
   let audio = $state<Record<number, { src: string; loading: boolean; error: string }>>({});
 
   /** Quick reactions offered in the message menu. */
-  const QUICK = ["👍", "❤️", "🔥", "😂", "😮", "😢", "🙏"];
+  const QUICK = ["👍", "❤", "🔥", "😂", "😮", "😢", "🙏"];
+  /** Reactions this chat allows: `null` any, a list only these; unknown at first. */
+  let allowed = $state.raw<string[] | null>(null);
+
+  /** The quick reactions for the menu: the usual ones the chat allows first. */
+  function quickReactions(): string[] {
+    if (!allowed) return QUICK;
+    const usual = QUICK.filter((emoji) => allowed?.includes(emoji));
+    const others = allowed.filter((emoji) => !QUICK.includes(emoji));
+    return [...usual, ...others].slice(0, QUICK.length);
+  }
   /** The message the next send replies to. */
   let replyTo = $state.raw<Message | null>(null);
   /** The message whose text is being edited in the input. */
@@ -283,6 +320,57 @@
     } catch (err) {
       saves[message.id] = { path: "", busy: false, error: describeError(err) };
     }
+  }
+
+  /** Puts the picture open in the viewer on the clipboard, as PNG. */
+  async function copyImage(src: string) {
+    try {
+      const bitmap = await createImageBitmap(await (await fetch(src)).blob());
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      const png = await canvas.convertToBlob({ type: "image/png" });
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+      showToast("Картинка скопирована");
+    } catch {
+      showToast("Не удалось скопировать картинку");
+    }
+  }
+
+  /** Right click in the full-screen viewer. */
+  function viewerMenu(event: MouseEvent) {
+    const opened = viewer;
+    if (!opened || opened.loading) return event.preventDefault();
+    const { message, src } = opened;
+    const items: MenuItem[] = [];
+    if (src && !opened.video) {
+      items.push({ label: "Копировать картинку", icon: "copy", action: () => copyImage(src) });
+    }
+    if (message && SAVABLE.has(message.kind)) {
+      items.push({
+        label: saves[message.id]?.path ? "Показать в папке" : "Сохранить в «Загрузки»",
+        icon: "save",
+        action: () => save(message),
+      });
+    }
+    if (message) {
+      items.push({
+        label: "Переслать",
+        icon: "forward",
+        action: () => {
+          viewer = null;
+          onforward([message.id]);
+        },
+      });
+      if (message.text) {
+        items.push({
+          label: "Копировать подпись",
+          icon: "copy",
+          action: () => navigator.clipboard.writeText(message.text),
+        });
+      }
+    }
+    openMenu(event, items);
   }
 
   function reveal(path: string) {
@@ -606,11 +694,18 @@
     items.push({ label: "Удалить", icon: "delete", danger: true, action: () => askDelete(item) });
 
     const target = item.parts.find((part) => part.reactions.length > 0) ?? first;
-    openMenu(event, items, {
-      emojis: QUICK,
-      active: target.reactions.find((r) => r.mine)?.emoji ?? null,
-      pick: (emoji) => react(target, emoji),
-    });
+    const quick = quickReactions();
+    openMenu(
+      event,
+      items,
+      quick.length > 0
+        ? {
+            emojis: quick,
+            active: target.reactions.find((r) => r.mine)?.emoji ?? null,
+            pick: (emoji) => react(target, emoji),
+          }
+        : null,
+    );
   }
 
   function albumColumns(count: number): number {
@@ -635,6 +730,10 @@
 
   async function open() {
     loadPinned();
+    api.allowedReactions(peerId).then(
+      (list) => (allowed = list),
+      () => {},
+    );
     try {
       messages = (await api.cachedHistory(peerId, null, PAGE)).reverse();
       await scrollToBottom();
@@ -715,6 +814,10 @@
   /** Live events from Telegram, routed here by Main while this chat is open. */
   // Sending files: chosen with the clip button, pasted, or dropped.
   let picked = $state<File[] | null>(null);
+  /** Formats Telegram accepts as a compressed photo. */
+  const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp"]);
+  /** Telegram's limit of items in one album. */
+  const ALBUM_MAX = 10;
   let dragging = $state(false);
   let fileInput = $state<HTMLInputElement>();
   /** Files being uploaded right now, shown as a strip above the input. */
@@ -722,32 +825,68 @@
 
   function pick(files: FileList | File[] | null | undefined) {
     const list = [...(files ?? [])].filter((file) => file.size > 0);
-    if (list.length > 0) picked = list;
+    // More files while the send box is open join the ones already there.
+    if (list.length > 0) picked = picked ? [...picked, ...list] : list;
   }
 
   async function sendFiles(files: File[], caption: string, asPhoto: boolean) {
     picked = null;
     const reply = replyTo?.id ?? null;
     replyTo = null;
-    for (const [index, file] of files.entries()) {
-      const token = `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`;
-      uploads = [...uploads, { token, name: file.name || "Файл", size: file.size, done: 0 }];
+    // What each file is sent as: photos and videos share albums, plain
+    // files form their own, as in Telegram.
+    const entries = await Promise.all(
+      files.map(async (file, index) => {
+        const isPicture = PHOTO_TYPES.has(file.type) && file.size <= 10 * 1024 * 1024;
+        const photo = asPhoto && isPicture;
+        return {
+          file,
+          token: `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`,
+          asPhoto: photo,
+          video: photo ? "" : await videoInfo(file),
+        };
+      }),
+    );
+    type Entry = (typeof entries)[number];
+    const visual = entries.filter((entry) => entry.asPhoto || entry.video);
+    const plain = entries.filter((entry) => !entry.asPhoto && !entry.video);
+    const groups: Entry[][] = [];
+    for (const list of [visual, plain]) {
+      for (let at = 0; at < list.length; at += ALBUM_MAX) groups.push(list.slice(at, at + ALBUM_MAX));
+    }
+    uploads = [
+      ...uploads,
+      ...entries.map(({ file, token }) => ({ token, name: file.name || "Файл", size: file.size, done: 0 })),
+    ];
+
+    for (const [index, group] of groups.entries()) {
+      // The caption goes under the first message only, as in Telegram.
+      const text = index === 0 ? caption : "";
+      const replyId = index === 0 ? reply : null;
       try {
-        const isPicture = file.type.startsWith("image/") && file.size <= 10 * 1024 * 1024;
-        const sent = await api.sendFile(peerId, file, {
-          // The caption goes with the first file only, as in Telegram.
-          caption: index === 0 ? caption : "",
-          asPhoto: asPhoto && isPicture,
-          replyTo: index === 0 ? reply : null,
-          token,
-        });
-        append(sent);
-        onsent(sent);
+        let sent: Message[];
+        if (group.length === 1) {
+          const [{ file, token, asPhoto: photo, video }] = group;
+          sent = [await api.sendFile(peerId, file, { caption: text, asPhoto: photo, video, replyTo: replyId, token })];
+        } else {
+          for (const { file, token } of group) await api.uploadFile(file, token);
+          sent = await api.sendAlbum(
+            peerId,
+            group.map(({ token, asPhoto: photo, video }) => ({ token, asPhoto: photo, video })),
+            text,
+            replyId,
+          );
+        }
+        for (const message of sent) {
+          append(message);
+          onsent(message);
+        }
         await scrollToBottom();
       } catch (err) {
         error = describeError(err);
       } finally {
-        uploads = uploads.filter((upload) => upload.token !== token);
+        const done = new Set(group.map((entry) => entry.token));
+        uploads = uploads.filter((upload) => !done.has(upload.token));
       }
     }
   }
@@ -1003,7 +1142,7 @@
         {:else}
           {@const pictures = item.parts.filter(hasImage)}
           {@const files = item.parts.filter((part) => !hasImage(part) && part.kind !== "text")}
-          {@const reacts = item.parts.find((part) => part.reactions.length > 0)?.reactions ?? []}
+          {@const reacts = shownReactions(item.parts.find((part) => part.reactions.length > 0)?.reactions ?? [])}
           <div
             class="message"
             role="article"
@@ -1125,9 +1264,18 @@
                   >{/if}{#if reacts.length > 0}
                   <div class="foot">
                     <div class="reactions">
-                      {#each reacts as reaction (reaction.emoji)}
-                        <span class="reaction" class:mine={reaction.mine}
-                          >{reaction.emoji || "✨"}{#if reaction.count > 1}<b>{reaction.count}</b>{/if}</span
+                      {#each reacts as reaction, at (`${at}:${reaction.emoji}`)}
+                        <button
+                          class="reaction"
+                          class:mine={reaction.mine}
+                          disabled={reaction.emoji === "" || reaction.emoji === PAID}
+                          onclick={() => {
+                            const target = item.parts.find((part) => part.reactions.length > 0);
+                            if (target) react(target, reaction.emoji);
+                          }}
+                          >{#if reaction.emoji.startsWith(CUSTOM)}<CustomEmoji
+                              id={reaction.emoji.slice(CUSTOM.length)}
+                            />{:else if reaction.emoji === PAID}⭐{:else}{reaction.emoji || "✨"}{/if}{#if reaction.count > 1}<b>{reaction.count}</b>{/if}</button
                         >
                       {/each}
                     </div>
@@ -1256,7 +1404,17 @@
 </div>
 
 {#if picked}
-  <SendFiles files={picked} onsend={sendFiles} onclose={() => (picked = null)} />
+  <SendFiles
+    files={picked}
+    onsend={sendFiles}
+    onadd={() => fileInput?.click()}
+    onpick={pick}
+    onremove={(index) => {
+      const rest = (picked ?? []).filter((_, at) => at !== index);
+      picked = rest.length > 0 ? rest : null;
+    }}
+    onclose={() => (picked = null)}
+  />
 {/if}
 
 {#if confirmDel}
@@ -1270,7 +1428,7 @@
 {/if}
 
 {#if viewer}
-  <div class="viewer" role="dialog" aria-label="Просмотр">
+  <div class="viewer" role="dialog" aria-label="Просмотр" tabindex="-1" oncontextmenu={viewerMenu}>
     <button class="viewer-close" onclick={() => (viewer = null)} aria-label="Закрыть">✕</button>
     {#if viewer.message && SAVABLE.has(viewer.message.kind)}
       {@const saving = saves[viewer.message.id]}
@@ -1692,6 +1850,10 @@
   }
 
   .reaction {
+    border: none;
+    color: inherit;
+    font-family: inherit;
+    cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -1702,6 +1864,11 @@
     font-size: 15px;
     line-height: 1;
     user-select: none;
+  }
+
+  .reaction:disabled {
+    cursor: default;
+    opacity: 1;
   }
 
   .reaction b {

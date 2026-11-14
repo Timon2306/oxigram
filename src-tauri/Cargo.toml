@@ -48,6 +48,7 @@ windows-core = "0.62"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
 
 # Size first: the whole point of the project is a small footprint.
 # See https://tauri.app/concept/size/#cargo-configuration

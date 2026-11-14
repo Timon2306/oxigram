@@ -111,6 +111,38 @@ pub fn avatar(peer: PeerRef, photo_id: i64) -> ImageSource {
     }
 }
 
+/// The still picture of a custom emoji: the emoji itself when it is a plain
+/// image, its preview frame when it is animated.
+pub fn custom_emoji(document: &tl::types::Document) -> Option<ImageSource> {
+    let location = |thumb_size: String| -> tl::enums::InputFileLocation {
+        tl::types::InputDocumentFileLocation {
+            id: document.id,
+            access_hash: document.access_hash,
+            file_reference: document.file_reference.clone(),
+            thumb_size,
+        }
+        .into()
+    };
+    if document.mime_type == "image/webp" {
+        return Some(ImageSource {
+            location: location(String::new()),
+            dc_id: Some(document.dc_id),
+            width: 100,
+            height: 100,
+            ext: "webp",
+        });
+    }
+    let (thumb_size, width, height) = pick_thumb(document.thumbs.as_deref()?)?;
+    Some(ImageSource {
+        location: location(thumb_size),
+        dc_id: Some(document.dc_id),
+        width,
+        height,
+        // Preview frames of emoji are WebP whatever their size type says.
+        ext: "webp",
+    })
+}
+
 /// Downloads `source` to `path`. The file appears under its final name only
 /// once complete, so a half-written picture is never served.
 pub async fn fetch(client: &Client, source: &ImageSource, path: &Path) -> Result<(), UiError> {

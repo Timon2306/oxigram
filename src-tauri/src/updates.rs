@@ -119,24 +119,33 @@ impl UiSink {
         if looking && active == message.peer_id {
             return;
         }
-        let muted = db
-            .lock()
-            .ok()
-            .and_then(|conn| cache::is_muted(&conn, message.peer_id))
-            // A chat missing from the list: private chats ring, others stay quiet.
-            .unwrap_or(message.peer_id < 0);
-        if muted {
+        let (muted, listed_title) = match db.lock() {
+            Ok(conn) => (
+                cache::is_muted(&conn, message.peer_id),
+                cache::dialog_title(&conn, message.peer_id),
+            ),
+            Err(_) => (None, None),
+        };
+        // A chat missing from the list: private chats ring, others stay quiet.
+        if muted.unwrap_or(message.peer_id < 0) {
             return;
         }
+        // Updates do not always carry the chat's details; the list has its
+        // name, and in a private chat the sender is the chat.
         let title = if peer.kind == "saved" {
             "Избранное".to_owned()
-        } else if peer.title.is_empty() {
-            "Oxigram".to_owned()
-        } else {
+        } else if !peer.title.is_empty() {
             peer.title.clone()
+        } else if let Some(title) = listed_title {
+            title
+        } else if !sender.is_empty() {
+            sender.to_owned()
+        } else {
+            "Новое сообщение".to_owned()
         };
         let text = notification_text(message);
-        let body = if peer.kind == "group" && !sender.is_empty() {
+        let in_group = peer.kind == "group" || (peer.kind.is_empty() && message.peer_id < 0);
+        let body = if in_group && !sender.is_empty() && sender != title {
             format!("{sender}: {text}")
         } else {
             text

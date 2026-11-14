@@ -254,6 +254,13 @@ pub fn is_muted(conn: &Connection, peer_id: i64) -> Option<bool> {
         .ok()
 }
 
+/// The chat's name as the list shows it, when the chat is in the list.
+pub fn dialog_title(conn: &Connection, peer_id: i64) -> Option<String> {
+    conn.query_row("SELECT title FROM dialogs WHERE peer_id = ?1", [peer_id], |row| row.get(0))
+        .ok()
+        .filter(|title: &String| !title.is_empty())
+}
+
 pub fn set_muted(conn: &Connection, peer_id: i64, muted: bool) -> rusqlite::Result<()> {
     conn.execute("UPDATE dialogs SET muted = ?2 WHERE peer_id = ?1", params![peer_id, muted])?;
     Ok(())

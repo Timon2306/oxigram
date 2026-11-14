@@ -59,9 +59,13 @@
     else video.pause();
   });
 
+  /** With automatic loading switched off, a picture waits for a click. */
+  let asked = $state(false);
+  const wanted = $derived(settings.autoloadImages || asked);
+
   // Download only when the picture scrolls near the viewport.
   $effect(() => {
-    if (!box) return;
+    if (!box || !wanted) return;
     const { peerId, id } = message;
     let current = true;
     const observer = new IntersectionObserver(
@@ -110,8 +114,11 @@
   bind:this={box}
   style:aspect-ratio={cover ? undefined : `${message.imageW} / ${message.imageH}`}
   style:width={cover ? undefined : `${width}px`}
-  disabled={!onopen || (!src && !playable)}
-  onclick={() => (src || playable) && onopen?.(src ?? "")}
+  disabled={wanted && (!onopen || (!src && !playable))}
+  onclick={() => {
+    if (!wanted) asked = true;
+    else if (src || playable) onopen?.(src ?? "");
+  }}
 >
   {#if loopSrc}
     <!-- svelte-ignore a11y_media_has_caption -->
@@ -120,8 +127,10 @@
     <img {src} alt="" draggable="false" />
   {:else if failed}
     <span class="state">Не удалось загрузить</span>
+  {:else if !wanted}
+    <span class="state">Показать</span>
   {/if}
-  {#if playable && !loopSrc}
+  {#if playable && !loopSrc && wanted}
     <span class="play" aria-hidden="true">▶</span>
   {/if}
   {#if message.duration > 0 && (message.kind === "video" || message.kind === "round")}
