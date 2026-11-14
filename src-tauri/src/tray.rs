@@ -22,7 +22,7 @@ pub fn available() -> bool {
 pub const MINIMIZED_ARG: &str = "--minimized";
 
 /// Label of the main window, as given by the first entry in `tauri.conf.json`.
-const MAIN: &str = "main";
+pub const MAIN: &str = "main";
 
 /// Creates the one and only tray icon. Called once from `setup`.
 pub fn init<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {

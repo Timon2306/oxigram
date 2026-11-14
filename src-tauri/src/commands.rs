@@ -191,7 +191,7 @@ mod tests {
 /// Unread messages in unmuted chats, for the title bar and the tray tooltip.
 #[tauri::command]
 pub fn set_unread(app: tauri::AppHandle, unread: u32) {
-    crate::mem::UNREAD.store(unread, std::sync::atomic::Ordering::Relaxed);
+    crate::title::UNREAD.store(unread, std::sync::atomic::Ordering::Relaxed);
     crate::tray::set_unread(&app, unread);
 }
 
@@ -419,7 +419,7 @@ pub async fn peer_info(tg: State<'_, Telegram>, peer_id: i64) -> Result<PeerInfo
 /// Points the live event stream at this window. Called once per page load.
 #[tauri::command]
 pub async fn subscribe(tg: State<'_, Telegram>, on_event: Channel<Vec<UiEvent>>) -> Result<(), UiError> {
-    tg.ui.attach(on_event);
+    tg.ui.attach(Box::new(crate::ChannelSink(on_event)));
     Ok(())
 }
 

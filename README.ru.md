@@ -124,6 +124,13 @@ npm run tauri dev      # запуск с горячей перезагрузко
 npm run tauri build    # релизная сборка
 ```
 
+**Нативное окно (экспериментально, ветка `native-ui`).** Тот же бэкенд, но окно
+на [Slint](https://slint.dev) вместо WebView: без Node.js и WebView2.
+
+```sh
+cargo run --release -p oxigram-native
+```
+
 <details>
 <summary><b>Проверки, демо-режим и устройство проекта</b></summary>
 
@@ -131,8 +138,8 @@ npm run tauri build    # релизная сборка
 
 ```sh
 npm run check                            # Svelte / TypeScript
-cd src-tauri && cargo test               # юнит-тесты
-cd src-tauri && cargo test -- --ignored  # плюс тесты с серверами Telegram
+cargo test                               # юнит-тесты (core + Tauri)
+cargo test -- --ignored                  # плюс тесты с серверами Telegram
 ```
 
 **Демо-режим** показывает настоящий интерфейс на выдуманных чатах — для

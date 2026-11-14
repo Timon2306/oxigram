@@ -1,0 +1,32 @@
+[package]
+name = "oxigram-native"
+version = "0.1.0"
+description = "Oxigram with a native window: no WebView"
+authors = ["Timon2306"]
+license = "MIT"
+edition = "2024"
+
+[[bin]]
+name = "oxigram-native"
+path = "src/main.rs"
+
+[dependencies]
+oxigram-core = { path = "../core" }
+# Software renderer only: no OpenGL/Vulkan context, whose driver memory would
+# cost more than the whole UI. No accessibility tree for now (AccessKit keeps
+# a second copy of every widget).
+slint = { version = "1.18", default-features = false, features = [
+    "std",
+    "backend-winit",
+    "renderer-software",
+    "compat-1-2",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+dirs = "6"
+# Avatars are decoded and shrunk to their on-screen size before they reach
+# the UI, so a 640 px photo costs ~10 KB of memory, not 1.6 MB.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+
+[build-dependencies]
+slint-build = "1.18"

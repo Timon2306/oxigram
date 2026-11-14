@@ -19,28 +19,11 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-opener = "2"
+oxigram-core = { path = "../core" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["sync", "rt", "time", "macros"] }
-# Raw TL types and `Client::invoke` are outside grammers' semver guarantees,
-# so minor versions are bumped by hand.
-grammers-client = "~0.12.0"
-# No default features: the built-in session storage links libsql, whose bundled
-# SQLite clashes with rusqlite's at link time. `store::session` replaces it.
-grammers-session = { version = "~0.12.0", default-features = false }
-rusqlite = { version = "0.42", features = ["bundled"] }
 tauri-plugin-notification = "2"
 
-[dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = [
-    "Win32_Foundation",
-    "Win32_System_Diagnostics_ToolHelp",
-    "Win32_System_ProcessStatus",
-    "Win32_System_Threading",
-] }
 # Already in the tree through Tauri; used to ask WebView2 to release memory
 # while the window is minimized.
 webview2-com = "0.39"
@@ -49,12 +32,3 @@ windows-core = "0.62"
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
-
-# Size first: the whole point of the project is a small footprint.
-# See https://tauri.app/concept/size/#cargo-configuration
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = "s"
-panic = "abort"
-strip = true

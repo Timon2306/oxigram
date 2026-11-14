@@ -14,8 +14,8 @@ use grammers_client::sender::{AutoSleep, ConnectionParams, SenderPool};
 use grammers_client::{Client, SignInError};
 use grammers_session::updates::UpdatesLike;
 use serde::Serialize;
-use tauri::async_runtime::{self, JoinHandle};
 use tokio::sync::{Mutex, Semaphore, mpsc};
+use tokio::task::JoinHandle;
 
 use crate::config::{self, ApiKeys};
 use crate::error::UiError;
@@ -23,6 +23,7 @@ use crate::store::{self, Db, session::SqliteSession};
 use crate::updates::{self, UiSink};
 
 const DB_FILE: &str = "oxigram.db";
+const LOCK_FILE: &str = "oxigram.lock";
 /// Thumbnails and avatars are small; a few at a time keeps scrolling smooth
 /// without tripping flood limits.
 const PARALLEL_DOWNLOADS: usize = 4;
@@ -100,6 +101,9 @@ pub struct Telegram {
     pub ui: Arc<UiSink>,
     /// Files uploaded for an album and not sent yet, by their upload token.
     pub uploads: std::sync::Mutex<std::collections::HashMap<String, grammers_client::media::Uploaded>>,
+    /// Held while the session is open, so the Tauri and the native build
+    /// never use one authorization key from two processes at once.
+    instance_lock: std::sync::Mutex<Option<std::fs::File>>,
 }
 
 impl Telegram {
@@ -118,6 +122,7 @@ impl Telegram {
             downloads: Semaphore::new(PARALLEL_DOWNLOADS),
             ui: Arc::new(UiSink::default()),
             uploads: Default::default(),
+            instance_lock: std::sync::Mutex::new(None),
         }
     }
 
@@ -287,7 +292,7 @@ impl Telegram {
         };
         connection.me = Some(me.clone());
         if let Some(receiver) = connection.updates.take() {
-            connection.update_task = Some(async_runtime::spawn(updates::run(
+            connection.update_task = Some(tokio::spawn(updates::run(
                 connection.client.clone(),
                 receiver,
                 Arc::clone(&connection.db),
@@ -330,7 +335,7 @@ impl Telegram {
                 client: Client::new(handle),
                 session,
                 db,
-                pool_task: async_runtime::spawn(runner.run()),
+                pool_task: tokio::spawn(runner.run()),
                 updates: Some(updates),
                 update_task: None,
                 me: None,
@@ -344,9 +349,37 @@ impl Telegram {
 
     fn open_session(&self) -> Result<(Db, SqliteSession), UiError> {
         std::fs::create_dir_all(&self.data_dir)?;
+        self.lock_instance()?;
         let db = store::open(self.data_dir.join(DB_FILE))?;
         let session = SqliteSession::load(Arc::clone(&db)).map_err(UiError::internal)?;
         Ok((db, session))
+    }
+
+    /// Takes the per-account lock file, once per process.
+    fn lock_instance(&self) -> Result<(), UiError> {
+        let mut slot = self
+            .instance_lock
+            .lock()
+            .map_err(|_| UiError::internal("instance lock is poisoned"))?;
+        if slot.is_some() {
+            return Ok(());
+        }
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(self.data_dir.join(LOCK_FILE))?;
+        match file.try_lock() {
+            Ok(()) => {
+                *slot = Some(file);
+                Ok(())
+            }
+            Err(std::fs::TryLockError::WouldBlock) => Err(UiError::new(
+                "ALREADY_RUNNING",
+                "Oxigram is already running with this account",
+            )),
+            Err(std::fs::TryLockError::Error(err)) => Err(err.into()),
+        }
     }
 
     /// Stops the network task and returns the session it was using.

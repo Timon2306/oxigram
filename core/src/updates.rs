@@ -10,7 +10,6 @@ use grammers_client::sender::UpdatesConfiguration;
 use grammers_session::types::PeerId;
 use grammers_session::updates::UpdatesLike;
 use serde::Serialize;
-use tauri::ipc::Channel;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, timeout};
 
@@ -78,22 +77,35 @@ pub enum UiEvent {
     },
 }
 
+/// Where events go: the Tauri IPC channel, or the native window's queue.
+/// `send` returns `false` once the window is gone.
+pub trait EventSink: Send + Sync {
+    fn send(&self, events: Vec<UiEvent>) -> bool;
+}
+
+/// System notifications and whether the user is looking at the window.
+pub trait Notifier: Send + Sync {
+    /// The main window is focused and not minimized.
+    fn looking(&self) -> bool;
+    fn show(&self, title: String, body: String);
+}
+
 /// The window's end of the event stream. It is replaced whenever the window
 /// (re)subscribes; with no window attached, events are simply not sent and the
 /// cache alone keeps up.
 #[derive(Default)]
 pub struct UiSink {
-    channel: Mutex<Option<Channel<Vec<UiEvent>>>>,
-    /// The app, for system notifications; set once at start-up.
-    app: std::sync::OnceLock<tauri::AppHandle>,
+    channel: Mutex<Option<Box<dyn EventSink>>>,
+    /// For system notifications; set once at start-up.
+    notifier: std::sync::OnceLock<Box<dyn Notifier>>,
     /// The chat open in the window, or 0: its messages need no notification
     /// while the window has focus.
     active_chat: std::sync::atomic::AtomicI64,
 }
 
 impl UiSink {
-    pub fn set_app(&self, app: tauri::AppHandle) {
-        let _ = self.app.set(app);
+    pub fn set_notifier(&self, notifier: Box<dyn Notifier>) {
+        let _ = self.notifier.set(notifier);
     }
 
     pub fn set_active_chat(&self, peer_id: Option<i64>) {
@@ -105,18 +117,12 @@ impl UiSink {
     /// is muted or the user is looking at it right now. Works with the window
     /// closed to the tray too.
     fn notify(&self, db: &Db, message: &MessageRow, peer: &PeerSummary, sender: &str) {
-        use tauri::Manager;
-        use tauri_plugin_notification::NotificationExt;
-
         if message.outgoing {
             return;
         }
-        let Some(app) = self.app.get() else { return };
-        let looking = app.get_webview_window("main").is_some_and(|window| {
-            window.is_focused().unwrap_or(false) && !window.is_minimized().unwrap_or(true)
-        });
+        let Some(notifier) = self.notifier.get() else { return };
         let active = self.active_chat.load(std::sync::atomic::Ordering::Relaxed);
-        if looking && active == message.peer_id {
+        if active == message.peer_id && notifier.looking() {
             return;
         }
         let (muted, listed_title) = match db.lock() {
@@ -150,12 +156,12 @@ impl UiSink {
         } else {
             text
         };
-        let _ = app.notification().builder().title(title).body(body).show();
+        notifier.show(title, body);
     }
 
-    pub fn attach(&self, channel: Channel<Vec<UiEvent>>) {
+    pub fn attach(&self, sink: Box<dyn EventSink>) {
         if let Ok(mut slot) = self.channel.lock() {
-            *slot = Some(channel);
+            *slot = Some(sink);
         }
     }
 
@@ -175,7 +181,7 @@ impl UiSink {
             return;
         };
         // A failed send means the window is gone: stop trying until it returns.
-        if slot.as_ref().is_some_and(|channel| channel.send(events).is_err()) {
+        if slot.as_ref().is_some_and(|sink| !sink.send(events)) {
             *slot = None;
         }
     }

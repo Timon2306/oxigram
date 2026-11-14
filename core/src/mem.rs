@@ -10,42 +10,14 @@ pub struct MemInfo {
     pub processes: u32,
 }
 
-/// Unread messages in unmuted chats, as last reported by the window.
-pub static UNREAD: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-
-/// How often the title is refreshed while the window is on screen.
-const TITLE_EVERY: std::time::Duration = std::time::Duration::from_secs(3);
-
-/// Keeps "Oxigram — 64 МБ ОЗУ" in the main window's title. A plain thread
-/// that sleeps between samples; it skips the work while the window is
-/// minimized or closed to the tray.
-pub fn show_in_title<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
-    use tauri::Manager;
-    std::thread::spawn(move || {
-        let mut shown = String::new();
-        loop {
-            std::thread::sleep(TITLE_EVERY);
-            let Some(window) = app.get_webview_window("main") else {
-                shown.clear();
-                continue;
-            };
-            if !window.is_visible().unwrap_or(false) || window.is_minimized().unwrap_or(true) {
-                continue;
-            }
-            let Some(info) = usage() else { continue };
-            let unread = UNREAD.load(std::sync::atomic::Ordering::Relaxed);
-            let count = if unread > 0 { format!(" ({unread})") } else { String::new() };
-            let title = format!("Oxigram{count} — {} МБ ОЗУ", info.bytes / (1024 * 1024));
-            if title != shown && window.set_title(&title).is_ok() {
-                shown = title;
-            }
-        }
-    });
-}
-
 /// `None` on platforms where the process tree cannot be measured.
 pub fn usage() -> Option<MemInfo> {
-    imp::usage()
+    imp::usage(std::process::id())
+}
+
+/// The same figure for another process tree, for side-by-side measurements.
+pub fn usage_of(root: u32) -> Option<MemInfo> {
+    imp::usage(root)
 }
 
 /// Collects `root` and all of its descendants from `(pid, parent_pid)` pairs.
@@ -81,8 +53,8 @@ mod imp {
 
     use super::{MemInfo, descendants};
 
-    pub fn usage() -> Option<MemInfo> {
-        let tree = descendants(std::process::id(), &snapshot()?);
+    pub fn usage(root: u32) -> Option<MemInfo> {
+        let tree = descendants(root, &snapshot()?);
         let mut info = MemInfo {
             bytes: 0,
             processes: 0,
@@ -150,8 +122,8 @@ mod imp {
 
     use super::{MemInfo, descendants};
 
-    pub fn usage() -> Option<MemInfo> {
-        let tree = descendants(std::process::id(), &snapshot()?);
+    pub fn usage(root: u32) -> Option<MemInfo> {
+        let tree = descendants(root, &snapshot()?);
         let mut info = MemInfo {
             bytes: 0,
             processes: 0,
@@ -203,7 +175,7 @@ mod imp {
 
 #[cfg(not(any(windows, target_os = "linux")))]
 mod imp {
-    pub fn usage() -> Option<super::MemInfo> {
+    pub fn usage(_root: u32) -> Option<super::MemInfo> {
         None
     }
 }

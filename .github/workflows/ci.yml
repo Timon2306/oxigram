@@ -39,7 +39,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: .
 
       - run: npm ci
 
@@ -50,10 +50,10 @@ jobs:
       - name: Frontend build
         run: npm run build
 
+      # From the workspace root: the shared core and the Tauri app (the
+      # default members). The native window is built separately.
       - name: Rust tests
-        working-directory: src-tauri
         run: cargo test --locked
 
       - name: Rust build
-        working-directory: src-tauri
         run: cargo build --locked

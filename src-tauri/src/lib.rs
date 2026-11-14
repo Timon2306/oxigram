@@ -1,17 +1,35 @@
-mod actions;
-mod chats;
 mod commands;
-mod config;
-mod error;
-mod markup;
-mod media;
-mod mem;
-mod service;
-mod store;
-mod tg;
+mod title;
 mod tray;
-mod updates;
 mod webview;
+
+// The backend lives in `oxigram-core`, shared with the native build.
+use oxigram_core::{actions, chats, error, store, tg, updates};
+
+/// Live events travel to the WebView over a Tauri channel.
+struct ChannelSink(tauri::ipc::Channel<Vec<updates::UiEvent>>);
+
+impl updates::EventSink for ChannelSink {
+    fn send(&self, events: Vec<updates::UiEvent>) -> bool {
+        self.0.send(events).is_ok()
+    }
+}
+
+/// System notifications through the Tauri notification plugin.
+struct TauriNotifier(tauri::AppHandle);
+
+impl updates::Notifier for TauriNotifier {
+    fn looking(&self) -> bool {
+        self.0.get_webview_window(tray::MAIN).is_some_and(|window| {
+            window.is_focused().unwrap_or(false) && !window.is_minimized().unwrap_or(true)
+        })
+    }
+
+    fn show(&self, title: String, body: String) {
+        use tauri_plugin_notification::NotificationExt;
+        let _ = self.0.notification().builder().title(title).body(body).show();
+    }
+}
 
 use tauri::Manager;
 
@@ -38,14 +56,16 @@ pub fn run() {
                 paths.app_data_dir()?,
                 paths.app_cache_dir()?.join("media"),
             ));
-            app.state::<tg::Telegram>().ui.set_app(app.handle().clone());
+            app.state::<tg::Telegram>()
+                .ui
+                .set_notifier(Box::new(TauriNotifier(app.handle().clone())));
             // Connect right away, not when the window first asks: started into
             // the tray there is no window, yet new messages should still ring.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let _ = handle.state::<tg::Telegram>().state().await;
             });
-            mem::show_in_title(app.handle().clone());
+            title::show_in_title(app.handle().clone());
             // A missing tray is not fatal: the app then quits when closed.
             let _ = tray::init(app.handle());
             // The window is created hidden (tauri.conf.json) and shown here,

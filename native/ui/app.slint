@@ -1,0 +1,1223 @@
+// Oxigram's native window. All state lives in Rust (src/main.rs); this file
+// only lays it out. Sizes and colors follow the dark theme of the WebView
+// build (src/app.css, views/DialogList.svelte, views/Chat.svelte).
+
+import { ScrollView, ListView } from "std-widgets.slint";
+import "../fonts/OpenSans-Regular.ttf";
+import "../fonts/OpenSans-SemiBold.ttf";
+
+export struct DialogItem {
+    title: string,
+    initial: string,
+    color: color,
+    photo: image,
+    has-photo: bool,
+    preview: string,
+    // "Вы: " before the preview (groups and channels)
+    you: bool,
+    time: string,
+    unread: int,
+    muted: bool,
+    pinned: bool,
+    online: bool,
+    // 0: none, 1: sent, 2: read
+    ticks: int,
+    saved: bool,
+    active: bool,
+}
+
+export struct MessageItem {
+    id: int,
+    text: string,
+    // "Фото", "Видео"… for content not drawn yet
+    media: string,
+    time: string,
+    outgoing: bool,
+    ticks: int,
+    // Shown above the first message of a run in groups
+    sender: string,
+    sender-color: color,
+    service: bool,
+    // A date pill above the message when it starts a new day
+    day: string,
+    edited: bool,
+    // Continues the run of the message above (smaller gap)
+    joined: bool,
+    // Last of its run: the corner next to the sender gets the "tail"
+    tail: bool,
+    // Has line breaks, so the time cannot sit at the end of a single line
+    multiline: bool,
+}
+
+global Theme {
+    out property <color> bg: #0e1621;
+    out property <color> raised: #17212b;
+    out property <color> input: #242f3d;
+    out property <color> hover: #202b36;
+    out property <color> active: #2b5278;
+    out property <color> border: #0f1923;
+    out property <color> text: #f5f5f5;
+    out property <color> dim: #7f91a4;
+    out property <color> accent: #5ea5e8;
+    out property <color> accent-text: #06121f;
+    out property <color> danger: #ff6b6b;
+    out property <color> bubble-in: #182533;
+    out property <color> bubble-out: #2b5278;
+    out property <color> pill: #0e1621b8;
+    out property <color> read-tick: #6ec6ff;
+    out property <length> column: 820px;
+}
+
+// SVG-like icons: a path in a 24×24 box.
+component Icon inherits Path {
+    in property <length> size: 20px;
+    in property <color> tint: Theme.dim;
+    width: self.size;
+    height: self.size;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    fill: self.tint;
+}
+
+component StrokeIcon inherits Path {
+    in property <length> size: 20px;
+    in property <color> tint: Theme.dim;
+    width: self.size;
+    height: self.size;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    stroke: self.tint;
+    stroke-width: 1.8px;
+    fill: transparent;
+}
+
+// One or two check marks (viewBox 18×12, as in the WebView build).
+component Ticks inherits Rectangle {
+    in property <int> count;
+    in property <color> tint: Theme.accent;
+    width: 16px;
+    height: 11px;
+    Path {
+        width: 16px;
+        height: 11px;
+        viewbox-width: 18;
+        viewbox-height: 12;
+        stroke: root.tint;
+        stroke-width: 1.6px;
+        commands: root.count > 1 ? "M1.5 6.5 5 10l6.5-8M8 10l6.5-8" : "M1.5 6.5 5 10l6.5-8";
+    }
+}
+
+component Avatar inherits Rectangle {
+    in property <string> initial;
+    in property <color> tint;
+    in property <image> photo;
+    in property <bool> has-photo;
+    in property <bool> saved;
+    in property <length> size: 48px;
+    width: self.size;
+    height: self.size;
+    border-radius: self.size / 2;
+    clip: true;
+    // A photo comes already cut to a circle (see `circle` in main.rs).
+    background: root.saved ? #4c9ffe : root.has-photo ? transparent : root.tint;
+    if !root.saved && !root.has-photo: Text {
+        text: root.initial;
+        color: white;
+        font-size: root.size * 0.4;
+        font-weight: 600;
+    }
+    if root.saved: Icon {
+        size: root.size * 0.5;
+        tint: white;
+        commands: "M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z";
+    }
+    if root.has-photo && !root.saved: Image {
+        source: root.photo;
+        width: root.size;
+        height: root.size;
+        image-fit: cover;
+    }
+}
+
+// A text field drawn like the WebView's inputs.
+component Field inherits Rectangle {
+    in property <string> placeholder;
+    in property <bool> password;
+    in property <bool> enabled: true;
+    in-out property <string> text <=> input.text;
+    callback accepted(string);
+    public function grab-focus() {
+        input.focus();
+    }
+    height: 40px;
+    border-radius: 8px;
+    background: Theme.input;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.border;
+    if input.text == "": Text {
+        x: 12px;
+        text: root.placeholder;
+        color: Theme.dim;
+        font-size: 15px;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    input := TextInput {
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        vertical-alignment: center;
+        color: Theme.text;
+        font-size: 15px;
+        enabled: root.enabled;
+        input-type: root.password ? InputType.password : InputType.text;
+        single-line: true;
+        selection-background-color: #4a7bb7;
+        accepted => {
+            root.accepted(self.text);
+        }
+    }
+}
+
+component Button inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    // "primary", "ghost" or "link"
+    in property <string> kind: "primary";
+    callback clicked();
+    height: root.kind == "link" ? 24px : 40px;
+    border-radius: 8px;
+    background: root.kind != "primary" ? transparent : touch.has-hover && root.enabled ? #74b3ee : Theme.accent;
+    border-width: root.kind == "ghost" ? 1px : 0;
+    border-color: #2a3949;
+    opacity: root.enabled ? 1 : 0.5;
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    Text {
+        text: root.text;
+        color: root.kind == "primary" ? Theme.accent-text : root.kind == "link" ? Theme.accent : Theme.text;
+        font-size: 15px;
+        font-weight: root.kind == "primary" ? 600 : 400;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component Badge inherits Rectangle {
+    in property <int> count;
+    in property <bool> quiet;
+    in property <bool> on-active;
+    height: 22px;
+    min-width: 22px;
+    border-radius: 11px;
+    background: root.on-active ? white : root.quiet ? Theme.dim : Theme.accent;
+    HorizontalLayout {
+        padding-left: 7px;
+        padding-right: 7px;
+        Text {
+            text: root.count > 999 ? "999+" : root.count;
+            color: root.on-active ? Theme.active : white;
+            font-size: 12px;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+component DialogRow inherits Rectangle {
+    in property <DialogItem> item;
+    callback clicked();
+    height: 66px;
+    background: root.item.active ? Theme.active : touch.has-hover ? Theme.hover : transparent;
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    property <color> soft: root.item.active ? #ffffffbf : Theme.dim;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 48px;
+                height: 48px;
+                Avatar {
+                    initial: root.item.initial;
+                    tint: root.item.color;
+                    photo: root.item.photo;
+                    has-photo: root.item.has-photo;
+                    saved: root.item.saved;
+                }
+
+                if root.item.online: Rectangle {
+                    x: parent.width - 13px;
+                    y: parent.height - 13px;
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 6px;
+                    border-width: 2px;
+                    border-color: root.item.active ? Theme.active : touch.has-hover ? Theme.hover : Theme.raised;
+                    background: #4fce5d;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.item.title;
+                    color: Theme.text;
+                    font-weight: 600;
+                    font-size: 15px;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+
+                if root.item.muted: VerticalLayout {
+                    alignment: center;
+                    StrokeIcon {
+                        size: 14px;
+                        stroke-width: 2px;
+                        tint: root.soft;
+                        commands: "M11 5 6 9H3v6h3l5 4V5zM16 9l5 6M21 9l-5 6";
+                    }
+                }
+                if root.item.ticks > 0: VerticalLayout {
+                    alignment: center;
+                    Ticks {
+                        count: root.item.ticks;
+                        tint: root.item.active ? white : Theme.accent;
+                    }
+                }
+                Text {
+                    text: root.item.time;
+                    color: root.soft;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: (root.item.you ? "Вы: " : "") + root.item.preview;
+                    color: root.soft;
+                    font-size: 15px;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+
+                if root.item.unread > 0: Badge {
+                    count: root.item.unread;
+                    quiet: root.item.muted;
+                    on-active: root.item.active;
+                }
+                if root.item.unread == 0 && root.item.pinned: VerticalLayout {
+                    alignment: center;
+                    Icon {
+                        size: 14px;
+                        tint: root.soft;
+                        commands: "M14 3l7 7-3 1-3 3 .5 4.5L14 20l-4-4-5 5v-1.5L9.5 15l-4-4 1.5-1.5L11.5 10l3-3 .5-3z";
+                    }
+                }
+            }
+        }
+    }
+}
+
+component ArchiveRow inherits Rectangle {
+    in property <string> label;
+    callback clicked();
+    height: 66px;
+    background: touch.has-hover ? Theme.hover : transparent;
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 48px;
+                height: 48px;
+                border-radius: 24px;
+                background: Theme.input;
+                Icon {
+                    size: 22px;
+                    commands: "M4 4h16a1 1 0 0 1 1 1v3H3V5a1 1 0 0 1 1-1zm0 6h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9zm5 3v2h6v-2H9z";
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            Text {
+                text: "Архив";
+                color: Theme.text;
+                font-weight: 600;
+                font-size: 15px;
+            }
+
+            Text {
+                text: root.label;
+                color: Theme.dim;
+                font-size: 15px;
+            }
+        }
+    }
+}
+
+component Pill inherits Rectangle {
+    in property <string> text;
+    background: Theme.pill;
+    border-radius: 13px;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 3px;
+        padding-bottom: 3px;
+        Text {
+            text: root.text;
+            color: #e3eaf1;
+            font-size: 13px;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+// Time, "изменено" and check marks at the bottom right of a bubble.
+component Meta inherits HorizontalLayout {
+    in property <MessageItem> m;
+    alignment: end;
+    spacing: 3px;
+    property <color> tint: root.m.outgoing ? #ffffff99 : Theme.dim;
+    Text {
+        text: (root.m.edited ? "изменено " : "") + root.m.time;
+        color: root.tint;
+        font-size: 11px;
+        vertical-alignment: bottom;
+    }
+
+    if root.m.ticks > 0: VerticalLayout {
+        alignment: end;
+        Ticks {
+            count: root.m.ticks;
+            tint: root.m.ticks > 1 ? Theme.read-tick : root.tint;
+        }
+    }
+}
+
+component MessageView inherits VerticalLayout {
+    in property <MessageItem> m;
+    in property <length> max-bubble;
+    padding-top: root.m.day != "" ? 0 : root.m.joined ? 2px : 8px;
+    if root.m.day != "": HorizontalLayout {
+        alignment: center;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        Pill {
+            text: root.m.day;
+        }
+    }
+    if root.m.service: HorizontalLayout {
+        alignment: center;
+        Pill {
+            text: root.m.text;
+            max-width: root.max-bubble;
+        }
+    }
+    if !root.m.service: HorizontalLayout {
+        alignment: root.m.outgoing ? end : start;
+        Rectangle {
+            property <length> pad-x: 11px;
+            // Room for text inside the widest bubble.
+            property <length> max-text: root.max-bubble - 2 * self.pad-x;
+            property <length> meta-w: meta-probe.preferred-width + 10px;
+            // A short single line keeps the time on the same line, as Telegram does.
+            property <bool> inline: !root.m.multiline && root.m.text != "" && measure.preferred-width + self.meta-w <= self.max-text;
+            property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width);
+            width: min(root.max-bubble, self.content + 2 * self.pad-x + 1px);
+            background: root.m.outgoing ? Theme.bubble-out : Theme.bubble-in;
+            border-top-left-radius: 18px;
+            border-top-right-radius: 18px;
+            border-bottom-left-radius: root.m.tail && !root.m.outgoing ? 6px : 18px;
+            border-bottom-right-radius: root.m.tail && root.m.outgoing ? 6px : 18px;
+            measure := Text {
+                text: root.m.text;
+                font-size: 15.5px;
+                visible: false;
+            }
+
+            meta-probe := Meta {
+                m: root.m;
+                visible: false;
+            }
+
+            VerticalLayout {
+                padding-left: parent.pad-x;
+                padding-right: parent.pad-x;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                spacing: 3px;
+                sender := Text {
+                    text: root.m.sender;
+                    visible: root.m.sender != "";
+                    height: root.m.sender != "" ? self.preferred-height : 0;
+                    color: root.m.sender-color;
+                    font-size: 13px;
+                    font-weight: 600;
+                }
+
+                kind := Text {
+                    text: root.m.media;
+                    visible: root.m.media != "";
+                    height: root.m.media != "" ? self.preferred-height : 0;
+                    color: root.m.outgoing ? #a9d4ff : Theme.accent;
+                    font-size: 14px;
+                }
+
+                if parent.inline: HorizontalLayout {
+                    spacing: 10px;
+                    TextInput {
+                        text: root.m.text;
+                        read-only: true;
+                        single-line: true;
+                        color: Theme.text;
+                        font-size: 15.5px;
+                        selection-background-color: #4a7bb7;
+                        selection-foreground-color: white;
+                    }
+
+                    VerticalLayout {
+                        alignment: end;
+                        padding-bottom: 1px;
+                        Meta {
+                            m: root.m;
+                        }
+                    }
+                }
+                if !parent.inline && root.m.text != "": TextInput {
+                    text: root.m.text;
+                    read-only: true;
+                    single-line: false;
+                    wrap: word-wrap;
+                    color: Theme.text;
+                    font-size: 15.5px;
+                    selection-background-color: #4a7bb7;
+                    selection-foreground-color: white;
+                }
+                if !parent.inline: Meta {
+                    m: root.m;
+                }
+            }
+        }
+    }
+}
+
+component LoginCard inherits Rectangle {
+    in property <string> stage;
+    in property <string> phone;
+    in property <string> hint;
+    in property <string> error;
+    in property <bool> busy;
+    in property <bool> keys-rejected;
+    callback save-keys(string, string);
+    callback request-code(string);
+    callback submit-code(string);
+    callback submit-password(string);
+    callback back-to-phone();
+    callback change-keys();
+    background: Theme.bg;
+
+    VerticalLayout {
+        alignment: center;
+        padding: 24px;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: min(380px, root.width - 48px);
+                background: Theme.raised;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.border;
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 14px;
+                    Text {
+                        text: root.stage == "keys" ? "Ключи Telegram API" : root.stage == "phone" ? "Вход в Telegram" : root.stage == "code" ? "Код подтверждения" : root.stage == "password" ? "Облачный пароль" : "Oxigram";
+                        color: Theme.text;
+                        font-size: 18px;
+                        font-weight: 600;
+                    }
+
+                    if root.stage == "loading": Text {
+                        text: "Подключение…";
+                        color: Theme.dim;
+                        font-size: 15px;
+                    }
+
+                    if root.stage == "keys": VerticalLayout {
+                        spacing: 14px;
+                        Text {
+                            text: "Oxigram работает только с вашими ключами. Получите api_id и api_hash на my.telegram.org → API development tools.";
+                            color: Theme.dim;
+                            wrap: word-wrap;
+                            font-size: 14px;
+                        }
+
+                        VerticalLayout {
+                            spacing: 5px;
+                            Text {
+                                text: "api_id";
+                                color: Theme.dim;
+                                font-size: 13px;
+                            }
+
+                            api-id := Field {
+                                placeholder: "1234567";
+                                enabled: !root.busy;
+                                init => {
+                                    self.grab-focus();
+                                }
+                                accepted => {
+                                    api-hash.grab-focus();
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 5px;
+                            Text {
+                                text: "api_hash";
+                                color: Theme.dim;
+                                font-size: 13px;
+                            }
+
+                            api-hash := Field {
+                                placeholder: "32 символа";
+                                enabled: !root.busy;
+                                accepted => {
+                                    root.save-keys(api-id.text, api-hash.text);
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: root.busy ? "Сохранение…" : "Сохранить";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.save-keys(api-id.text, api-hash.text);
+                            }
+                        }
+                    }
+
+                    if root.stage == "phone": VerticalLayout {
+                        spacing: 14px;
+                        VerticalLayout {
+                            spacing: 5px;
+                            Text {
+                                text: "Номер телефона в международном формате";
+                                color: Theme.dim;
+                                font-size: 13px;
+                            }
+
+                            phone-field := Field {
+                                placeholder: "+7 900 000 00 00";
+                                enabled: !root.busy;
+                                init => {
+                                    self.grab-focus();
+                                }
+                                accepted => {
+                                    root.request-code(self.text);
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: root.busy ? "Отправка…" : "Получить код";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.request-code(phone-field.text);
+                            }
+                        }
+
+                        Button {
+                            kind: "link";
+                            text: "Другие ключи API";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.change-keys();
+                            }
+                        }
+                    }
+
+                    if root.stage == "code": VerticalLayout {
+                        spacing: 14px;
+                        Text {
+                            text: "Код отправлен на " + root.phone + " — в приложение Telegram на другом устройстве или по SMS.";
+                            color: Theme.dim;
+                            wrap: word-wrap;
+                            font-size: 14px;
+                        }
+
+                        VerticalLayout {
+                            spacing: 5px;
+                            Text {
+                                text: "Код";
+                                color: Theme.dim;
+                                font-size: 13px;
+                            }
+
+                            code-field := Field {
+                                placeholder: "12345";
+                                enabled: !root.busy;
+                                init => {
+                                    self.grab-focus();
+                                }
+                                accepted => {
+                                    root.submit-code(self.text);
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: root.busy ? "Проверка…" : "Войти";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.submit-code(code-field.text);
+                            }
+                        }
+
+                        Button {
+                            kind: "link";
+                            text: "Другой номер";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.back-to-phone();
+                            }
+                        }
+                    }
+
+                    if root.stage == "password": VerticalLayout {
+                        spacing: 14px;
+                        VerticalLayout {
+                            spacing: 5px;
+                            Text {
+                                text: root.hint != "" ? "Пароль (подсказка: " + root.hint + ")" : "Пароль двухэтапной проверки";
+                                color: Theme.dim;
+                                font-size: 13px;
+                                wrap: word-wrap;
+                            }
+
+                            password-field := Field {
+                                password: true;
+                                enabled: !root.busy;
+                                init => {
+                                    self.grab-focus();
+                                }
+                                accepted => {
+                                    root.submit-password(self.text);
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: root.busy ? "Проверка…" : "Войти";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.submit-password(password-field.text);
+                            }
+                        }
+
+                        Button {
+                            kind: "link";
+                            text: "Начать заново";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.back-to-phone();
+                            }
+                        }
+                    }
+
+                    if root.error != "": Text {
+                        text: root.error;
+                        color: Theme.danger;
+                        wrap: word-wrap;
+                        font-size: 14px;
+                    }
+                    if root.keys-rejected: Button {
+                        kind: "ghost";
+                        text: "Ввести ключи заново";
+                        clicked => {
+                            root.change-keys();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    in property <string> window-title: "Oxigram";
+    title: root.window-title;
+    icon: @image-url("../../src-tauri/icons/32x32.png");
+    preferred-width: 960px;
+    preferred-height: 680px;
+    min-width: 640px;
+    min-height: 480px;
+    background: Theme.bg;
+    default-font-family: "Open Sans";
+    default-font-size: 15px;
+
+    // Login
+    in property <string> stage: "loading";
+    in property <string> login-phone;
+    in property <string> login-hint;
+    in property <string> error;
+    in property <bool> busy;
+    in property <bool> keys-rejected;
+    callback save-keys(string, string);
+    callback request-code(string);
+    callback submit-code(string);
+    callback submit-password(string);
+    callback back-to-phone();
+    callback change-keys();
+
+    // Dialog list
+    in property <[DialogItem]> dialogs;
+    in property <bool> online: true;
+    in property <bool> show-archive;
+    in property <int> archived-count;
+    in property <string> archived-label;
+    callback open-chat(int);
+    callback filter-dialogs(string);
+    callback load-more-dialogs();
+    callback toggle-archive();
+    // A row became visible and wants its photo.
+    callback want-avatar(int);
+
+    // Open chat
+    in property <bool> chat-open;
+    in property <string> chat-title;
+    in property <string> chat-initial;
+    in property <color> chat-color;
+    in property <image> chat-photo;
+    in property <bool> chat-has-photo;
+    in property <bool> chat-saved;
+    in property <string> chat-subtitle;
+    in property <bool> chat-subtitle-accent;
+    in property <string> chat-error;
+    in property <[MessageItem]> messages;
+    in property <bool> history-loading;
+    // Set by Rust right before older messages are inserted at the top, so the
+    // view keeps its place instead of jumping.
+    in-out property <bool> prepending;
+    in-out property <bool> stick-bottom: true;
+    callback load-older();
+    callback send-text(string);
+
+    // Rust clears the composer after a send; on failure the text comes back.
+    public function set-composer(text: string) {
+        composer.text = text;
+    }
+    public function scroll-to-bottom() {
+        root.stick-bottom = true;
+        history.content-y = min(0px, history.visible-height - history.content-height);
+    }
+
+    if root.stage != "ready": LoginCard {
+        stage: root.stage;
+        phone: root.login-phone;
+        hint: root.login-hint;
+        error: root.error;
+        busy: root.busy;
+        keys-rejected: root.keys-rejected;
+        save-keys(id, hash) => {
+            root.save-keys(id, hash);
+        }
+        request-code(phone) => {
+            root.request-code(phone);
+        }
+        submit-code(code) => {
+            root.submit-code(code);
+        }
+        submit-password(password) => {
+            root.submit-password(password);
+        }
+        back-to-phone => {
+            root.back-to-phone();
+        }
+        change-keys => {
+            root.change-keys();
+        }
+    }
+
+    HorizontalLayout {
+        visible: root.stage == "ready";
+
+        // ---- Left pane: search and chats
+        Rectangle {
+            width: 340px;
+            background: Theme.raised;
+            VerticalLayout {
+                HorizontalLayout {
+                    height: 52px;
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 8px;
+                    alignment: stretch;
+                    if root.show-archive: VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 36px;
+                            height: 36px;
+                            border-radius: 18px;
+                            background: back-touch.has-hover ? Theme.hover : transparent;
+                            back-touch := TouchArea {
+                                clicked => {
+                                    root.toggle-archive();
+                                }
+                            }
+                            StrokeIcon {
+                                stroke-width: 2px;
+                                commands: "M15 5l-7 7 7 7";
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            height: 34px;
+                            border-radius: 17px;
+                            background: Theme.input;
+                            border-width: 1px;
+                            border-color: search.has-focus ? Theme.accent : transparent;
+                            if search.text == "": Text {
+                                x: 14px;
+                                height: parent.height;
+                                text: root.show-archive ? "Поиск в архиве" : "Поиск";
+                                color: Theme.dim;
+                                vertical-alignment: center;
+                            }
+                            search := TextInput {
+                                x: 14px;
+                                width: parent.width - 28px;
+                                height: parent.height;
+                                vertical-alignment: center;
+                                single-line: true;
+                                color: Theme.text;
+                                selection-background-color: #4a7bb7;
+                                edited => {
+                                    root.filter-dialogs(self.text);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !root.online: Rectangle {
+                    background: #4a3a17;
+                    height: 26px;
+                    Text {
+                        text: "Нет соединения, переподключение…";
+                        color: #f1d38a;
+                        font-size: 12px;
+                    }
+                }
+                if root.archived-count > 0 && !root.show-archive && search.text == "": ArchiveRow {
+                    label: root.archived-label;
+                    clicked => {
+                        root.toggle-archive();
+                    }
+                }
+                dialog-list := ListView {
+                    for item[index] in root.dialogs: DialogRow {
+                        item: item;
+                        init => {
+                            if (!item.has-photo) {
+                                root.want-avatar(index);
+                            }
+                        }
+                        clicked => {
+                            root.open-chat(index);
+                        }
+                    }
+                    changed content-y => {
+                        if (-self.content-y + self.visible-height > self.content-height - 400px) {
+                            root.load-more-dialogs();
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            width: 1px;
+            background: Theme.border;
+        }
+
+        // ---- Right pane: the open chat
+        Rectangle {
+            horizontal-stretch: 1;
+            background: @linear-gradient(180deg, #0e1621 0%, #0b121a 100%);
+            clip: true;
+            // Soft glows, as in the WebView's --chat-bg.
+            Rectangle {
+                x: parent.width * 0.15 - 450px;
+                y: -260px;
+                width: 900px;
+                height: 520px;
+                background: @radial-gradient(circle, #14212f 0%, #14212f00 70%);
+            }
+
+            Rectangle {
+                x: parent.width * 0.95 - 400px;
+                y: parent.height - 280px;
+                width: 800px;
+                height: 560px;
+                background: @radial-gradient(circle, #121e2b 0%, #121e2b00 70%);
+            }
+
+            Image {
+                width: parent.width;
+                height: parent.height;
+                source: @image-url("pattern.svg");
+                horizontal-tiling: repeat;
+                vertical-tiling: repeat;
+            }
+
+            if !root.chat-open: VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    alignment: center;
+                    Pill {
+                        text: "Выберите чат";
+                    }
+                }
+            }
+            VerticalLayout {
+                visible: root.chat-open;
+                Rectangle {
+                    height: 52px;
+                    background: Theme.raised;
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 10px;
+                        VerticalLayout {
+                            alignment: center;
+                            Avatar {
+                                size: 36px;
+                                initial: root.chat-initial;
+                                tint: root.chat-color;
+                                photo: root.chat-photo;
+                                has-photo: root.chat-has-photo;
+                                saved: root.chat-saved;
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: root.chat-title;
+                                color: Theme.text;
+                                font-weight: 600;
+                                font-size: 15px;
+                                overflow: elide;
+                            }
+
+                            if root.chat-subtitle != "" || root.chat-error != "": Text {
+                                text: root.chat-error != "" ? root.chat-error : root.chat-subtitle;
+                                color: root.chat-error != "" ? Theme.danger : root.chat-subtitle-accent ? Theme.accent : Theme.dim;
+                                font-size: 13px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    history := ScrollView {
+                        width: parent.width;
+                        height: parent.height;
+                        content-width: self.visible-width;
+                        // At least the visible height, so a short chat sits at the bottom.
+                        content-height: max(column.preferred-height, self.visible-height);
+                        property <length> last-height;
+                        changed content-height => {
+                            if (root.stick-bottom) {
+                                self.content-y = min(0px, self.visible-height - self.content-height);
+                            } else if (root.prepending) {
+                                self.content-y = self.content-y - (self.content-height - self.last-height);
+                            }
+                            root.prepending = false;
+                            self.last-height = self.content-height;
+                        }
+                        changed visible-height => {
+                            if (root.stick-bottom) {
+                                self.content-y = min(0px, self.visible-height - self.content-height);
+                            }
+                        }
+                        changed content-y => {
+                            root.stick-bottom = self.content-y <= self.visible-height - self.content-height + 24px;
+                            if (self.content-y > -300px && !root.history-loading) {
+                                root.load-older();
+                            }
+                        }
+                        // On a wide window the conversation stays a readable
+                        // column in the middle, as in Telegram Desktop.
+                        property <length> column-width: min(Theme.column, self.visible-width);
+                        column := VerticalLayout {
+                            x: (history.visible-width - history.column-width) / 2;
+                            width: history.column-width;
+                            height: max(self.preferred-height, history.visible-height);
+                            padding-left: 16px;
+                            padding-right: 16px;
+                            padding-top: 10px;
+                            padding-bottom: 12px;
+                            alignment: end;
+                            for m in root.messages: MessageView {
+                                m: m;
+                                max-bubble: min(520px, (history.column-width - 32px) * 0.74);
+                            }
+                        }
+                    }
+
+                    if !root.stick-bottom: Rectangle {
+                        x: parent.width - 56px;
+                        y: parent.height - 52px;
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 20px;
+                        background: down-touch.has-hover ? Theme.hover : Theme.raised;
+                        drop-shadow-blur: 6px;
+                        drop-shadow-color: #00000060;
+                        down-touch := TouchArea {
+                            clicked => {
+                                root.scroll-to-bottom();
+                            }
+                        }
+                        StrokeIcon {
+                            stroke-width: 2px;
+                            commands: "M6 9l6 6 6-6";
+                        }
+                    }
+                }
+
+                // Composer: Enter sends, Shift+Enter starts a new line.
+                Rectangle {
+                    background: Theme.raised;
+                    // Lined up with the message column above. Placed with x and
+                    // width (not padding) so the window's minimum size does not
+                    // depend on its own width.
+                    property <length> side: max(12px, (self.width - Theme.column) / 2 + 16px);
+                    height: bar.preferred-height;
+                    Rectangle {
+                        y: 0;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+
+                    bar := HorizontalLayout {
+                        x: parent.side;
+                        width: parent.width - 2 * parent.side;
+                        padding-top: 8px;
+                        padding-bottom: 8px;
+                        spacing: 8px;
+                        alignment: stretch;
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: max(40px, min(140px, composer.preferred-height + 20px));
+                            border-radius: 20px;
+                            background: Theme.input;
+                            border-width: 1px;
+                            border-color: composer.has-focus ? Theme.accent : transparent;
+                            if composer.text == "": Text {
+                                x: 14px;
+                                y: 10px;
+                                text: "Сообщение";
+                                color: Theme.dim;
+                            }
+                            FocusScope {
+                                x: 14px;
+                                y: 10px;
+                                width: parent.width - 28px;
+                                height: parent.height - 20px;
+                                capture-key-pressed(event) => {
+                                    if (event.text == Key.Return && !event.modifiers.shift) {
+                                        root.send-text(composer.text);
+                                        return accept;
+                                    }
+                                    reject
+                                }
+                                composer := TextInput {
+                                    width: parent.width;
+                                    height: parent.height;
+                                    single-line: false;
+                                    wrap: word-wrap;
+                                    color: Theme.text;
+                                    selection-background-color: #4a7bb7;
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: end;
+                            Rectangle {
+                                width: 40px;
+                                height: 40px;
+                                border-radius: 20px;
+                                property <bool> ready: composer.text != "";
+                                background: send-touch.has-hover && self.ready ? #74b3ee : Theme.accent;
+                                opacity: self.ready ? 1 : 0.5;
+                                send-touch := TouchArea {
+                                    enabled: parent.ready;
+                                    mouse-cursor: pointer;
+                                    clicked => {
+                                        root.send-text(composer.text);
+                                    }
+                                }
+                                Icon {
+                                    x: 11px;
+                                    size: 20px;
+                                    tint: Theme.accent-text;
+                                    commands: "M3 20.5v-7l10-1.5-10-1.5v-7L22 12 3 20.5z";
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

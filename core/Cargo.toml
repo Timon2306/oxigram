@@ -1,0 +1,30 @@
+[package]
+name = "oxigram-core"
+version = "0.1.0"
+description = "Telegram backend shared by the Tauri and the native Oxigram"
+authors = ["Timon2306"]
+license = "MIT"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["sync", "rt", "time", "macros"] }
+# Raw TL types and `Client::invoke` are outside grammers' semver guarantees,
+# so minor versions are bumped by hand.
+grammers-client = "~0.12.0"
+# No default features: the built-in session storage links libsql, whose bundled
+# SQLite clashes with rusqlite's at link time. `store::session` replaces it.
+grammers-session = { version = "~0.12.0", default-features = false }
+rusqlite = { version = "0.42", features = ["bundled"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }

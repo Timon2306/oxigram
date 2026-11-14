@@ -124,6 +124,13 @@ npm run tauri dev      # run with hot reload
 npm run tauri build    # release build
 ```
 
+**Native window (experimental, branch `native-ui`).** The same backend with a
+[Slint](https://slint.dev) window instead of a WebView: no Node.js, no WebView2.
+
+```sh
+cargo run --release -p oxigram-native
+```
+
 <details>
 <summary><b>Checks, demo mode and project layout</b></summary>
 
@@ -131,8 +138,8 @@ npm run tauri build    # release build
 
 ```sh
 npm run check                            # Svelte / TypeScript
-cd src-tauri && cargo test               # unit tests
-cd src-tauri && cargo test -- --ignored  # also talks to Telegram's servers
+cargo test                               # unit tests (core + Tauri app)
+cargo test -- --ignored                  # also talks to Telegram's servers
 ```
 
 **Demo mode** shows the real interface on made-up chats, for screenshots and
@@ -143,7 +150,7 @@ picks what is shown. It is not part of the app build.
 ```
 src/                 Svelte 5 frontend (no SvelteKit, no UI kit)
 demo/                demo mode: the interface on made-up data
-src-tauri/src/
+core/src/            the backend, shared by both windows (no Tauri inside)
   tg.rs              connection lifecycle and login state machine
   chats.rs           dialogs, history, profiles, folders, media downloads
   actions.rs         menus: pin, archive, react, edit, forward, delete,
@@ -152,9 +159,11 @@ src-tauri/src/
   markup.rs          **bold** / __italic__ shortcuts to message entities
   media.rs           what an attachment is and which thumbnail to fetch
   store/             local SQLite: the session and the chat cache
+  mem.rs             process-tree memory measurement (window title)
+src-tauri/src/       the Tauri app: IPC commands, tray, WebView tuning
   tray.rs            tray icon; closing the window destroys the WebView
   webview.rs         low WebView2 memory target while minimized
-  mem.rs             process-tree memory measurement (window title)
+native/              the native Slint window (ui/app.slint + src/main.rs)
 ```
 
 </details>
