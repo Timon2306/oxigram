@@ -823,6 +823,9 @@ impl App {
         self.messages = rows;
         let items: Vec<MessageItem> = (0..self.messages.len()).map(|i| self.item(i)).collect();
         self.message_model.set_vec(items);
+        if let Some(ui) = self.ui.upgrade() {
+            ui.invoke_scroll_to_bottom();
+        }
     }
 
     /// Older messages, newest first, go above what is shown.
@@ -836,9 +839,6 @@ impl App {
         let count = older.len();
         older.append(&mut self.messages);
         self.messages = older;
-        if let Some(ui) = self.ui.upgrade() {
-            ui.set_prepending(true);
-        }
         for i in (0..count).rev() {
             self.message_model.insert(0, self.item(i));
         }
@@ -862,6 +862,12 @@ impl App {
         // The previous bubble may no longer be the last of its run.
         if let Some(prev) = index.checked_sub(1) {
             self.refresh_row(prev);
+        }
+        // Follow new messages only when the user is already at the bottom.
+        if let Some(ui) = self.ui.upgrade()
+            && ui.get_stick_bottom()
+        {
+            ui.invoke_scroll_to_bottom();
         }
     }
 

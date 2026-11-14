@@ -832,9 +832,6 @@ export component AppWindow inherits Window {
     in property <string> chat-error;
     in property <[MessageItem]> messages;
     in property <bool> history-loading;
-    // Set by Rust right before older messages are inserted at the top, so the
-    // view keeps its place instead of jumping.
-    in-out property <bool> prepending;
     in-out property <bool> stick-bottom: true;
     callback load-older();
     callback send-text(string);
@@ -843,9 +840,11 @@ export component AppWindow inherits Window {
     public function set-composer(text: string) {
         composer.text = text;
     }
+    // Far past the end: the ListView seeks to the last row and lines it up
+    // with the bottom edge itself, whatever its height estimate says.
     public function scroll-to-bottom() {
         root.stick-bottom = true;
-        history.content-y = min(0px, history.visible-height - history.content-height);
+        history.content-y = -100000000px;
     }
 
     if root.stage != "ready": LoginCard {
@@ -1067,46 +1066,49 @@ export component AppWindow inherits Window {
 
                 Rectangle {
                     vertical-stretch: 1;
-                    history := ScrollView {
+                    // Virtualized: only the bubbles on screen (plus a margin)
+                    // exist, however much history is loaded. Heights vary, so
+                    // the ListView estimates the total from the average row.
+                    history := ListView {
+                        // A short chat sits at the bottom, as in Telegram. The
+                        // lift is assigned in the handlers below rather than
+                        // bound, since the content height depends on the
+                        // list's own height.
+                        property <length> lift;
+                        property <length> room: parent.height;
+                        y: self.lift;
                         width: parent.width;
-                        height: parent.height;
-                        content-width: self.visible-width;
-                        // At least the visible height, so a short chat sits at the bottom.
-                        content-height: max(column.preferred-height, self.visible-height);
-                        property <length> last-height;
+                        height: self.room - self.lift;
+                        // An empty list is never lifted: at zero height it would
+                        // create no rows and stay empty.
                         changed content-height => {
-                            if (root.stick-bottom) {
-                                self.content-y = min(0px, self.visible-height - self.content-height);
-                            } else if (root.prepending) {
-                                self.content-y = self.content-y - (self.content-height - self.last-height);
-                            }
-                            root.prepending = false;
-                            self.last-height = self.content-height;
+                            self.lift = self.content-height > 0 ? max(0px, self.room - self.content-height) : 0;
                         }
-                        changed visible-height => {
+                        changed room => {
+                            self.lift = self.content-height > 0 ? max(0px, self.room - self.content-height) : 0;
                             if (root.stick-bottom) {
-                                self.content-y = min(0px, self.visible-height - self.content-height);
+                                root.scroll-to-bottom();
                             }
                         }
                         changed content-y => {
                             root.stick-bottom = self.content-y <= self.visible-height - self.content-height + 24px;
-                            if (self.content-y > -300px && !root.history-loading) {
+                            // Older pages are asked for a screen and a half ahead,
+                            // so rows land above the visible ones and the view
+                            // keeps its place.
+                            if (self.content-y > -1.5 * self.visible-height && !root.history-loading) {
                                 root.load-older();
                             }
                         }
                         // On a wide window the conversation stays a readable
                         // column in the middle, as in Telegram Desktop.
                         property <length> column-width: min(Theme.column, self.visible-width);
-                        column := VerticalLayout {
-                            x: (history.visible-width - history.column-width) / 2;
-                            width: history.column-width;
-                            height: max(self.preferred-height, history.visible-height);
-                            padding-left: 16px;
-                            padding-right: 16px;
-                            padding-top: 10px;
-                            padding-bottom: 12px;
-                            alignment: end;
-                            for m in root.messages: MessageView {
+                        property <length> side: (self.visible-width - self.column-width) / 2 + 16px;
+                        for m[index] in root.messages: HorizontalLayout {
+                            padding-left: history.side;
+                            padding-right: history.side;
+                            padding-top: index == 0 ? 10px : 0;
+                            padding-bottom: index == root.messages.length - 1 ? 12px : 0;
+                            MessageView {
                                 m: m;
                                 max-bubble: min(520px, (history.column-width - 32px) * 0.74);
                             }
