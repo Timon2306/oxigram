@@ -11,3 +11,10 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+# Colour emoji in the software renderer: Slint 1.18 rasterises glyph outlines as
+# alpha only, so emoji came out monochrome. native/vendor holds a copy of
+# i-slint-renderer-software 1.18.1 plus a small patch (search "OXIGRAM") that
+# draws COLR/CBDT/sbix glyphs as RGBA. Drop this when upstream does it.
+[patch.crates-io]
+i-slint-renderer-software = { path = "native/vendor/i-slint-renderer-software-1.18.1" }
