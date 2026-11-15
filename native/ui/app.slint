@@ -1043,11 +1043,14 @@ export component AppWindow inherits Window {
     public function set-composer(text: string) {
         composer.text = text;
     }
-    // Far past the end: the ListView seeks to the last row and lines it up
-    // with the bottom edge itself, whatever its height estimate says.
+    // To the end of the estimated content. The ListView estimates the total
+    // height from the rows it has measured, so the estimate settles over a
+    // few frames; the content-height handler below repeats this while the
+    // view sticks to the bottom. (Seeking far past the end can leave only the
+    // last row drawn, at the top.)
     public function scroll-to-bottom() {
         root.stick-bottom = true;
-        history.content-y = -100000000px;
+        history.content-y = min(0px, history.visible-height - history.content-height);
     }
 
     if root.stage != "ready": LoginCard {
@@ -1307,6 +1310,9 @@ export component AppWindow inherits Window {
                         // create no rows and stay empty.
                         changed content-height => {
                             self.lift = self.content-height > 0 ? max(0px, self.room - self.content-height) : 0;
+                            if (root.stick-bottom) {
+                                self.content-y = min(0px, self.visible-height - self.content-height);
+                            }
                         }
                         changed room => {
                             self.lift = self.content-height > 0 ? max(0px, self.room - self.content-height) : 0;
