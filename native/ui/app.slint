@@ -41,6 +41,8 @@ export struct DialogItem {
     // "user", "group", "channel", "saved": decides the menu's wording
     kind: string,
     archived: bool,
+    // the row shows "печатает…" instead of the last message
+    typing: bool,
 }
 
 // One picture inside a bubble (a whole single picture, or an album cell).
@@ -375,7 +377,7 @@ component DialogRow inherits Rectangle {
                 spacing: 8px;
                 Text {
                     text: (root.item.you ? "Вы: " : "") + root.item.preview;
-                    color: root.soft;
+                    color: root.item.typing && !root.item.active ? Theme.accent : root.soft;
                     font-size: 15px;
                     overflow: elide;
                     horizontal-stretch: 1;
