@@ -155,7 +155,7 @@ fn load_me_photo(id: i64, photo_id: String, window: &AppWindow) {
 }
 
 /// "12,3 МБ", "512 КБ".
-fn format_size(bytes: u64) -> String {
+pub(crate) fn format_size(bytes: u64) -> String {
     const KB: f64 = 1024.0;
     let b = bytes as f64;
     if b >= KB * KB * KB {

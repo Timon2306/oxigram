@@ -43,6 +43,27 @@ export struct DialogItem {
     archived: bool,
 }
 
+// One picture inside a bubble (a whole single picture, or an album cell).
+// Geometry is in logical pixels at the natural size; the bubble scales it.
+export struct MediaCell {
+    id: int,
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    image: image,
+    // 0 waiting, 1 loading, 2 ready, 3 failed, 4 waits for a click
+    state: int,
+    // "1:05" or "GIF", top left
+    badge: string,
+    play: bool,
+    // Rounded corners: top-left, top-right, bottom-left, bottom-right
+    tl: bool,
+    tr: bool,
+    bl: bool,
+    br: bool,
+}
+
 export struct MessageItem {
     id: int,
     text: string,
@@ -66,6 +87,17 @@ export struct MessageItem {
     multiline: bool,
     // Own text message: "Изменить" in its menu
     can-edit: bool,
+    // Pictures: one, or an album grid
+    cells: [MediaCell],
+    media-w: length,
+    media-h: length,
+    // Pictures without caption: the time sits on the picture
+    media-only: bool,
+    // No bubble behind it
+    sticker: bool,
+    round: bool,
+    // A later message of an album: drawn by the album's first row
+    hidden: bool,
 }
 
 global Theme {
@@ -435,9 +467,11 @@ component Pill inherits Rectangle {
 // Time, "изменено" and check marks at the bottom right of a bubble.
 component Meta inherits HorizontalLayout {
     in property <MessageItem> m;
+    // Drawn over a picture, on a dark pill.
+    in property <bool> on-media;
     alignment: end;
     spacing: 3px;
-    property <color> tint: root.m.outgoing ? #ffffff99 : Theme.dim;
+    property <color> tint: root.on-media ? white : root.m.outgoing ? #ffffff99 : Theme.dim;
     Text {
         text: (root.m.edited ? "изменено " : "") + root.m.time;
         color: root.tint;
@@ -449,7 +483,105 @@ component Meta inherits HorizontalLayout {
         alignment: end;
         Ticks {
             count: root.m.ticks;
-            tint: root.m.ticks > 1 ? Theme.read-tick : root.tint;
+            tint: root.m.ticks > 1 && !root.on-media ? Theme.read-tick : root.tint;
+        }
+    }
+}
+
+// The pictures of a bubble. Each cell asks for its picture when created,
+// so only rows on screen (plus the list's margin) download anything.
+component MediaBox inherits Rectangle {
+    in property <MessageItem> m;
+    in property <float> k: 1;
+    callback want(int);
+    callback open(int);
+    callback context(length, length);
+    callback wheel(length);
+    width: root.m.media-w * root.k;
+    height: root.m.media-h * root.k;
+    for c in root.m.cells: Rectangle {
+        x: c.x * root.k;
+        y: c.y * root.k;
+        width: c.w * root.k;
+        height: c.h * root.k;
+        property <length> r: root.m.round ? self.width / 2 : root.m.sticker ? 0 : 12px;
+        border-top-left-radius: c.tl ? self.r : 0;
+        border-top-right-radius: c.tr ? self.r : 0;
+        border-bottom-left-radius: c.bl ? self.r : 0;
+        border-bottom-right-radius: c.br ? self.r : 0;
+        // Reserved before the picture arrives, so nothing jumps.
+        background: c.state == 2 || root.m.sticker ? transparent : Theme.input;
+        init => {
+            if (c.state == 0) {
+                root.want(c.id);
+            }
+        }
+        if c.state == 2: Image {
+            width: parent.width;
+            height: parent.height;
+            source: c.image;
+            image-fit: fill;
+        }
+        if c.state == 3 || c.state == 4: Text {
+            width: parent.width;
+            height: parent.height;
+            text: c.state == 3 ? "Не удалось загрузить" : "Показать";
+            color: Theme.dim;
+            font-size: 12px;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        if c.play: Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 44px;
+            height: 44px;
+            border-radius: 22px;
+            background: #0000008c;
+            Path {
+                x: 15px;
+                y: 13px;
+                width: 18px;
+                height: 18px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                fill: white;
+                commands: "M6 3.5l14 8.5-14 8.5z";
+            }
+        }
+        if c.badge != "": Rectangle {
+            x: 8px;
+            y: 8px;
+            width: badge.preferred-width + 14px;
+            height: 18px;
+            border-radius: 9px;
+            background: #00000080;
+            badge := Text {
+                x: 7px;
+                width: self.preferred-width;
+                height: parent.height;
+                text: c.badge;
+                color: white;
+                font-size: 12px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+        }
+        TouchArea {
+            mouse-cursor: root.m.sticker ? default : pointer;
+            clicked => {
+                root.open(c.id);
+            }
+            pointer-event(event) => {
+                if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                    root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            }
+            scroll-event(event) => {
+                root.wheel(event.delta-y);
+                accept
+            }
         }
     }
 }
@@ -466,7 +598,9 @@ component MessageView inherits VerticalLayout {
     in property <bool> selecting;
     // A left click on another bubble ends the selection mode.
     callback stop-select();
-    padding-top: root.m.day != "" ? 0 : root.m.joined ? 2px : 8px;
+    callback want-picture(int);
+    callback open-picture(int);
+    padding-top: root.m.hidden || root.m.day != "" ? 0 : root.m.joined ? 2px : 8px;
     if root.m.day != "": HorizontalLayout {
         alignment: center;
         padding-top: 8px;
@@ -482,18 +616,30 @@ component MessageView inherits VerticalLayout {
             max-width: root.max-bubble;
         }
     }
-    if !root.m.service: HorizontalLayout {
+    if !root.m.service && !root.m.hidden: HorizontalLayout {
         alignment: root.m.outgoing ? end : start;
         bubble := Rectangle {
-            property <length> pad-x: 11px;
+            property <bool> has-media: root.m.media-w > 0;
+            // Stickers and round videos have no bubble at all.
+            property <bool> bare: root.m.sticker || root.m.round;
+            property <length> mpad: self.bare ? 0 : root.m.media-only ? 3px : 4px;
+            // A bubble with pictures is exactly as wide as the pictures; a
+            // narrow window scales them down.
+            property <length> mw: min(root.m.media-w, root.max-bubble - 2 * self.mpad);
+            property <float> k: self.has-media ? self.mw / root.m.media-w : 1;
+            property <length> pad-x: self.has-media ? self.mpad + 7px : 11px;
+            property <length> mh: root.m.media-h * self.k;
+            // The pictures are placed by hand above the text: a wrapped text
+            // inside a nested layout got a wrong height and spilled out.
+            property <length> media-top: root.m.sender != "" ? 6px + sender.preferred-height + 4px : self.mpad;
             // Room for text inside the widest bubble.
-            property <length> max-text: root.max-bubble - 2 * self.pad-x;
+            property <length> max-text: (self.has-media ? self.mw + 2 * self.mpad : root.max-bubble) - 2 * self.pad-x;
             property <length> meta-w: meta-probe.preferred-width + 10px;
             // A short single line keeps the time on the same line, as Telegram does.
             property <bool> inline: !root.m.multiline && root.m.text != "" && measure.preferred-width + self.meta-w <= self.max-text;
             property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width);
-            width: min(root.max-bubble, self.content + 2 * self.pad-x + 1px);
-            background: root.m.outgoing ? Theme.bubble-out : Theme.bubble-in;
+            width: self.has-media ? self.mw + 2 * self.mpad : min(root.max-bubble, self.content + 2 * self.pad-x + 1px);
+            background: self.bare ? transparent : root.m.outgoing ? Theme.bubble-out : Theme.bubble-in;
             border-top-left-radius: 18px;
             border-top-right-radius: 18px;
             border-bottom-left-radius: root.m.tail && !root.m.outgoing ? 6px : 18px;
@@ -542,16 +688,46 @@ component MessageView inherits VerticalLayout {
                 }
             }
 
+            if bubble.has-media && root.m.sender != "": Text {
+                x: bubble.pad-x;
+                y: 6px;
+                width: parent.width - 2 * bubble.pad-x;
+                text: root.m.sender;
+                color: root.m.sender-color;
+                font-size: 13px;
+                font-weight: 600;
+                overflow: elide;
+            }
+            if bubble.has-media: MediaBox {
+                x: bubble.mpad;
+                y: bubble.media-top;
+                m: root.m;
+                k: bubble.k;
+                want(id) => {
+                    root.want-picture(id);
+                }
+                open(id) => {
+                    root.open-picture(id);
+                }
+                context(x, y) => {
+                    root.context(x, y);
+                }
+                wheel(dy) => {
+                    root.wheel(dy);
+                }
+            }
+
             content := VerticalLayout {
                 width: parent.width;
                 padding-left: bubble.pad-x;
                 padding-right: bubble.pad-x;
-                padding-top: 6px;
-                padding-bottom: 6px;
+                // Room for the pictures placed above.
+                padding-top: !bubble.has-media ? 6px : root.m.media-only ? bubble.media-top + bubble.mh : bubble.media-top + bubble.mh + 5px;
+                padding-bottom: root.m.media-only ? bubble.mpad : 6px;
                 spacing: 3px;
                 // Conditional, not hidden: a hidden child still gets the
                 // layout's spacing and leaves a gap above the text.
-                if root.m.sender != "": Text {
+                if root.m.sender != "" && !bubble.has-media: Text {
                     text: root.m.sender;
                     color: root.m.sender-color;
                     font-size: 13px;
@@ -610,8 +786,26 @@ component MessageView inherits VerticalLayout {
                     color: Theme.text;
                     font-size: 15.5px;
                 }
-                if !bubble.inline: Meta {
+                if !bubble.inline && !root.m.media-only: Meta {
                     m: root.m;
+                }
+            }
+
+            // Pictures without a caption: the time sits on the picture.
+            if root.m.media-only: Rectangle {
+                x: parent.width - bubble.mpad - self.width - 6px;
+                y: parent.height - bubble.mpad - self.height - 6px;
+                width: on-pic.preferred-width + 14px;
+                height: 20px;
+                border-radius: 10px;
+                background: #00000073;
+                on-pic := Meta {
+                    x: 7px;
+                    width: self.preferred-width;
+                    height: parent.height;
+                    m: root.m;
+                    on-media: true;
+                    alignment: center;
                 }
             }
         }
@@ -1184,6 +1378,20 @@ export component AppWindow inherits Window {
     }
 
     callback close-chat();
+
+    // Pictures and the full-window viewer
+    callback want-picture(int);
+    callback open-picture(int);
+    callback viewer-close();
+    callback viewer-save();
+    in property <bool> viewer-open;
+    in property <image> viewer-image;
+    in property <bool> viewer-has-image;
+    // "Загрузка…", "1,2 МБ из 3 МБ", or an error
+    in property <string> viewer-status;
+    // "Сохранить" / "Показать в папке"; empty hides the button
+    in property <string> viewer-save-text;
+
     // Esc peels one layer at a time, as in Telegram Desktop: an open menu or
     // dialog, the reply/edit strip, then the open chat.
     forward-focus: keys;
@@ -1196,6 +1404,8 @@ export component AppWindow inherits Window {
             }
             if (root.menu-open) {
                 root.menu-open = false;
+            } else if (root.viewer-open) {
+                root.viewer-close();
             } else if (root.confirm-open) {
                 root.confirm-done(false);
             } else if (root.forward-open) {
@@ -1506,6 +1716,12 @@ export component AppWindow inherits Window {
                                     selecting: root.selecting-id == m.id;
                                     stop-select => {
                                         root.selecting-id = -1;
+                                    }
+                                    want-picture(id) => {
+                                        root.want-picture(id);
+                                    }
+                                    open-picture(id) => {
+                                        root.open-picture(id);
                                     }
                                 }
                             }
@@ -2197,6 +2413,92 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // ---- Picture viewer
+    if root.viewer-open: Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: #000000e6;
+        TouchArea {
+            clicked => {
+                root.viewer-close();
+            }
+            scroll-event(event) => {
+                accept
+            }
+        }
+        if root.viewer-has-image: Image {
+            x: 28px;
+            y: 56px;
+            width: parent.width - 56px;
+            height: parent.height - 84px;
+            source: root.viewer-image;
+            image-fit: contain;
+        }
+        if root.viewer-status != "": Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: status-text.preferred-width + 28px;
+            height: 34px;
+            border-radius: 17px;
+            background: #000000a0;
+            status-text := Text {
+                x: 14px;
+                width: self.preferred-width;
+                height: parent.height;
+                text: root.viewer-status;
+                color: white;
+                font-size: 14px;
+                vertical-alignment: center;
+            }
+        }
+        if root.viewer-save-text != "": Rectangle {
+            x: parent.width - 60px - self.width;
+            y: 12px;
+            width: save-text.preferred-width + 28px;
+            height: 36px;
+            border-radius: 18px;
+            background: save-touch.has-hover ? #ffffff38 : #ffffff22;
+            save-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.viewer-save();
+                }
+            }
+            save-text := Text {
+                x: 14px;
+                width: self.preferred-width;
+                height: parent.height;
+                text: root.viewer-save-text;
+                color: white;
+                font-size: 14px;
+                vertical-alignment: center;
+            }
+        }
+        Rectangle {
+            x: parent.width - 52px;
+            y: 10px;
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            background: close-touch.has-hover ? #ffffff38 : #ffffff22;
+            close-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.viewer-close();
+                }
+            }
+            StrokeIcon {
+                x: 10px;
+                y: 10px;
+                tint: white;
+                stroke-width: 2px;
+                commands: "M6 6l12 12M18 6L6 18";
             }
         }
     }

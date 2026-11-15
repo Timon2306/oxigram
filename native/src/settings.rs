@@ -157,6 +157,10 @@ pub fn wire(window: &AppWindow) {
         match key.as_str() {
             "avatars" => apply_avatars(on),
             "prefetchChats" if on => crate::prefetch_top(),
+            // Cells waiting for a click start loading, or the other way round.
+            "autoloadImages" => {
+                with_app(|app| app.refresh_all_rows());
+            }
             _ => {}
         }
     });

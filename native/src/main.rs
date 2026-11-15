@@ -13,6 +13,7 @@ mod context_menu;
 mod format;
 mod menus;
 mod messages;
+mod pictures;
 mod settings;
 
 use std::cell::RefCell;
@@ -101,6 +102,10 @@ struct App {
     prefetched: bool,
     /// What the open right-click menu acts on.
     menu_target: Option<context_menu::MenuTarget>,
+    /// Decoded pictures of the open chat's messages.
+    thumbs: pictures::Thumbs,
+    /// The full-window picture viewer, when open.
+    viewer: Option<pictures::Viewer>,
 }
 
 thread_local! {
@@ -211,6 +216,8 @@ fn main() {
             settings: settings::Settings::load(),
             prefetched: false,
             menu_target: None,
+            thumbs: pictures::Thumbs::default(),
+            viewer: None,
         })
     });
     let bench = std::env::var_os("OXIGRAM_BENCH").is_some();
@@ -246,6 +253,7 @@ fn main() {
     settings::wire(&ui);
     messages::wire(&ui);
     context_menu::wire(&ui);
+    pictures::wire(&ui);
 
     // "Oxigram — 31 МБ ОЗУ", measured like the Tauri build does.
     let title_timer = slint::Timer::default();
@@ -382,10 +390,12 @@ fn wire_main(ui: &AppWindow) {
     ui.on_load_older(load_older);
     // Esc with nothing else open: hide the chat, as Telegram Desktop does.
     ui.on_close_chat(|| {
+        pictures::close_viewer();
         with_app(|app| {
             app.chat = None;
             app.generation += 1;
             app.compose = messages::Compose::None;
+            app.thumbs.clear();
             app.set_messages(Vec::new());
             if let Some(ui) = app.ui.upgrade() {
                 ui.set_chat_open(false);
@@ -566,11 +576,13 @@ fn circle(mut pixels: image::RgbaImage) -> image::RgbaImage {
 // ---- Open chat -----------------------------------------------------------
 
 fn open_chat(peer: i64) {
+    pictures::close_viewer();
     let Some(generation) = with_app(|app| {
         app.chat = Some(peer);
         app.generation += 1;
         app.messages.clear();
         app.message_model.clear();
+        app.thumbs.clear();
         app.history_done = false;
         app.history_loading = true;
         app.compose = messages::Compose::None;
@@ -902,9 +914,17 @@ impl App {
     /// The row for `messages[index]`, which depends on its neighbours (date
     /// pill, sender name, gaps and the bubble tail).
     fn item(&self, index: usize) -> MessageItem {
+        // An album is one bubble, drawn by its first message; the other
+        // messages of the album keep empty rows.
+        let album = self.album(index);
+        if album.start != index {
+            return MessageItem { id: self.messages[index].id, hidden: true, ..Default::default() };
+        }
+        let parts: Vec<&MessageRow> = self.messages[album.clone()].iter().collect();
+        let media = pictures::layout(&parts);
         let m = &self.messages[index];
         let prev = index.checked_sub(1).map(|i| &self.messages[i]);
-        let next = self.messages.get(index + 1);
+        let next = self.messages.get(album.end);
         let new_day = prev.is_none_or(|p| !format::same_day(p.date, m.date));
         let joined = prev.is_some_and(|p| self.continues(p, m));
         let tail = next.is_none_or(|n| !self.continues(m, n));
@@ -916,10 +936,32 @@ impl App {
         } else {
             0
         };
+        // The caption of an album may sit on any of its messages.
+        let text = parts
+            .iter()
+            .map(|p| p.text.as_str())
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        // A label only for what is not drawn as a picture (files, voice…).
+        let label = parts
+            .iter()
+            .find(|p| !pictures::has_picture(p))
+            .and_then(|p| format::kind_label(&p.kind))
+            .unwrap_or_default();
+        let media_only = media.is_some() && text.is_empty() && label.is_empty();
         MessageItem {
             id: m.id,
-            text: m.text.clone().into(),
-            media: format::kind_label(&m.kind).unwrap_or_default().into(),
+            multiline: text.contains('\n'),
+            text: text.into(),
+            media: label.into(),
+            cells: media.as_ref().map(|l| self.media_cells(l)).unwrap_or_default(),
+            media_w: media.as_ref().map_or(0.0, |l| l.w),
+            media_h: media.as_ref().map_or(0.0, |l| l.h),
+            media_only,
+            sticker: media.as_ref().is_some_and(|l| l.sticker),
+            round: media.as_ref().is_some_and(|l| l.round),
+            hidden: false,
             time: format::time(m.date).into(),
             outgoing: m.outgoing,
             ticks,
@@ -934,7 +976,6 @@ impl App {
             edited: m.edited,
             joined,
             tail,
-            multiline: m.text.contains('\n'),
             can_edit: m.outgoing && m.kind == "text",
         }
     }
@@ -943,6 +984,11 @@ impl App {
     fn refresh_row(&self, index: usize) {
         if index < self.messages.len() {
             self.message_model.set_row_data(index, self.item(index));
+            // The album's bubble lives on its first row.
+            let head = self.album(index).start;
+            if head != index {
+                self.message_model.set_row_data(head, self.item(head));
+            }
         }
     }
 
