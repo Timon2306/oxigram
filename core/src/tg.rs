@@ -18,6 +18,7 @@ use tokio::sync::{Mutex, Semaphore, mpsc};
 use tokio::task::JoinHandle;
 
 use crate::config::{self, ApiKeys};
+use crate::proxy::{self, ProxyConfig};
 use crate::error::UiError;
 use crate::store::{self, Db, session::SqliteSession};
 use crate::updates::{self, UiSink};
@@ -104,11 +105,14 @@ pub struct Telegram {
     /// Held while the session is open, so the Tauri and the native build
     /// never use one authorization key from two processes at once.
     instance_lock: std::sync::Mutex<Option<std::fs::File>>,
+    /// The proxy new connections go through.
+    proxy: std::sync::Mutex<ProxyConfig>,
 }
 
 impl Telegram {
     pub fn new(config_dir: PathBuf, data_dir: PathBuf, cache_dir: PathBuf) -> Self {
         let keys = config::load_keys(&config_dir);
+        let proxy = proxy::load(&config_dir).unwrap_or_default();
         Self {
             config_dir,
             data_dir,
@@ -123,7 +127,25 @@ impl Telegram {
             ui: Arc::new(UiSink::default()),
             uploads: Default::default(),
             instance_lock: std::sync::Mutex::new(None),
+            proxy: std::sync::Mutex::new(proxy),
         }
+    }
+
+    /// The saved proxy settings.
+    pub fn proxy(&self) -> ProxyConfig {
+        self.proxy.lock().map(|p| p.clone()).unwrap_or_default()
+    }
+
+    /// Saves the proxy and reconnects through it on the next request.
+    pub async fn set_proxy(&self, config: ProxyConfig) -> Result<(), UiError> {
+        config.validate()?;
+        proxy::save(&self.config_dir, &config)?;
+        if let Ok(mut current) = self.proxy.lock() {
+            *current = config;
+        }
+        let mut inner = self.inner.lock().await;
+        self.disconnect(&mut inner).await;
+        Ok(())
     }
 
     pub async fn state(&self) -> Result<UiState, UiError> {
@@ -323,6 +345,7 @@ impl Telegram {
                     threshold: Duration::from_secs(3),
                     io_errors_as_flood_of: Some(Duration::from_secs(1)),
                 }),
+                proxy_url: self.proxy.lock().ok().and_then(|p| p.url()),
                 ..Default::default()
             };
             let SenderPool {

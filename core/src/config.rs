@@ -65,14 +65,14 @@ pub fn clear_keys(dir: &Path) -> io::Result<()> {
 }
 
 #[cfg(unix)]
-fn restrict_to_owner(path: &Path) -> io::Result<()> {
+pub(crate) fn restrict_to_owner(path: &Path) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))
 }
 
 // On Windows the per-user app data directory is already private to the account.
 #[cfg(not(unix))]
-fn restrict_to_owner(_path: &Path) -> io::Result<()> {
+pub(crate) fn restrict_to_owner(_path: &Path) -> io::Result<()> {
     Ok(())
 }
 

@@ -829,6 +829,7 @@ component LoginCard inherits Rectangle {
     callback submit-password(string);
     callback back-to-phone();
     callback change-keys();
+    callback open-proxy();
     background: Theme.bg;
 
     VerticalLayout {
@@ -911,6 +912,17 @@ component LoginCard inherits Rectangle {
                                 root.save-keys(api-id.text, api-hash.text);
                             }
                         }
+
+                        // Keys are checked by connecting: where Telegram is
+                        // blocked, the proxy has to come first.
+                        Button {
+                            kind: "link";
+                            text: "Настроить прокси";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.open-proxy();
+                            }
+                        }
                     }
 
                     if root.stage == "phone": VerticalLayout {
@@ -949,6 +961,15 @@ component LoginCard inherits Rectangle {
                             enabled: !root.busy;
                             clicked => {
                                 root.change-keys();
+                            }
+                        }
+
+                        Button {
+                            kind: "link";
+                            text: "Настроить прокси";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.open-proxy();
                             }
                         }
                     }
@@ -1385,6 +1406,23 @@ export component AppWindow inherits Window {
 
     callback close-chat();
 
+    // Proxy window
+    callback open-proxy();
+    callback proxy-check();
+    callback proxy-save();
+    in-out property <bool> proxy-open;
+    in-out property <bool> proxy-enabled;
+    in-out property <string> proxy-kind: "socks5";
+    in-out property <string> proxy-host;
+    in-out property <string> proxy-port;
+    in-out property <string> proxy-user;
+    in-out property <string> proxy-pass;
+    in property <string> proxy-status;
+    in property <bool> proxy-status-ok;
+    in property <bool> proxy-busy;
+    // "Выключен" / "SOCKS5 · host:port", in the settings
+    in property <string> proxy-summary: "Выключен";
+
     // Pictures and the full-window viewer
     callback want-picture(int);
     callback open-picture(int);
@@ -1433,6 +1471,8 @@ export component AppWindow inherits Window {
                 root.viewer-toggle-play();
             } else if (root.viewer-open) {
                 root.viewer-close();
+            } else if (root.proxy-open) {
+                root.proxy-open = false;
             } else if (root.confirm-open) {
                 root.confirm-done(false);
             } else if (root.forward-open) {
@@ -1477,6 +1517,9 @@ export component AppWindow inherits Window {
         }
         change-keys => {
             root.change-keys();
+        }
+        open-proxy => {
+            root.open-proxy();
         }
     }
 
@@ -2133,6 +2176,26 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             spacing: 10px;
             Text {
+                text: "Прокси: " + root.proxy-summary;
+                color: Theme.text;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+
+            Button {
+                kind: "ghost";
+                text: "Настроить";
+                width: 110px;
+                clicked => {
+                    root.open-proxy();
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
                 text: "Кэш медиа: " + root.cache-text;
                 color: Theme.text;
                 vertical-alignment: center;
@@ -2243,6 +2306,162 @@ export component AppWindow inherits Window {
             }
         }
 
+    }
+
+    // ---- Proxy
+    if root.proxy-open: Modal {
+        width: root.width;
+        height: root.height;
+        title: "Прокси";
+        close => {
+            root.proxy-open = false;
+        }
+        // Use the proxy: on/off
+        Rectangle {
+            height: 24px;
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.proxy-enabled = !root.proxy-enabled;
+                }
+            }
+            HorizontalLayout {
+                spacing: 14px;
+                Text {
+                    text: "Подключаться через прокси";
+                    color: Theme.text;
+                    font-size: 15px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 34px;
+                        height: 18px;
+                        border-radius: 9px;
+                        background: root.proxy-enabled ? Theme.accent : Theme.input;
+                        Rectangle {
+                            x: root.proxy-enabled ? parent.width - self.width - 3px : 3px;
+                            y: 3px;
+                            width: 12px;
+                            height: 12px;
+                            border-radius: 6px;
+                            background: root.proxy-enabled ? white : Theme.dim;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Type: only SOCKS5 works yet; the others are shown as coming.
+        HorizontalLayout {
+            spacing: 8px;
+            for kind in [
+                { id: "socks5", label: "SOCKS5", ready: true },
+                { id: "http", label: "HTTP · скоро", ready: false },
+                { id: "mtproto", label: "MTProto · скоро", ready: false },
+            ]: Rectangle {
+                height: 32px;
+                horizontal-stretch: 1;
+                border-radius: 16px;
+                border-width: 1px;
+                border-color: root.proxy-kind == kind.id ? Theme.accent : Theme.border;
+                background: root.proxy-kind == kind.id ? #2b527855 : transparent;
+                opacity: kind.ready ? 1 : 0.45;
+                TouchArea {
+                    mouse-cursor: kind.ready ? pointer : default;
+                    clicked => {
+                        if (kind.ready) {
+                            root.proxy-kind = kind.id;
+                        }
+                    }
+                }
+                Text {
+                    width: parent.width;
+                    height: parent.height;
+                    text: kind.label;
+                    color: Theme.text;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            Field {
+                horizontal-stretch: 3;
+                placeholder: "Адрес, например 127.0.0.1";
+                enabled: root.proxy-enabled && !root.proxy-busy;
+                text <=> root.proxy-host;
+            }
+
+            Field {
+                horizontal-stretch: 1;
+                placeholder: "Порт";
+                enabled: root.proxy-enabled && !root.proxy-busy;
+                text <=> root.proxy-port;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            Field {
+                placeholder: "Логин (если нужен)";
+                enabled: root.proxy-enabled && !root.proxy-busy;
+                text <=> root.proxy-user;
+            }
+
+            Field {
+                placeholder: "Пароль";
+                password: true;
+                enabled: root.proxy-enabled && !root.proxy-busy;
+                text <=> root.proxy-pass;
+            }
+        }
+
+        if root.proxy-status != "": Text {
+            text: root.proxy-status;
+            color: root.proxy-status-ok ? #6fd388 : Theme.danger;
+            font-size: 13px;
+            overflow: elide;
+            height: 18px;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            Button {
+                kind: "ghost";
+                text: "Проверить";
+                width: 120px;
+                enabled: root.proxy-enabled && !root.proxy-busy;
+                clicked => {
+                    root.proxy-check();
+                }
+            }
+
+            Button {
+                kind: "ghost";
+                text: "Отмена";
+                width: 110px;
+                clicked => {
+                    root.proxy-open = false;
+                }
+            }
+
+            Button {
+                text: "Сохранить";
+                width: 120px;
+                enabled: !root.proxy-busy;
+                clicked => {
+                    root.proxy-save();
+                }
+            }
+        }
     }
 
     // ---- Forward picker

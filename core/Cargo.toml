@@ -12,7 +12,9 @@ serde_json = "1"
 tokio = { version = "1", features = ["sync", "rt", "time", "macros"] }
 # Raw TL types and `Client::invoke` are outside grammers' semver guarantees,
 # so minor versions are bumped by hand.
-grammers-client = "~0.12.0"
+grammers-client = { version = "~0.12.0", features = ["proxy"] }
+# Checks that a SOCKS5 proxy reaches Telegram before any API keys exist.
+tokio-socks = "0.5"
 # No default features: the built-in session storage links libsql, whose bundled
 # SQLite clashes with rusqlite's at link time. `store::session` replaces it.
 grammers-session = { version = "~0.12.0", default-features = false }

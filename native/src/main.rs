@@ -14,6 +14,7 @@ mod format;
 mod menus;
 mod messages;
 mod pictures;
+mod proxy;
 mod settings;
 mod video;
 
@@ -255,6 +256,7 @@ fn main() {
     messages::wire(&ui);
     context_menu::wire(&ui);
     pictures::wire(&ui);
+    proxy::wire(&ui);
 
     // "Oxigram — 31 МБ ОЗУ", measured like the Tauri build does.
     let title_timer = slint::Timer::default();
@@ -302,7 +304,7 @@ fn wire_login(ui: &AppWindow) {
     ui.on_change_keys(|| login_step(async { tg().clear_keys().await }));
 }
 
-fn login_step(step: impl Future<Output = Result<UiState, UiError>> + Send + 'static) {
+pub(crate) fn login_step(step: impl Future<Output = Result<UiState, UiError>> + Send + 'static) {
     if let Some(ui) = ui() {
         ui.set_busy(true);
         ui.set_error(SharedString::new());
