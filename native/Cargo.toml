@@ -53,6 +53,14 @@ objc2-core-media = "0.3"
 objc2-core-video = "0.3"
 objc2-core-foundation = "0.3"
 
+# Linux in-app video (feature "gstreamer"); the GStreamer dev libraries
+# (libgstreamer1.0-dev, libgstreamer-plugins-base1.0-dev) are needed only
+# when the feature is enabled.
+[target.'cfg(target_os = "linux")'.dependencies]
+gstreamer = { version = "0.25", optional = true }
+gstreamer-app = { version = "0.25", optional = true }
+gstreamer-video = { version = "0.25", optional = true }
+
 [features]
 default = ["gpu"]
 # OpenGL rendering through femtovg. Built in by default so one binary has both
@@ -61,7 +69,7 @@ default = ["gpu"]
 # ~75-80 MB). It draws colour emoji. SLINT_BACKEND in the environment wins.
 gpu = ["slint/renderer-femtovg"]
 # In-app video on Linux; without it videos open in the system player.
-gstreamer = []
+gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
 
 [build-dependencies]
 slint-build = "1.18"
