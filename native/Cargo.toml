@@ -39,6 +39,8 @@ default = ["gpu"]
 # setting (software is the default: ~8 MB, while the OpenGL driver alone adds
 # ~75-80 MB). It draws colour emoji. SLINT_BACKEND in the environment wins.
 gpu = ["slint/renderer-femtovg"]
+# In-app video on Linux; without it videos open in the system player.
+gstreamer = []
 
 [build-dependencies]
 slint-build = "1.18"

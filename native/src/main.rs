@@ -15,6 +15,7 @@ mod menus;
 mod messages;
 mod pictures;
 mod settings;
+mod video;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
