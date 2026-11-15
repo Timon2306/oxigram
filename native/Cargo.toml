@@ -20,6 +20,7 @@ slint = { version = "1.18", default-features = false, features = [
     "backend-winit",
     "renderer-software",
     "compat-1-2",
+    "unstable-winit-030",
 ] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
@@ -31,6 +32,10 @@ serde_json = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # "Копировать картинку": puts pixels on the system clipboard.
 arboard = { version = "3", default-features = false, features = ["image-data"] }
+
+# System tray and notifications (the versions the Tauri build uses).
+tray-icon = "0.25"
+notify-rust = "4.19"
 
 # In-app video on Windows 8+ (Media Foundation's media engine, WIC frames).
 [target.'cfg(windows)'.dependencies]
@@ -57,6 +62,8 @@ objc2-core-foundation = "0.3"
 # (libgstreamer1.0-dev, libgstreamer-plugins-base1.0-dev) are needed only
 # when the feature is enabled.
 [target.'cfg(target_os = "linux")'.dependencies]
+# tray-icon on Linux needs a GTK main loop, run on a thread of its own.
+gtk = "0.18"
 gstreamer = { version = "0.25", optional = true }
 gstreamer-app = { version = "0.25", optional = true }
 gstreamer-video = { version = "0.25", optional = true }

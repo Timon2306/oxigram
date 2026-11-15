@@ -14,8 +14,10 @@ mod format;
 mod menus;
 mod messages;
 mod pictures;
+mod notify;
 mod proxy;
 mod settings;
+mod tray;
 mod video;
 
 use std::cell::RefCell;
@@ -272,8 +274,13 @@ fn main() {
         }
     });
 
+    tray::install_notifier(&tg().ui);
     login_step(async { tg().state().await });
-    ui.run().expect("event loop");
+    // Shown before the tray hooks the window's events; the loop outlives the
+    // window so the app can sit in the tray.
+    ui.show().expect("window");
+    let _tray_timer = tray::init(&ui);
+    slint::run_event_loop_until_quit().expect("event loop");
 }
 
 fn ui() -> Option<AppWindow> {

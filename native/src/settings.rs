@@ -39,6 +39,9 @@ pub struct Settings {
     /// OpenGL renderer instead of the software one; read once at start-up.
     #[serde(rename = "gpuRender")]
     pub gpu_render: bool,
+    /// "Выключить все уведомления": no system notifications at all.
+    #[serde(rename = "muteAll")]
+    pub mute_all: bool,
 }
 
 impl Default for Settings {
@@ -50,6 +53,7 @@ impl Default for Settings {
             custom_emoji: false,
             prefetch_chats: true,
             gpu_render: false,
+            mute_all: false,
         }
     }
 }
@@ -74,7 +78,7 @@ impl Settings {
         DIR.get().map(|dir| Self::load_from(dir)).unwrap_or_default()
     }
 
-    fn save(&self) {
+    pub fn save(&self) {
         if let Some(dir) = DIR.get() {
             self.save_to(dir);
         }
@@ -88,6 +92,7 @@ impl Settings {
             "customEmoji" => &mut self.custom_emoji,
             "prefetchChats" => &mut self.prefetch_chats,
             "gpuRender" => &mut self.gpu_render,
+            "muteAll" => &mut self.mute_all,
             _ => return None,
         })
     }
@@ -121,6 +126,11 @@ impl Settings {
                 "gpuRender",
                 "Отрисовка на видеокарте",
                 "Плавнее прокрутка и цветные эмодзи, но OpenGL-драйвер добавляет около 75 МБ ОЗУ. Применится после перезапуска.",
+            ),
+            (
+                "muteAll",
+                "Выключить все уведомления",
+                "Системные уведомления о новых сообщениях не показываются.",
             ),
         ];
         rows.into_iter()
@@ -156,6 +166,7 @@ pub fn wire(window: &AppWindow) {
         }
         match key.as_str() {
             "avatars" => apply_avatars(on),
+            "muteAll" => crate::notify::set_mute_all(on),
             "prefetchChats" if on => crate::prefetch_top(),
             // Cells waiting for a click start loading, or the other way round.
             "autoloadImages" => {
