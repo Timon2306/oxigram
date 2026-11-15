@@ -192,7 +192,33 @@ fn main() {
             menu_target: None,
         })
     });
-    ui.set_bench(std::env::var_os("OXIGRAM_BENCH").is_some());
+    let bench = std::env::var_os("OXIGRAM_BENCH").is_some();
+    ui.set_bench(bench);
+    // In the benchmark, a 1 ms timer measures the event loop's longest
+    // stalls: a slow frame (or row creation) delays the next tick. Average
+    // FPS hides such hitches.
+    let stall_timer = slint::Timer::default();
+    if bench {
+        let mut last = std::time::Instant::now();
+        let mut window_start = last;
+        let mut worst = Duration::ZERO;
+        let mut hitches = 0u32;
+        stall_timer.start(slint::TimerMode::Repeated, Duration::from_millis(1), move || {
+            let now = std::time::Instant::now();
+            let gap = now - last;
+            last = now;
+            worst = worst.max(gap);
+            if gap > Duration::from_millis(25) {
+                hitches += 1;
+            }
+            if now - window_start >= Duration::from_secs(1) {
+                eprintln!("stall: worst {} ms, hitches>25ms {hitches}", worst.as_millis());
+                window_start = now;
+                worst = Duration::ZERO;
+                hitches = 0;
+            }
+        });
+    }
     wire_login(&ui);
     wire_main(&ui);
     menus::wire(&ui);
@@ -513,6 +539,7 @@ fn open_chat(peer: i64) {
         app.compose = messages::Compose::None;
         if let Some(ui) = app.ui.upgrade() {
             ui.set_bar_mode(SharedString::new());
+            ui.set_selecting_id(-1);
             let (title, saved) = app
                 .dialog(peer)
                 .map(|d| (format::dialog_title(d), d.kind == "saved"))
@@ -638,7 +665,12 @@ fn load_older() {
                 match page {
                     Ok(rows) => {
                         app.history_done = rows.len() < HISTORY_PAGE;
+                        let started = std::time::Instant::now();
+                        let count = rows.len();
                         app.prepend(rows);
+                        if std::env::var_os("OXIGRAM_BENCH").is_some() {
+                            eprintln!("prepend {count} rows: {} ms", started.elapsed().as_millis());
+                        }
                     }
                     Err(err) => app.chat_error(&err),
                 }

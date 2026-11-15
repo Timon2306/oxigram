@@ -459,6 +459,12 @@ component MessageView inherits VerticalLayout {
     in property <length> max-bubble;
     callback context(length, length);
     callback wheel(length);
+    // Text is drawn with the light Text element; only the message the user
+    // clicked becomes a selectable TextInput. A TextInput per bubble made
+    // rows several times costlier to create while scrolling (stalls up to
+    // 165 ms, against ~20 ms with Text).
+    in property <bool> selecting;
+    callback start-select();
     padding-top: root.m.day != "" ? 0 : root.m.joined ? 2px : 8px;
     if root.m.day != "": HorizontalLayout {
         alignment: center;
@@ -522,6 +528,9 @@ component MessageView inherits VerticalLayout {
                 width: parent.width;
                 height: parent.height;
                 pointer-event(event) => {
+                    if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down && !root.selecting) {
+                        root.start-select();
+                    }
                     if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
                         root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
                     }
@@ -555,7 +564,7 @@ component MessageView inherits VerticalLayout {
 
                 if bubble.inline: HorizontalLayout {
                     spacing: 10px;
-                    TextInput {
+                    if root.selecting: TextInput {
                         text: root.m.text;
                         read-only: true;
                         single-line: true;
@@ -563,6 +572,14 @@ component MessageView inherits VerticalLayout {
                         font-size: 15.5px;
                         selection-background-color: #4a7bb7;
                         selection-foreground-color: white;
+                        init => {
+                            self.focus();
+                        }
+                    }
+                    if !root.selecting: Text {
+                        text: root.m.text;
+                        color: Theme.text;
+                        font-size: 15.5px;
                     }
 
                     VerticalLayout {
@@ -573,7 +590,7 @@ component MessageView inherits VerticalLayout {
                         }
                     }
                 }
-                if !bubble.inline && root.m.text != "": TextInput {
+                if !bubble.inline && root.m.text != "" && root.selecting: TextInput {
                     text: root.m.text;
                     read-only: true;
                     single-line: false;
@@ -582,6 +599,15 @@ component MessageView inherits VerticalLayout {
                     font-size: 15.5px;
                     selection-background-color: #4a7bb7;
                     selection-foreground-color: white;
+                    init => {
+                        self.focus();
+                    }
+                }
+                if !bubble.inline && root.m.text != "" && !root.selecting: Text {
+                    text: root.m.text;
+                    wrap: word-wrap;
+                    color: Theme.text;
+                    font-size: 15.5px;
                 }
                 if !bubble.inline: Meta {
                     m: root.m;
@@ -974,6 +1000,8 @@ export component AppWindow inherits Window {
     callback send-text(string);
     // False in a channel the user cannot post in: no composer, a mute switch.
     in property <bool> chat-can-post: true;
+    // The one message whose text is selectable right now (see MessageView).
+    in-out property <int> selecting-id: -1;
     in property <bool> chat-muted;
     callback toggle-mute();
 
@@ -1070,23 +1098,33 @@ export component AppWindow inherits Window {
     // It stops once the estimate has held for three ticks (at most ~1 s):
     // tall channel posts take a while to be measured.
     // Slint scrolls a whole wheel notch in one frame, which reads as jerky;
-    // the same distance is spread over a few frames, easing out. Relative
-    // steps, not a target position: the ListView re-anchors its content-y
-    // while it measures rows, and a fixed target would fight that.
-    property <length> wheel-pending;
+    // the same distance is spread over a few frames, easing out. A property
+    // animation drives it (animations advance once per rendered frame,
+    // unlike a Timer, whose ~15.6 ms Windows ticks drift against the
+    // display). Each frame applies only the step since the last frame, not a
+    // target position: the ListView re-anchors its content-y while it
+    // measures rows, and a fixed target would fight that.
+    property <length> wheel-target;
+    property <length> wheel-pos;
+    property <length> wheel-applied;
+    animate wheel-pos {
+        duration: 90ms;
+        easing: ease-out;
+    }
     public function smooth-scroll(dy: length) {
         root.settle-frames = 0;
-        root.wheel-pending += dy;
+        root.wheel-target += dy;
+        root.wheel-pos = root.wheel-target;
     }
-    Timer {
-        interval: 16ms;
-        running: abs(root.wheel-pending) > 0.5px;
-        triggered => {
-            let step = abs(root.wheel-pending) < 2px ? root.wheel-pending : root.wheel-pending * 0.3;
-            let lowest = min(0px, history.visible-height - history.content-height);
-            let next = max(lowest, min(0px, history.content-y + step));
-            root.wheel-pending = next == history.content-y + step ? root.wheel-pending - step : 0px;
-            history.content-y = next;
+    changed wheel-pos => {
+        let step = root.wheel-pos - root.wheel-applied;
+        root.wheel-applied = root.wheel-pos;
+        let lowest = min(0px, history.visible-height - history.content-height);
+        let wanted = history.content-y + step;
+        history.content-y = max(lowest, min(0px, wanted));
+        // At an end: drop the rest of the motion instead of pushing against it.
+        if (wanted != history.content-y) {
+            root.wheel-target = root.wheel-pos;
         }
     }
 
@@ -1404,6 +1442,10 @@ export component AppWindow inherits Window {
                                     }
                                     wheel(dy) => {
                                         root.smooth-scroll(dy);
+                                    }
+                                    selecting: root.selecting-id == m.id;
+                                    start-select => {
+                                        root.selecting-id = m.id;
                                     }
                                 }
                             }

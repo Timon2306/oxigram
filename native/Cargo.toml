@@ -30,5 +30,12 @@ serde_json = "1"
 # the UI, so a 640 px photo costs ~10 KB of memory, not 1.6 MB.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 
+[features]
+# OpenGL rendering through femtovg, chosen at run time with
+# SLINT_BACKEND=winit-femtovg. Not the default: the OpenGL driver alone took
+# the process to ~85 MB (software renderer: ~8 MB), and scrolling stalls
+# came from row layout, not drawing. It does draw colour emoji.
+gpu = ["slint/renderer-femtovg"]
+
 [build-dependencies]
 slint-build = "1.18"
