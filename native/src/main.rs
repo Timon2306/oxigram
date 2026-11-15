@@ -16,6 +16,7 @@ mod messages;
 mod pictures;
 mod notify;
 mod proxy;
+mod reactions;
 mod settings;
 mod tray;
 mod video;
@@ -110,6 +111,10 @@ struct App {
     thumbs: pictures::Thumbs,
     /// The full-window picture viewer, when open.
     viewer: Option<pictures::Viewer>,
+    /// Pictures of custom emoji reactions.
+    emoji: reactions::Emoji,
+    /// Which reactions the open chat allows.
+    allowed: reactions::Allowed,
 }
 
 thread_local! {
@@ -222,6 +227,8 @@ fn main() {
             menu_target: None,
             thumbs: pictures::Thumbs::default(),
             viewer: None,
+            emoji: reactions::Emoji::default(),
+            allowed: reactions::Allowed::default(),
         })
     });
     let bench = std::env::var_os("OXIGRAM_BENCH").is_some();
@@ -258,6 +265,7 @@ fn main() {
     messages::wire(&ui);
     context_menu::wire(&ui);
     pictures::wire(&ui);
+    reactions::wire(&ui);
     proxy::wire(&ui);
 
     // "Oxigram — 31 МБ ОЗУ", measured like the Tauri build does.
@@ -620,11 +628,13 @@ fn open_chat(peer: i64) {
                 ui.invoke_focus_composer();
             }
         }
+        app.allowed = reactions::Allowed::Unknown;
         app.refresh_dialogs();
         app.generation
     }) else {
         return;
     };
+    reactions::load_allowed(peer, generation);
     tg().ui.set_active_chat(Some(peer));
     request_avatar(peer);
 
@@ -964,7 +974,10 @@ impl App {
             .find(|p| !pictures::has_picture(p))
             .and_then(|p| format::kind_label(&p.kind))
             .unwrap_or_default();
-        let media_only = media.is_some() && text.is_empty() && label.is_empty();
+        let reaction_rows = self.reaction_rows(&parts);
+        let has_reactions = parts.iter().any(|p| !p.reactions.is_empty());
+        // Reactions go under the picture, with the time below them.
+        let media_only = media.is_some() && text.is_empty() && label.is_empty() && !has_reactions;
         MessageItem {
             id: m.id,
             multiline: text.contains('\n'),
@@ -978,6 +991,7 @@ impl App {
             round: media.as_ref().is_some_and(|l| l.round),
             hidden: false,
             wide,
+            reactions: reaction_rows,
             time: format::time(m.date).into(),
             outgoing: m.outgoing,
             ticks,
@@ -1138,6 +1152,11 @@ impl App {
                                 self.refresh_row(index);
                             }
                         }
+                    }
+                }
+                UiEvent::Reactions { peer_id, id, reactions } => {
+                    if self.chat == Some(peer_id) {
+                        self.set_reactions(id, reactions);
                     }
                 }
                 UiEvent::Presence { peer_id, presence } => {

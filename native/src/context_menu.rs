@@ -53,6 +53,8 @@ pub(crate) fn show(items: Vec<MenuEntry>, target: MenuTarget, x: f32, y: f32) {
         app.menu_target = Some(target);
         if let Some(ui) = app.ui.upgrade() {
             ui.set_menu_items(ModelRc::new(VecModel::from(items)));
+            // The quick reactions row belongs to message menus only.
+            ui.set_menu_reactions(ModelRc::default());
             ui.set_menu_x(x);
             ui.set_menu_y(y);
             ui.set_menu_open(true);
@@ -129,6 +131,9 @@ pub fn wire(ui: &AppWindow) {
             items.push(danger("delete", "Удалить", DELETE));
         }
         show(items, MenuTarget::Message(id), x, y);
+        if let Some(ui) = crate::ui() {
+            crate::reactions::fill_menu(&ui, id);
+        }
     });
 
     ui.on_menu_pick(|id| {
