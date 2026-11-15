@@ -24,6 +24,9 @@ export struct DialogItem {
     ticks: int,
     saved: bool,
     active: bool,
+    // "user", "group", "channel", "saved": decides the menu's wording
+    kind: string,
+    archived: bool,
 }
 
 export struct MessageItem {
@@ -47,6 +50,8 @@ export struct MessageItem {
     tail: bool,
     // Has line breaks, so the time cannot sit at the end of a single line
     multiline: bool,
+    // Own text message: "Изменить" in its menu
+    can-edit: bool,
 }
 
 global Theme {
@@ -234,11 +239,70 @@ component Badge inherits Rectangle {
 component DialogRow inherits Rectangle {
     in property <DialogItem> item;
     callback clicked();
+    // A context menu entry: "open", "pin", "read", "unread", "archive",
+    // "mute", "clear", "delete".
+    callback action(string);
     height: 66px;
     background: root.item.active ? Theme.active : touch.has-hover ? Theme.hover : transparent;
     touch := TouchArea {
         clicked => {
             root.clicked();
+        }
+    }
+
+    // Right click only; left clicks reach the touch area below.
+    ContextMenuArea {
+        width: parent.width;
+        height: parent.height;
+        Menu {
+            MenuItem {
+                title: "Открыть";
+                activated => {
+                    root.action("open");
+                }
+            }
+
+            MenuItem {
+                title: root.item.pinned ? "Открепить" : "Закрепить";
+                activated => {
+                    root.action("pin");
+                }
+            }
+
+            MenuItem {
+                title: root.item.unread > 0 ? "Отметить как прочитанное" : "Отметить как непрочитанное";
+                activated => {
+                    root.action(root.item.unread > 0 ? "read" : "unread");
+                }
+            }
+
+            MenuItem {
+                title: root.item.archived ? "Из архива" : "В архив";
+                activated => {
+                    root.action("archive");
+                }
+            }
+
+            if !root.item.saved: MenuItem {
+                title: root.item.muted ? "Включить уведомления" : "Выключить уведомления";
+                activated => {
+                    root.action("mute");
+                }
+            }
+            MenuSeparator { }
+
+            if root.item.kind != "channel": MenuItem {
+                title: "Очистить историю";
+                activated => {
+                    root.action("clear");
+                }
+            }
+            MenuItem {
+                title: root.item.kind == "group" ? "Покинуть группу" : root.item.kind == "channel" ? "Покинуть канал" : "Удалить чат";
+                activated => {
+                    root.action("delete");
+                }
+            }
         }
     }
 
@@ -432,6 +496,8 @@ component Meta inherits HorizontalLayout {
 component MessageView inherits VerticalLayout {
     in property <MessageItem> m;
     in property <length> max-bubble;
+    // A context menu entry: "reply", "copy", "edit", "pin", "forward", "delete".
+    callback action(string);
     padding-top: root.m.day != "" ? 0 : root.m.joined ? 2px : 8px;
     if root.m.day != "": HorizontalLayout {
         alignment: center;
@@ -450,7 +516,7 @@ component MessageView inherits VerticalLayout {
     }
     if !root.m.service: HorizontalLayout {
         alignment: root.m.outgoing ? end : start;
-        Rectangle {
+        bubble := Rectangle {
             property <length> pad-x: 11px;
             // Room for text inside the widest bubble.
             property <length> max-text: root.max-bubble - 2 * self.pad-x;
@@ -489,9 +555,60 @@ component MessageView inherits VerticalLayout {
                 visible: false;
             }
 
-            VerticalLayout {
-                padding-left: parent.pad-x;
-                padding-right: parent.pad-x;
+            // The content is inside the menu area so a right click on the text
+            // opens the menu too, while left clicks still select text.
+            height: content.preferred-height;
+            ContextMenuArea {
+                width: parent.width;
+                height: parent.height;
+                Menu {
+                    MenuItem {
+                        title: "Ответить";
+                        activated => {
+                            root.action("reply");
+                        }
+                    }
+
+                    if root.m.text != "": MenuItem {
+                        title: "Копировать текст";
+                        activated => {
+                            root.action("copy");
+                        }
+                    }
+                    if root.m.can-edit: MenuItem {
+                        title: "Изменить";
+                        activated => {
+                            root.action("edit");
+                        }
+                    }
+                    MenuItem {
+                        title: "Закрепить";
+                        activated => {
+                            root.action("pin");
+                        }
+                    }
+
+                    MenuItem {
+                        title: "Переслать";
+                        activated => {
+                            root.action("forward");
+                        }
+                    }
+
+                    MenuSeparator { }
+
+                    MenuItem {
+                        title: "Удалить";
+                        activated => {
+                            root.action("delete");
+                        }
+                    }
+                }
+
+            content := VerticalLayout {
+                width: parent.width;
+                padding-left: bubble.pad-x;
+                padding-right: bubble.pad-x;
                 padding-top: 6px;
                 padding-bottom: 6px;
                 spacing: 3px;
@@ -509,7 +626,7 @@ component MessageView inherits VerticalLayout {
                     font-size: 14px;
                 }
 
-                if parent.inline: HorizontalLayout {
+                if bubble.inline: HorizontalLayout {
                     spacing: 10px;
                     TextInput {
                         text: root.m.text;
@@ -529,7 +646,7 @@ component MessageView inherits VerticalLayout {
                         }
                     }
                 }
-                if !parent.inline && root.m.text != "": TextInput {
+                if !bubble.inline && root.m.text != "": TextInput {
                     text: root.m.text;
                     read-only: true;
                     single-line: false;
@@ -539,9 +656,10 @@ component MessageView inherits VerticalLayout {
                     selection-background-color: #4a7bb7;
                     selection-foreground-color: white;
                 }
-                if !parent.inline: Meta {
+                if !bubble.inline: Meta {
                     m: root.m;
                 }
+            }
             }
         }
     }
@@ -791,6 +909,88 @@ component LoginCard inherits Rectangle {
     }
 }
 
+component DrawerItem inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+    height: 44px;
+    background: touch.has-hover ? Theme.hover : transparent;
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+    Text {
+        x: 18px;
+        text: root.text;
+        color: Theme.text;
+        font-size: 15px;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+}
+
+component DangerButton inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+    height: 40px;
+    min-width: 110px;
+    border-radius: 8px;
+    background: touch.has-hover ? #ff8585 : Theme.danger;
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        Text {
+            text: root.text;
+            color: #1a0505;
+            font-size: 15px;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+// A dialog box over a dimmed window; a click outside closes it.
+component Modal inherits Rectangle {
+    in property <string> title;
+    callback close();
+    background: #00000073;
+    TouchArea {
+        clicked => {
+            root.close();
+        }
+    }
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(420px, parent.width - 32px);
+        height: body.preferred-height;
+        border-radius: 12px;
+        background: Theme.raised;
+        drop-shadow-blur: 30px;
+        drop-shadow-color: #00000080;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: 22px;
+            spacing: 16px;
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: 18px;
+                font-weight: 600;
+            }
+
+            @children
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     in property <string> window-title: "Oxigram";
     title: root.window-title;
@@ -847,6 +1047,66 @@ export component AppWindow inherits Window {
     callback load-older();
     callback send-text(string);
 
+    // Context menus
+    callback dialog-action(int, string);
+    callback message-action(int, string);
+
+    // Reply / edit bar above the composer: mode "", "reply" or "edit"
+    in property <string> bar-mode;
+    in property <string> bar-title;
+    in property <string> bar-text;
+    callback bar-cancel();
+
+    // Burger menu
+    in-out property <bool> drawer-open;
+    in property <string> me-name;
+    in property <string> me-phone;
+    in property <string> me-initial;
+    in property <color> me-color;
+    in property <image> me-photo;
+    in property <bool> me-has-photo;
+    in property <string> version;
+    callback open-saved();
+    callback reload-dialogs();
+    callback open-settings();
+
+    // Settings
+    in-out property <bool> settings-open;
+    in property <string> me-account;
+    in property <string> cache-text;
+    callback clear-cache();
+    callback ask-sign-out();
+
+    // Confirmation for destructive actions
+    in-out property <bool> confirm-open;
+    in property <string> confirm-title;
+    in property <string> confirm-text;
+    in property <string> confirm-ok;
+    // A checkbox ("Удалить также у собеседника"), hidden when empty
+    in property <string> confirm-check;
+    in-out property <bool> confirm-checked;
+    callback confirm-done(bool);
+
+    // Forward picker
+    in-out property <bool> forward-open;
+    in property <[DialogItem]> forward-items;
+    callback forward-filter(string);
+    callback forward-pick(int);
+
+    // A short note at the bottom ("Текст скопирован")
+    in property <string> toast;
+
+    // Copies through a hidden text field: Slint has no clipboard API.
+    public function copy-text(text: string) {
+        clipboard.text = text;
+        clipboard.select-all();
+        clipboard.copy();
+        clipboard.text = "";
+    }
+    public function focus-composer() {
+        composer.focus();
+    }
+
     // Rust clears the composer after a send; on failure the text comes back.
     public function set-composer(text: string) {
         composer.text = text;
@@ -899,6 +1159,24 @@ export component AppWindow inherits Window {
                     padding-right: 10px;
                     spacing: 8px;
                     alignment: stretch;
+                    if !root.show-archive: VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 36px;
+                            height: 36px;
+                            border-radius: 18px;
+                            background: burger-touch.has-hover ? Theme.hover : transparent;
+                            burger-touch := TouchArea {
+                                clicked => {
+                                    root.drawer-open = true;
+                                }
+                            }
+                            StrokeIcon {
+                                stroke-width: 2px;
+                                commands: "M4 7h16M4 12h16M4 17h16";
+                            }
+                        }
+                    }
                     if root.show-archive: VerticalLayout {
                         alignment: center;
                         Rectangle {
@@ -973,6 +1251,9 @@ export component AppWindow inherits Window {
                         }
                         clicked => {
                             root.open-chat(index);
+                        }
+                        action(name) => {
+                            root.dialog-action(index, name);
                         }
                     }
                     changed content-y => {
@@ -1122,6 +1403,9 @@ export component AppWindow inherits Window {
                             MessageView {
                                 m: m;
                                 max-bubble: min(520px, (history.column-width - 32px) * 0.74);
+                                action(name) => {
+                                    root.message-action(m.id, name);
+                                }
                             }
                         }
                     }
@@ -1154,15 +1438,76 @@ export component AppWindow inherits Window {
                     // width (not padding) so the window's minimum size does not
                     // depend on its own width.
                     property <length> side: max(12px, (self.width - Theme.column) / 2 + 16px);
-                    height: bar.preferred-height;
+                    height: bar.preferred-height + self.strip;
                     Rectangle {
                         y: 0;
                         height: 1px;
                         background: Theme.border;
                     }
 
+                    // Reply or edit in progress: a strip above the input.
+                    property <length> strip: root.bar-mode != "" ? 46px : 0;
+                    if root.bar-mode != "": Rectangle {
+                        x: parent.side;
+                        y: 4px;
+                        width: parent.width - 2 * parent.side;
+                        height: 42px;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            padding-left: 4px;
+                            VerticalLayout {
+                                alignment: center;
+                                StrokeIcon {
+                                    tint: Theme.accent;
+                                    commands: root.bar-mode == "edit" ? "M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" : "M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z";
+                                }
+                            }
+
+                            Rectangle {
+                                width: 2px;
+                                background: Theme.accent;
+                            }
+
+                            VerticalLayout {
+                                alignment: center;
+                                horizontal-stretch: 1;
+                                Text {
+                                    text: root.bar-title;
+                                    color: Theme.accent;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    overflow: elide;
+                                }
+
+                                Text {
+                                    text: root.bar-text;
+                                    color: Theme.dim;
+                                    font-size: 13px;
+                                    overflow: elide;
+                                }
+                            }
+
+                            Rectangle {
+                                width: 34px;
+                                border-radius: 17px;
+                                background: bar-x.has-hover ? Theme.hover : transparent;
+                                bar-x := TouchArea {
+                                    clicked => {
+                                        root.bar-cancel();
+                                    }
+                                }
+                                StrokeIcon {
+                                    size: 18px;
+                                    stroke-width: 2px;
+                                    commands: "M6 6l12 12M18 6L6 18";
+                                }
+                            }
+                        }
+                    }
+
                     bar := HorizontalLayout {
                         x: parent.side;
+                        y: parent.strip;
                         width: parent.width - 2 * parent.side;
                         padding-top: 8px;
                         padding-bottom: 8px;
@@ -1231,6 +1576,353 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+        }
+    }
+
+    clipboard := TextInput {
+        visible: false;
+        width: 0;
+        height: 0;
+    }
+
+    // ---- Burger menu
+    if root.drawer-open: Rectangle {
+        background: #00000073;
+        TouchArea {
+            clicked => {
+                root.drawer-open = false;
+            }
+        }
+    }
+    if root.drawer-open: Rectangle {
+        x: 0;
+        width: 280px;
+        height: root.height;
+        background: Theme.raised;
+        drop-shadow-blur: 20px;
+        drop-shadow-color: #00000066;
+        TouchArea { }
+        VerticalLayout {
+            VerticalLayout {
+                // Only the spacer above the version takes the free height.
+                vertical-stretch: 0;
+                alignment: start;
+                padding-left: 18px;
+                padding-right: 18px;
+                padding-top: 20px;
+                padding-bottom: 14px;
+                spacing: 2px;
+                Avatar {
+                    size: 52px;
+                    initial: root.me-initial;
+                    tint: root.me-color;
+                    photo: root.me-photo;
+                    has-photo: root.me-has-photo;
+                }
+
+                Rectangle {
+                    height: 8px;
+                }
+
+                Text {
+                    text: root.me-name;
+                    color: Theme.text;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+
+                if root.me-phone != "": Text {
+                    text: root.me-phone;
+                    color: Theme.dim;
+                }
+            }
+
+            Rectangle {
+                height: 1px;
+                background: Theme.border;
+            }
+
+            Rectangle {
+                height: 6px;
+            }
+
+            DrawerItem {
+                text: "Избранное";
+                clicked => {
+                    root.drawer-open = false;
+                    root.open-saved();
+                }
+            }
+
+            DrawerItem {
+                text: "Архив";
+                clicked => {
+                    root.drawer-open = false;
+                    root.toggle-archive();
+                }
+            }
+
+            DrawerItem {
+                text: "Обновить список чатов";
+                clicked => {
+                    root.drawer-open = false;
+                    root.reload-dialogs();
+                }
+            }
+
+            DrawerItem {
+                text: "Настройки";
+                clicked => {
+                    root.drawer-open = false;
+                    root.open-settings();
+                }
+            }
+
+            Rectangle {
+                vertical-stretch: 1;
+            }
+
+            HorizontalLayout {
+                padding-left: 18px;
+                height: 40px;
+                Text {
+                    text: "Oxigram " + root.version;
+                    color: Theme.dim;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    // ---- Settings
+    if root.settings-open: Modal {
+        title: "Настройки";
+        close => {
+            root.settings-open = false;
+        }
+        GridLayout {
+            spacing-horizontal: 16px;
+            spacing-vertical: 10px;
+            Row {
+                Text {
+                    text: "Версия";
+                    color: Theme.dim;
+                }
+
+                Text {
+                    text: root.version;
+                    color: Theme.text;
+                }
+            }
+
+            Row {
+                Text {
+                    text: "Аккаунт";
+                    color: Theme.dim;
+                }
+
+                Text {
+                    text: root.me-account;
+                    color: Theme.text;
+                    wrap: word-wrap;
+                }
+            }
+
+            Row {
+                Text {
+                    text: "Ключи API";
+                    color: Theme.dim;
+                }
+
+                Text {
+                    text: "Свои, хранятся только на этом компьютере. Сменить их можно после выхода из аккаунта.";
+                    color: Theme.text;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: "Кэш медиа: " + root.cache-text;
+                color: Theme.text;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            Button {
+                kind: "ghost";
+                text: "Очистить";
+                width: 110px;
+                clicked => {
+                    root.clear-cache();
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            Button {
+                kind: "ghost";
+                text: "Выйти из аккаунта";
+                width: 180px;
+                clicked => {
+                    root.ask-sign-out();
+                }
+            }
+
+            Button {
+                kind: "ghost";
+                text: "Закрыть";
+                width: 110px;
+                clicked => {
+                    root.settings-open = false;
+                }
+            }
+        }
+    }
+
+    // ---- Forward picker
+    if root.forward-open: Modal {
+        title: "Переслать в…";
+        close => {
+            root.forward-open = false;
+        }
+        Rectangle {
+            height: 34px;
+            border-radius: 17px;
+            background: Theme.input;
+            if forward-search.text == "": Text {
+                x: 14px;
+                height: parent.height;
+                text: "Поиск";
+                color: Theme.dim;
+                vertical-alignment: center;
+            }
+            forward-search := TextInput {
+                x: 14px;
+                width: parent.width - 28px;
+                height: parent.height;
+                vertical-alignment: center;
+                single-line: true;
+                color: Theme.text;
+                init => {
+                    self.focus();
+                }
+                edited => {
+                    root.forward-filter(self.text);
+                }
+            }
+        }
+
+        ListView {
+            height: min(360px, root.height - 220px);
+            for item[index] in root.forward-items: DialogRow {
+                item: item;
+                clicked => {
+                    root.forward-pick(index);
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            Button {
+                kind: "ghost";
+                text: "Отмена";
+                width: 110px;
+                clicked => {
+                    root.forward-open = false;
+                }
+            }
+        }
+    }
+
+    // ---- Confirmation
+    if root.confirm-open: Modal {
+        title: root.confirm-title;
+        close => {
+            root.confirm-done(false);
+        }
+        Text {
+            text: root.confirm-text;
+            color: Theme.dim;
+            wrap: word-wrap;
+        }
+
+        if root.confirm-check != "": Rectangle {
+            height: 24px;
+            TouchArea {
+                clicked => {
+                    root.confirm-checked = !root.confirm-checked;
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 4px;
+                        border-width: 1.5px;
+                        border-color: root.confirm-checked ? Theme.accent : Theme.dim;
+                        background: root.confirm-checked ? Theme.accent : transparent;
+                        if root.confirm-checked: Path {
+                            width: 14px;
+                            height: 14px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            stroke: Theme.accent-text;
+                            stroke-width: 2.5px;
+                            commands: "M5 12l5 5 9-10";
+                        }
+                    }
+                }
+
+                Text {
+                    text: root.confirm-check;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            Button {
+                kind: "ghost";
+                text: "Отмена";
+                width: 110px;
+                clicked => {
+                    root.confirm-done(false);
+                }
+            }
+
+            DangerButton {
+                text: root.confirm-ok;
+                clicked => {
+                    root.confirm-done(true);
+                }
+            }
+        }
+    }
+
+    // ---- Toast
+    if root.toast != "": Rectangle {
+        y: root.height - 90px;
+        x: (root.width - self.width) / 2;
+        width: toast-text.preferred-width + 28px;
+        height: 34px;
+        border-radius: 17px;
+        background: #1f2c3aee;
+        toast-text := Text {
+            text: root.toast;
+            color: Theme.text;
+            font-size: 14px;
         }
     }
 }

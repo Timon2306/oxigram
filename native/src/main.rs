@@ -10,6 +10,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod format;
+mod menus;
+mod messages;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -84,6 +86,14 @@ struct App {
     history_loading: bool,
     /// Bumped when another chat opens, so late replies for the old one are dropped.
     generation: u64,
+    compose: messages::Compose,
+    /// Peer IDs of the forward picker's rows, and the messages it forwards.
+    forward_shown: Vec<i64>,
+    forward_ids: Vec<i32>,
+    /// Waits for the confirm dialog; gets the checkbox state when accepted.
+    pending: Option<Box<dyn FnOnce(bool)>>,
+    me_id: i64,
+    me_photo_id: Option<String>,
 }
 
 thread_local! {
@@ -163,10 +173,18 @@ fn main() {
             history_done: false,
             history_loading: false,
             generation: 0,
+            compose: messages::Compose::None,
+            forward_shown: Vec::new(),
+            forward_ids: Vec::new(),
+            pending: None,
+            me_id: 0,
+            me_photo_id: None,
         })
     });
     wire_login(&ui);
     wire_main(&ui);
+    menus::wire(&ui);
+    messages::wire(&ui);
 
     // "Oxigram — 31 МБ ОЗУ", measured like the Tauri build does.
     let title_timer = slint::Timer::default();
@@ -260,7 +278,8 @@ fn show_state(result: Result<UiState, UiError>) {
             ui.set_login_hint(hint.unwrap_or_default().into());
             "password"
         }
-        UiState::Ready { .. } => {
+        UiState::Ready { me } => {
+            menus::show_me(&me);
             if ui.get_stage() != "ready" {
                 tg().ui.attach(Box::new(WindowSink));
                 load_dialogs();
@@ -300,7 +319,6 @@ fn wire_main(ui: &AppWindow) {
     });
     ui.on_load_more_dialogs(more_dialogs);
     ui.on_load_older(load_older);
-    ui.on_send_text(send_text);
 }
 
 /// Shows the cached list at once, then the first page from Telegram.
@@ -440,7 +458,9 @@ fn open_chat(peer: i64) {
         app.message_model.clear();
         app.history_done = false;
         app.history_loading = true;
+        app.compose = messages::Compose::None;
         if let Some(ui) = app.ui.upgrade() {
+            ui.set_bar_mode(SharedString::new());
             let (title, saved) = app
                 .dialog(peer)
                 .map(|d| (format::dialog_title(d), d.kind == "saved"))
@@ -574,34 +594,6 @@ fn load_older() {
     );
 }
 
-fn send_text(text: SharedString) {
-    let text = text.to_string();
-    if text.trim().is_empty() {
-        return;
-    }
-    let Some(Some(peer)) = with_app(|app| app.chat) else { return };
-    if let Some(ui) = ui() {
-        ui.invoke_set_composer(SharedString::new());
-        ui.set_chat_error(SharedString::new());
-        ui.invoke_scroll_to_bottom();
-    }
-    let draft = text.clone();
-    run(
-        async move { chats::send_message(tg(), peer, &text, None).await },
-        move |sent| {
-            with_app(|app| match sent {
-                Ok(row) => app.add_message(row),
-                Err(err) => {
-                    app.chat_error(&err);
-                    if let Some(ui) = app.ui.upgrade() {
-                        ui.invoke_set_composer(draft.into());
-                    }
-                }
-            });
-        },
-    );
-}
-
 impl App {
     fn dialog(&self, peer: i64) -> Option<&DialogRow> {
         self.dialogs.iter().find(|d| d.id == peer)
@@ -694,6 +686,37 @@ impl App {
             .sort_by_key(|d| (!d.pinned, if d.pinned { 0 } else { -d.last_date }));
     }
 
+    /// The list row for a dialog.
+    pub(crate) fn dialog_item(&self, d: &DialogRow) -> DialogItem {
+        let title = format::dialog_title(d);
+        let saved = d.kind == "saved";
+        let ticks = if d.last_outgoing && (d.kind == "user" || d.kind == "group") && d.last_id > 0 {
+            if d.last_id <= d.read_outbox { 2 } else { 1 }
+        } else {
+            0
+        };
+        let photo = self.avatars.get(&d.id);
+        DialogItem {
+            initial: format::initial(&title).into(),
+            title: title.into(),
+            color: format::avatar_color(d.id),
+            photo: photo.cloned().unwrap_or_default(),
+            has_photo: photo.is_some(),
+            preview: format::preview_text(&d.last_text).into(),
+            you: d.last_outgoing && d.kind != "saved" && d.kind != "user",
+            time: format::list_date(d.last_date).into(),
+            unread: d.unread,
+            muted: d.muted,
+            pinned: d.pinned,
+            online: d.kind == "user" && format::is_online(d.presence.as_ref()),
+            ticks,
+            saved,
+            active: self.chat == Some(d.id),
+            kind: d.kind.clone().into(),
+            archived: d.archived,
+        }
+    }
+
     fn refresh_dialogs(&mut self) {
         let needle = &self.filter;
         let archived = self.dialogs.iter().filter(|d| d.archived).count();
@@ -705,36 +728,7 @@ impl App {
             .filter(|d| needle.is_empty() || format::dialog_title(d).to_lowercase().contains(needle))
             .collect();
         self.shown = rows.iter().map(|d| d.id).collect();
-        let items: Vec<DialogItem> = rows
-            .into_iter()
-            .map(|d| {
-                let title = format::dialog_title(d);
-                let saved = d.kind == "saved";
-                let ticks = if d.last_outgoing && (d.kind == "user" || d.kind == "group") && d.last_id > 0 {
-                    if d.last_id <= d.read_outbox { 2 } else { 1 }
-                } else {
-                    0
-                };
-                let photo = self.avatars.get(&d.id);
-                DialogItem {
-                    initial: format::initial(&title).into(),
-                    title: title.into(),
-                    color: format::avatar_color(d.id),
-                    photo: photo.cloned().unwrap_or_default(),
-                    has_photo: photo.is_some(),
-                    preview: format::preview_text(&d.last_text).into(),
-                    you: d.last_outgoing && d.kind != "saved" && d.kind != "user",
-                    time: format::list_date(d.last_date).into(),
-                    unread: d.unread,
-                    muted: d.muted,
-                    pinned: d.pinned,
-                    online: d.kind == "user" && format::is_online(d.presence.as_ref()),
-                    ticks,
-                    saved,
-                    active: self.chat == Some(d.id),
-                }
-            })
-            .collect();
+        let items: Vec<DialogItem> = rows.into_iter().map(|d| self.dialog_item(d)).collect();
         self.dialog_model.set_vec(items);
         if let Some(ui) = self.ui.upgrade() {
             ui.set_show_archive(self.show_archive);
@@ -809,6 +803,7 @@ impl App {
             joined,
             tail,
             multiline: m.text.contains('\n'),
+            can_edit: m.outgoing && m.kind == "text",
         }
     }
 
