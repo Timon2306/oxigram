@@ -98,6 +98,8 @@ export struct MessageItem {
     round: bool,
     // A later message of an album: drawn by the album's first row
     hidden: bool,
+    // Channel posts: every bubble as wide as the column allows
+    wide: bool,
 }
 
 global Theme {
@@ -623,9 +625,11 @@ component MessageView inherits VerticalLayout {
             // Stickers and round videos have no bubble at all.
             property <bool> bare: root.m.sticker || root.m.round;
             property <length> mpad: self.bare ? 0 : root.m.media-only ? 3px : 4px;
-            // A bubble with pictures is exactly as wide as the pictures; a
-            // narrow window scales them down.
-            property <length> mw: min(root.m.media-w, root.max-bubble - 2 * self.mpad);
+            // Channel posts all take the full width, pictures scaled to it.
+            property <bool> wide: root.m.wide && !self.bare;
+            // Otherwise a bubble with pictures is exactly as wide as the
+            // pictures; a narrow window scales them down.
+            property <length> mw: self.wide ? root.max-bubble - 2 * self.mpad : min(root.m.media-w, root.max-bubble - 2 * self.mpad);
             property <float> k: self.has-media ? self.mw / root.m.media-w : 1;
             property <length> pad-x: self.has-media ? self.mpad + 7px : 11px;
             property <length> mh: root.m.media-h * self.k;
@@ -638,7 +642,7 @@ component MessageView inherits VerticalLayout {
             // A short single line keeps the time on the same line, as Telegram does.
             property <bool> inline: !root.m.multiline && root.m.text != "" && measure.preferred-width + self.meta-w <= self.max-text;
             property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width);
-            width: self.has-media ? self.mw + 2 * self.mpad : min(root.max-bubble, self.content + 2 * self.pad-x + 1px);
+            width: self.has-media ? self.mw + 2 * self.mpad : self.wide ? root.max-bubble : min(root.max-bubble, self.content + 2 * self.pad-x + 1px);
             background: self.bare ? transparent : root.m.outgoing ? Theme.bubble-out : Theme.bubble-in;
             border-top-left-radius: 18px;
             border-top-right-radius: 18px;
@@ -1344,8 +1348,10 @@ export component AppWindow inherits Window {
             let lowest = min(0px, history.visible-height - history.content-height);
             let wanted = history.content-y + step;
             history.content-y = max(lowest, min(0px, wanted));
-            // At an end the rest of the motion is dropped.
-            root.wheel-pending = wanted == history.content-y ? root.wheel-pending - step : 0px;
+            // At an end the rest of the motion is dropped. Only a real end:
+            // the list also shifts content-y itself when a row with a big
+            // picture turns out taller than its estimate.
+            root.wheel-pending = wanted > 0px || wanted < lowest ? 0px : root.wheel-pending - step;
         }
     }
 
@@ -1384,6 +1390,11 @@ export component AppWindow inherits Window {
     callback open-picture(int);
     callback viewer-close();
     callback viewer-save();
+    callback viewer-menu(length, length);
+    // Esc must reach the window's key handler even when a text field had focus.
+    public function focus-keys() {
+        keys.focus();
+    }
     in property <bool> viewer-open;
     in property <image> viewer-image;
     in property <bool> viewer-has-image;
@@ -2343,80 +2354,6 @@ export component AppWindow inherits Window {
         }
     }
 
-    // ---- Context menu
-    if root.menu-open: TouchArea {
-        width: parent.width;
-        height: parent.height;
-        pointer-event(event) => {
-            if (event.kind == PointerEventKind.down) {
-                root.menu-open = false;
-            }
-        }
-        scroll-event(event) => {
-            root.menu-open = false;
-            accept
-        }
-    }
-    if root.menu-open: Rectangle {
-        width: 220px;
-        height: menu-column.preferred-height + 10px;
-        x: max(4px, min(root.menu-x, root.width - self.width - 4px));
-        y: max(4px, min(root.menu-y, root.height - self.height - 4px));
-        background: #1f2c3a;
-        border-radius: 10px;
-        drop-shadow-blur: 24px;
-        drop-shadow-color: #00000073;
-        menu-column := VerticalLayout {
-            padding: 5px;
-            for entry in root.menu-items: Rectangle {
-                height: entry.id == "-" ? 9px : 34px;
-                if entry.id == "-": Rectangle {
-                    y: 4px;
-                    height: 1px;
-                    background: #ffffff14;
-                }
-                if entry.id != "-": Rectangle {
-                    border-radius: 6px;
-                    background: item-touch.has-hover ? #ffffff14 : transparent;
-                    item-touch := TouchArea {
-                        clicked => {
-                            root.menu-open = false;
-                            root.menu-pick(entry.id);
-                        }
-                    }
-
-                    HorizontalLayout {
-                        padding-left: 8px;
-                        padding-right: 12px;
-                        spacing: 10px;
-                        alignment: start;
-                        Path {
-                            width: 18px;
-                            height: 18px;
-                            y: (parent.height - self.height) / 2;
-                            viewbox-width: 24;
-                            viewbox-height: 24;
-                            commands: entry.icon;
-                            fill: transparent;
-                            stroke: entry.danger ? Theme.danger : Theme.dim;
-                            stroke-width: 1.8px;
-                            stroke-line-cap: round;
-                            stroke-line-join: round;
-                        }
-
-                        Text {
-                            text: entry.label;
-                            color: entry.danger ? Theme.danger : Theme.text;
-                            font-size: 15px;
-                            vertical-alignment: center;
-                            overflow: elide;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // ---- Picture viewer
     if root.viewer-open: Rectangle {
         x: 0;
@@ -2427,6 +2364,11 @@ export component AppWindow inherits Window {
         TouchArea {
             clicked => {
                 root.viewer-close();
+            }
+            pointer-event(event) => {
+                if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                    root.viewer-menu(self.mouse-x, self.mouse-y);
+                }
             }
             scroll-event(event) => {
                 accept
@@ -2499,6 +2441,80 @@ export component AppWindow inherits Window {
                 tint: white;
                 stroke-width: 2px;
                 commands: "M6 6l12 12M18 6L6 18";
+            }
+        }
+    }
+
+    // ---- Context menu
+    if root.menu-open: TouchArea {
+        width: parent.width;
+        height: parent.height;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.menu-open = false;
+            }
+        }
+        scroll-event(event) => {
+            root.menu-open = false;
+            accept
+        }
+    }
+    if root.menu-open: Rectangle {
+        width: 220px;
+        height: menu-column.preferred-height + 10px;
+        x: max(4px, min(root.menu-x, root.width - self.width - 4px));
+        y: max(4px, min(root.menu-y, root.height - self.height - 4px));
+        background: #1f2c3a;
+        border-radius: 10px;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000073;
+        menu-column := VerticalLayout {
+            padding: 5px;
+            for entry in root.menu-items: Rectangle {
+                height: entry.id == "-" ? 9px : 34px;
+                if entry.id == "-": Rectangle {
+                    y: 4px;
+                    height: 1px;
+                    background: #ffffff14;
+                }
+                if entry.id != "-": Rectangle {
+                    border-radius: 6px;
+                    background: item-touch.has-hover ? #ffffff14 : transparent;
+                    item-touch := TouchArea {
+                        clicked => {
+                            root.menu-open = false;
+                            root.menu-pick(entry.id);
+                        }
+                    }
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 12px;
+                        spacing: 10px;
+                        alignment: start;
+                        Path {
+                            width: 18px;
+                            height: 18px;
+                            y: (parent.height - self.height) / 2;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: entry.icon;
+                            fill: transparent;
+                            stroke: entry.danger ? Theme.danger : Theme.dim;
+                            stroke-width: 1.8px;
+                            stroke-line-cap: round;
+                            stroke-line-join: round;
+                        }
+
+                        Text {
+                            text: entry.label;
+                            color: entry.danger ? Theme.danger : Theme.text;
+                            font-size: 15px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
             }
         }
     }

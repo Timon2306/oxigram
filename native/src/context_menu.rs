@@ -18,22 +18,25 @@ const LEAVE: &str = "M10 4H5v16h5M14 8l4 4-4 4M18 12H9";
 const REPLY: &str = "M10 7 4 12l6 5v-3c5 0 8 1 10 5 0-6-3-10-10-10V7z";
 /// A text cursor between selection handles.
 const SELECT: &str = "M9 4h6M9 20h6M12 4v16";
-const COPY: &str = "M8 8h11v12H8zM5 16V4h11";
+pub(crate) const COPY: &str = "M8 8h11v12H8zM5 16V4h11";
 const EDIT: &str = "M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4";
-const FORWARD: &str = "M14 7l6 5-6 5v-3c-5 0-8 1-10 5 0-6 3-10 10-10V7z";
+pub(crate) const FORWARD: &str = "M14 7l6 5-6 5v-3c-5 0-8 1-10 5 0-6 3-10 10-10V7z";
+pub(crate) const SAVE: &str = "M12 4v11M7 10l5 5 5-5M5 19h14";
 const MUTE: &str = "M11 5 6 9H3v6h3l5 4V5zM16 9l5 6M21 9l-5 6";
 const UNMUTE: &str = "M11 5 6 9H3v6h3l5 4V5zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13";
 
 /// What the open menu acts on.
 #[derive(Clone, Copy)]
-pub enum MenuTarget {
+pub(crate) enum MenuTarget {
     /// A chat in the list, by peer ID.
     Dialog(i64),
     /// A message of the open chat.
     Message(i32),
+    /// The picture open in the viewer, by message ID.
+    Viewer(i32),
 }
 
-fn entry(id: &str, label: &str, icon: &str) -> MenuEntry {
+pub(crate) fn entry(id: &str, label: &str, icon: &str) -> MenuEntry {
     MenuEntry { id: id.into(), label: label.into(), icon: icon.into(), danger: false }
 }
 
@@ -45,7 +48,7 @@ fn separator() -> MenuEntry {
     entry("-", "", "")
 }
 
-fn show(items: Vec<MenuEntry>, target: MenuTarget, x: f32, y: f32) {
+pub(crate) fn show(items: Vec<MenuEntry>, target: MenuTarget, x: f32, y: f32) {
     with_app(|app| {
         app.menu_target = Some(target);
         if let Some(ui) = app.ui.upgrade() {
@@ -107,6 +110,9 @@ pub fn wire(ui: &AppWindow) {
         if can_post {
             items.push(entry("reply", "Ответить", REPLY));
         }
+        if m.kind == "photo" && m.playable {
+            items.push(entry("copy-image", "Копировать картинку", COPY));
+        }
         if !m.text.is_empty() {
             items.push(entry("copy", "Копировать текст", COPY));
             items.push(entry("select", "Выделить текст", SELECT));
@@ -129,7 +135,9 @@ pub fn wire(ui: &AppWindow) {
         let target = with_app(|app| app.menu_target.take()).flatten();
         match target {
             Some(MenuTarget::Dialog(peer)) => menus::dialog_action(peer, id.as_str()),
+            Some(MenuTarget::Message(message)) if id == "copy-image" => crate::pictures::copy_message_image(message),
             Some(MenuTarget::Message(message)) => messages::message_action(message, id),
+            Some(MenuTarget::Viewer(message)) => crate::pictures::viewer_action(message, id.as_str()),
             None => {}
         }
     });

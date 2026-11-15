@@ -30,6 +30,9 @@ const MAX_WIDTH: f32 = 420.0;
 const MIN_WIDTH: f32 = 160.0;
 const STICKER_SIDE: f32 = 168.0;
 const ROUND_SIDE: f32 = 240.0;
+/// How much wider than the natural layout a channel post can be drawn
+/// (the widest bubble is 520 px): thumbnails are decoded for that size.
+const WIDE_SCALE: f32 = 520.0 / 420.0;
 /// Gap between album cells.
 const GAP: f32 = 2.0;
 /// Corner radius of pictures, as in the WebView build.
@@ -119,7 +122,8 @@ pub struct Layout {
 
 /// Lays out the pictures of one bubble: a single picture at its own shape
 /// (capped), several as an album grid.
-pub fn layout(parts: &[&MessageRow]) -> Option<Layout> {
+/// `wide`: a channel post, drawn at the full width of the column.
+pub fn layout(parts: &[&MessageRow], wide: bool) -> Option<Layout> {
     let pictures: Vec<&MessageRow> = parts.iter().copied().filter(|m| has_picture(m)).collect();
     let first = *pictures.first()?;
     if pictures.len() == 1 {
@@ -130,6 +134,8 @@ pub fn layout(parts: &[&MessageRow]) -> Option<Layout> {
                 (w0 * k, h0 * k, true, false)
             }
             "round" => (ROUND_SIDE, ROUND_SIDE, false, true),
+            // Full width, at most square: a tall picture is cropped.
+            _ if wide => (MAX_WIDTH, (MAX_WIDTH * h0 / w0).min(MAX_WIDTH).round(), false, false),
             _ => {
                 let fitted = w0.min(MAX_HEIGHT * w0 / h0).min(MAX_WIDTH);
                 let w = fitted.max(MIN_WIDTH.min(w0)).round();
@@ -150,7 +156,7 @@ pub fn layout(parts: &[&MessageRow]) -> Option<Layout> {
 
     let n = pictures.len();
     let columns = if n == 2 || n == 4 { 2 } else { 3 };
-    let width: f32 = if columns == 2 { 380.0 } else { 420.0 };
+    let width: f32 = if columns == 2 && !wide { 380.0 } else { 420.0 };
     let side = ((width - GAP * (columns - 1) as f32) / columns as f32).floor();
     let rows = n.div_ceil(columns);
     let mut cells = Vec::with_capacity(n);
@@ -283,6 +289,89 @@ pub fn wire(window: &AppWindow) {
     });
     window.on_viewer_close(close_viewer);
     window.on_viewer_save(save);
+    window.on_viewer_menu(|x, y| viewer_menu(x, y));
+}
+
+/// Right click in the viewer: the same dark menu as elsewhere.
+fn viewer_menu(x: f32, y: f32) {
+    let Some(Some((id, has_file, saved, caption))) = with_app(|app| {
+        let viewer = app.viewer.as_ref()?;
+        let m = app.messages.iter().find(|m| m.id == viewer.id)?;
+        Some((viewer.id, viewer.file.is_some(), viewer.saved.is_some(), !m.text.is_empty()))
+    }) else {
+        return;
+    };
+    let mut items = Vec::new();
+    if has_file {
+        items.push(crate::context_menu::entry("copy-image", "Копировать картинку", crate::context_menu::COPY));
+        items.push(if saved {
+            crate::context_menu::entry("save", "Показать в папке", crate::context_menu::SAVE)
+        } else {
+            crate::context_menu::entry("save", "Сохранить", crate::context_menu::SAVE)
+        });
+    }
+    items.push(crate::context_menu::entry("forward", "Переслать", crate::context_menu::FORWARD));
+    if caption {
+        items.push(crate::context_menu::entry("copy", "Копировать подпись", crate::context_menu::COPY));
+    }
+    crate::context_menu::show(items, crate::context_menu::MenuTarget::Viewer(id), x, y);
+}
+
+pub fn viewer_action(id: i32, name: &str) {
+    match name {
+        "copy-image" => {
+            let file = with_app(|app| app.viewer.as_ref().and_then(|v| v.file.clone())).flatten();
+            if let Some(file) = file {
+                copy_image(file);
+            }
+        }
+        "save" => save(),
+        "forward" => {
+            close_viewer();
+            crate::messages::message_action(id, "forward".into());
+        }
+        "copy" => crate::messages::message_action(id, "copy".into()),
+        _ => {}
+    }
+}
+
+/// Puts the full picture on the clipboard.
+pub fn copy_image(file: PathBuf) {
+    run(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let picture = image::open(&file).ok()?.to_rgba8();
+                let mut clipboard = arboard::Clipboard::new().ok()?;
+                clipboard
+                    .set_image(arboard::ImageData {
+                        width: picture.width() as usize,
+                        height: picture.height() as usize,
+                        bytes: picture.into_raw().into(),
+                    })
+                    .ok()
+            })
+            .await
+            .ok()
+            .flatten()
+        },
+        |done| {
+            crate::menus::toast(if done.is_some() {
+                "Картинка скопирована"
+            } else {
+                "Не удалось скопировать картинку"
+            });
+        },
+    );
+}
+
+/// "Копировать картинку" in a message's menu: the original is fetched first.
+pub fn copy_message_image(id: i32) {
+    let Some(peer) = with_app(|app| app.chat).flatten() else { return };
+    crate::menus::toast("Копирование…");
+    run(async move { chats::message_file(tg(), peer, id, |_| {}).await }, |path| match path {
+        Ok(path) => copy_image(PathBuf::from(path)),
+        Err(_) => crate::menus::toast("Не удалось скопировать картинку"),
+    });
 }
 
 /// What to fetch for a cell: its size in device pixels and how to shape it.
@@ -312,9 +401,13 @@ fn request(id: i32) {
         let index = app.messages.iter().position(|m| m.id == id)?;
         let range = app.album(index);
         let parts: Vec<&MessageRow> = app.messages[range].iter().collect();
-        let layout = layout(&parts)?;
+        let wide = app.chat_kind() == "channel";
+        let layout = layout(&parts, wide)?;
         let cell = layout.cells.iter().find(|c| c.id == id)?;
-        let scale = app.ui.upgrade().map_or(1.0, |ui| ui.window().scale_factor());
+        let mut scale = app.ui.upgrade().map_or(1.0, |ui| ui.window().scale_factor());
+        if wide && !layout.sticker && !layout.round {
+            scale *= WIDE_SCALE;
+        }
         app.thumbs.loading.insert(id);
         Some(Job {
             peer,
@@ -488,6 +581,7 @@ fn show(id: i32, peer: i64, size: i64, shown: Shown) {
     window.set_viewer_status("Загрузка…".into());
     window.set_viewer_save_text(SharedString::new());
     window.set_viewer_open(true);
+    window.invoke_focus_keys();
     drop(window);
 
     let progress_total = size.max(0) as u64;
@@ -696,20 +790,23 @@ mod tests {
     #[test]
     fn single_pictures_keep_their_shape_within_limits() {
         let wide = row(1, "photo", 800, 400);
-        let l = layout(&[&wide]).unwrap();
+        let l = layout(&[&wide], false).unwrap();
         assert_eq!((l.w, l.h), (420.0, 210.0));
 
         let tall = row(2, "photo", 600, 1200);
-        let l = layout(&[&tall]).unwrap();
+        let l = layout(&[&tall], false).unwrap();
+        // In a channel: full width, cropped to a square.
+        let l2 = layout(&[&tall], true).unwrap();
+        assert_eq!((l2.w, l2.h), (420.0, 420.0));
         assert_eq!((l.w, l.h), (210.0, 420.0));
 
         // Very narrow: not thinner than 160, cropped in height.
         let sliver = row(3, "photo", 100, 2000);
-        let l = layout(&[&sliver]).unwrap();
+        let l = layout(&[&sliver], false).unwrap();
         assert_eq!(l.w, 100.0);
 
         let sticker = row(4, "sticker", 512, 256);
-        let l = layout(&[&sticker]).unwrap();
+        let l = layout(&[&sticker], true).unwrap();
         assert!(l.sticker && l.w == 168.0 && l.h == 84.0);
         assert_eq!(l.cells[0].corners, [false; 4]);
     }
@@ -718,7 +815,7 @@ mod tests {
     fn albums_fill_whole_rows() {
         let parts: Vec<MessageRow> = (1..=5).map(|i| row(i, "photo", 800, 600)).collect();
         let refs: Vec<&MessageRow> = parts.iter().collect();
-        let l = layout(&refs).unwrap();
+        let l = layout(&refs, false).unwrap();
         assert_eq!(l.w, 420.0);
         assert_eq!(l.cells.len(), 5);
         // Three on top, two stretched below; only the outer corners round.
@@ -730,7 +827,7 @@ mod tests {
 
         let pair: Vec<MessageRow> = (1..=2).map(|i| row(i, "photo", 800, 600)).collect();
         let refs: Vec<&MessageRow> = pair.iter().collect();
-        let l = layout(&refs).unwrap();
+        let l = layout(&refs, false).unwrap();
         assert_eq!(l.w, 380.0);
         assert_eq!(l.cells[1].corners, [false, true, false, true]);
     }

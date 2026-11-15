@@ -921,7 +921,8 @@ impl App {
             return MessageItem { id: self.messages[index].id, hidden: true, ..Default::default() };
         }
         let parts: Vec<&MessageRow> = self.messages[album.clone()].iter().collect();
-        let media = pictures::layout(&parts);
+        let wide = self.chat_kind() == "channel";
+        let media = pictures::layout(&parts, wide);
         let m = &self.messages[index];
         let prev = index.checked_sub(1).map(|i| &self.messages[i]);
         let next = self.messages.get(album.end);
@@ -962,6 +963,7 @@ impl App {
             sticker: media.as_ref().is_some_and(|l| l.sticker),
             round: media.as_ref().is_some_and(|l| l.round),
             hidden: false,
+            wide,
             time: format::time(m.date).into(),
             outgoing: m.outgoing,
             ticks,
