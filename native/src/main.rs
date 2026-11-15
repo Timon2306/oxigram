@@ -332,6 +332,11 @@ fn wire_main(ui: &AppWindow) {
     });
     ui.on_load_more_dialogs(more_dialogs);
     ui.on_load_older(load_older);
+    ui.on_toggle_mute(|| {
+        if let Some(Some(peer)) = with_app(|app| app.chat) {
+            menus::dialog_action(peer, "mute");
+        }
+    });
 }
 
 /// Shows the cached list at once, then the first page from Telegram.
@@ -518,6 +523,7 @@ fn open_chat(peer: i64) {
             app.show_chat_photo(&ui);
             app.show_subtitle(&ui, None);
             ui.set_chat_error(SharedString::new());
+            app.show_chat_rights(&ui);
             ui.set_chat_open(true);
             ui.set_history_loading(true);
             ui.invoke_set_composer(SharedString::new());
@@ -763,6 +769,13 @@ impl App {
         }
     }
 
+    /// Composer or mute switch for the open chat, from its dialog row.
+    fn show_chat_rights(&self, ui: &AppWindow) {
+        let dialog = self.chat.and_then(|peer| self.dialog(peer));
+        ui.set_chat_can_post(dialog.is_none_or(|d| d.can_post));
+        ui.set_chat_muted(dialog.is_some_and(|d| d.muted));
+    }
+
     fn refresh_dialogs(&mut self) {
         let needle = &self.filter;
         let archived = self.dialogs.iter().filter(|d| d.archived).count();
@@ -776,6 +789,9 @@ impl App {
         self.shown = rows.iter().map(|d| d.id).collect();
         let items: Vec<DialogItem> = rows.into_iter().map(|d| self.dialog_item(d)).collect();
         self.dialog_model.set_vec(items);
+        if let Some(ui) = self.ui.upgrade() {
+            self.show_chat_rights(&ui);
+        }
         if let Some(ui) = self.ui.upgrade() {
             ui.set_show_archive(self.show_archive);
             ui.set_archived_count(archived as i32);
@@ -930,6 +946,7 @@ impl App {
                         }
                         None => self.dialogs.push(DialogRow {
                             id: message.peer_id,
+                            can_post: peer.kind != "channel",
                             kind: peer.kind,
                             title: peer.title,
                             last_text: format::message_preview(&message),

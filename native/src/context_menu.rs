@@ -93,19 +93,32 @@ pub fn wire(ui: &AppWindow) {
     });
 
     ui.on_message_menu(|id, x, y| {
-        let found = with_app(|app| app.messages.iter().find(|m| m.id == id).cloned()).flatten();
-        let Some(m) = found else { return };
-        let mut items = vec![entry("reply", "Ответить", REPLY)];
+        let found = with_app(|app| {
+            let m = app.messages.iter().find(|m| m.id == id).cloned()?;
+            let can_post = app.chat.and_then(|peer| app.dialog(peer)).is_none_or(|d| d.can_post);
+            Some((m, can_post))
+        })
+        .flatten();
+        let Some((m, can_post)) = found else { return };
+        // A channel read by a subscriber: only reading actions make sense.
+        let mut items = Vec::new();
+        if can_post {
+            items.push(entry("reply", "Ответить", REPLY));
+        }
         if !m.text.is_empty() {
             items.push(entry("copy", "Копировать текст", COPY));
         }
-        if m.outgoing && m.kind == "text" {
+        if can_post && m.outgoing && m.kind == "text" {
             items.push(entry("edit", "Изменить", EDIT));
         }
-        items.push(entry("pin", "Закрепить", PIN));
+        if can_post {
+            items.push(entry("pin", "Закрепить", PIN));
+        }
         items.push(entry("forward", "Переслать", FORWARD));
-        items.push(separator());
-        items.push(danger("delete", "Удалить", DELETE));
+        if can_post {
+            items.push(separator());
+            items.push(danger("delete", "Удалить", DELETE));
+        }
         show(items, MenuTarget::Message(id), x, y);
     });
 

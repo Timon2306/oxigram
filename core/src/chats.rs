@@ -816,6 +816,12 @@ fn dialog_row(dialog: &Dialog) -> DialogRow {
         Peer::User(user) if !user.is_self() && !user.is_bot() => Some(presence(user.status())),
         _ => None,
     };
+    let can_post = match dialog.peer() {
+        Peer::Channel(channel) if !channel.raw.megagroup => {
+            channel.admin_rights().is_some_and(|rights| rights.post_messages)
+        }
+        _ => true,
+    };
     let summary = peer_summary(Some(dialog.peer()));
     let last = dialog.last_message.as_ref();
     DialogRow {
@@ -836,6 +842,7 @@ fn dialog_row(dialog: &Dialog) -> DialogRow {
         contact,
         bot,
         presence,
+        can_post,
     }
 }
 

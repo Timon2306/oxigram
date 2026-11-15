@@ -38,6 +38,11 @@ pub struct DialogRow {
     /// Online status of a private chat's user. Changes too often to be worth
     /// caching, so rows loaded from disk have none.
     pub presence: Option<Presence>,
+    /// The user may write here (a channel only for its creator and admins
+    /// who can post). Not cached: a column would break older builds sharing
+    /// the database, so rows from disk assume channels are read-only until
+    /// the list arrives from Telegram.
+    pub can_post: bool,
 }
 
 /// What Telegram reveals about when a user was last online.
@@ -300,8 +305,15 @@ pub fn load_dialogs(conn: &Connection) -> rusqlite::Result<Vec<DialogRow>> {
             contact: row.get(14)?,
             bot: row.get(15)?,
             presence: None,
+            can_post: true,
         })
     })?
+    .map(|row| {
+        row.map(|mut row| {
+            row.can_post = row.kind != "channel";
+            row
+        })
+    })
     .collect()
 }
 
@@ -467,6 +479,7 @@ mod tests {
             contact: false,
             bot: false,
             presence: None,
+            can_post: true,
         }
     }
 

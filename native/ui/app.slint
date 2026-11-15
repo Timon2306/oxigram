@@ -967,6 +967,10 @@ export component AppWindow inherits Window {
     in-out property <bool> stick-bottom: true;
     callback load-older();
     callback send-text(string);
+    // False in a channel the user cannot post in: no composer, a mute switch.
+    in property <bool> chat-can-post: true;
+    in property <bool> chat-muted;
+    callback toggle-mute();
 
     // Context menus
     callback dialog-menu(int, length, length);
@@ -1050,7 +1054,32 @@ export component AppWindow inherits Window {
     // last row drawn, at the top.)
     public function scroll-to-bottom() {
         root.stick-bottom = true;
+        root.settle-frames = 60;
+        root.stable-frames = 0;
         history.content-y = min(0px, history.visible-height - history.content-height);
+    }
+    // Frames left in which the bottom is re-applied while the ListView's
+    // height estimate settles. Only after an explicit scroll to the bottom:
+    // re-applying it on every estimate change fought the user's own
+    // scrolling and made the list jerk.
+    // It stops once the estimate has held for three ticks (at most ~1 s):
+    // tall channel posts take a while to be measured.
+    property <int> settle-frames;
+    property <int> stable-frames;
+    property <length> settled-height;
+    settle := Timer {
+        interval: 16ms;
+        running: root.settle-frames > 0;
+        triggered => {
+            if (abs(history.content-height - root.settled-height) < 1px) {
+                root.stable-frames += 1;
+            } else {
+                root.stable-frames = 0;
+                root.settled-height = history.content-height;
+            }
+            history.content-y = min(0px, history.visible-height - history.content-height);
+            root.settle-frames = root.stable-frames >= 3 ? 0 : root.settle-frames - 1;
+        }
     }
 
     if root.stage != "ready": LoginCard {
@@ -1310,9 +1339,6 @@ export component AppWindow inherits Window {
                         // create no rows and stay empty.
                         changed content-height => {
                             self.lift = self.content-height > 0 ? max(0px, self.room - self.content-height) : 0;
-                            if (root.stick-bottom) {
-                                self.content-y = min(0px, self.visible-height - self.content-height);
-                            }
                         }
                         changed room => {
                             self.lift = self.content-height > 0 ? max(0px, self.room - self.content-height) : 0;
@@ -1369,6 +1395,29 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                // A channel the user cannot post in: a mute switch, as in Telegram.
+                if !root.chat-can-post: Rectangle {
+                    height: 48px;
+                    background: mute-touch.has-hover ? Theme.hover : Theme.raised;
+                    mute-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.toggle-mute();
+                        }
+                    }
+                    Rectangle {
+                        y: 0;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+
+                    Text {
+                        text: root.chat-muted ? "Включить звук" : "Выключить звук";
+                        color: Theme.accent;
+                        font-weight: 600;
+                    }
+                }
+
                 // Composer: Enter sends, Shift+Enter starts a new line.
                 Rectangle {
                     background: Theme.raised;
@@ -1376,7 +1425,9 @@ export component AppWindow inherits Window {
                     // width (not padding) so the window's minimum size does not
                     // depend on its own width.
                     property <length> side: max(12px, (self.width - Theme.column) / 2 + 16px);
-                    height: bar.preferred-height + self.strip;
+                    // Hidden, not removed: functions above reach the composer.
+                    visible: root.chat-can-post;
+                    height: root.chat-can-post ? bar.preferred-height + self.strip : 0;
                     Rectangle {
                         y: 0;
                         height: 1px;
