@@ -19,6 +19,7 @@ mod proxy;
 mod reactions;
 mod settings;
 mod tray;
+mod typing;
 mod video;
 
 use std::cell::RefCell;
@@ -73,6 +74,10 @@ fn run<T: Send + 'static>(
 /// View state, owned by the UI thread.
 struct App {
     ui: slint::Weak<AppWindow>,
+    /// Who is typing where, pruned by a 1 s timer.
+    typing: typing::Typing,
+    /// Members and online of the open group, kept for the header when typing ends.
+    members: std::cell::Cell<Option<(i64, (Option<i32>, Option<i32>))>>,
     /// Every dialog, in list order (pinned first, then newest).
     dialogs: Vec<DialogRow>,
     /// Peer IDs of the rows on screen, which search and the archive narrow.
@@ -199,6 +204,8 @@ fn main() {
     ui.set_messages(ModelRc::from(message_model.clone()));
     APP.with(|app| {
         *app.borrow_mut() = Some(App {
+            typing: typing::Typing::default(),
+            members: std::cell::Cell::new(None),
             ui: ui.as_weak(),
             dialogs: Vec::new(),
             shown: Vec::new(),
@@ -267,6 +274,12 @@ fn main() {
     pictures::wire(&ui);
     reactions::wire(&ui);
     proxy::wire(&ui);
+
+    // Expires "печатает…" entries; does nothing while nobody types.
+    let typing_timer = slint::Timer::default();
+    typing_timer.start(slint::TimerMode::Repeated, Duration::from_secs(1), || {
+        with_app(|app| app.prune_typing());
+    });
 
     // "Oxigram — 31 МБ ОЗУ", measured like the Tauri build does.
     let title_timer = slint::Timer::default();
@@ -761,6 +774,15 @@ impl App {
     /// counts for groups and channels once the profile has arrived.
     fn show_subtitle(&self, ui: &AppWindow, members: Option<(Option<i32>, Option<i32>)>) {
         let Some(dialog) = self.chat.and_then(|peer| self.dialog(peer)) else { return };
+        if let Some(m) = members {
+            self.members.set(Some((dialog.id, m)));
+        }
+        let members = members.or(self.members.get().filter(|(p, _)| *p == dialog.id).map(|(_, m)| m));
+        if let Some(line) = self.typing_line(dialog) {
+            ui.set_chat_subtitle(line.into());
+            ui.set_chat_subtitle_accent(true);
+            return;
+        }
         let (text, accent) = match dialog.kind.as_str() {
             "user" if dialog.bot => ("бот".to_owned(), false),
             "user" => (
@@ -787,6 +809,33 @@ impl App {
         };
         ui.set_chat_subtitle(text.into());
         ui.set_chat_subtitle_accent(accent);
+    }
+
+    /// "печатает…" for a dialog, naming the person in groups.
+    fn typing_line(&self, dialog: &DialogRow) -> Option<String> {
+        self.typing.line(dialog.id, dialog.kind == "user", |user| {
+            self.messages.iter().rev().find(|m| m.sender_id == Some(user)).map(|m| m.sender_name.clone())
+        })
+    }
+
+    /// The typing timer: drops expired entries, redraws what they touched.
+    fn prune_typing(&mut self) {
+        if self.typing.is_empty() {
+            return;
+        }
+        let changed = self.typing.prune(std::time::Instant::now());
+        for peer in changed {
+            if let Some(index) = self.shown.iter().position(|p| *p == peer)
+                && let Some(d) = self.dialog(peer)
+            {
+                self.dialog_model.set_row_data(index, self.dialog_item(d));
+            }
+            if self.chat == Some(peer)
+                && let Some(ui) = self.ui.upgrade()
+            {
+                self.show_subtitle(&ui, None);
+            }
+        }
     }
 
     fn show_chat_photo(&self, ui: &AppWindow) {
@@ -854,14 +903,16 @@ impl App {
             0
         };
         let photo = self.avatars.get(&d.id);
+        let typing = self.typing_line(d);
         DialogItem {
             initial: format::initial(&title).into(),
             title: title.into(),
             color: format::avatar_color(d.id),
             photo: photo.cloned().unwrap_or_default(),
             has_photo: photo.is_some(),
-            preview: format::preview_text(&d.last_text).into(),
-            you: d.last_outgoing && d.kind != "saved" && d.kind != "user",
+            preview: typing.clone().unwrap_or_else(|| format::preview_text(&d.last_text)).into(),
+            typing: typing.is_some(),
+            you: typing.is_none() && d.last_outgoing && d.kind != "saved" && d.kind != "user",
             time: format::list_date(d.last_date).into(),
             unread: d.unread,
             muted: d.muted,
@@ -1078,7 +1129,25 @@ impl App {
         let mut read_now = None;
         for event in events {
             match event {
+                UiEvent::Typing { peer_id, user_id, action } => {
+                    if user_id != self.me_id {
+                        self.typing.update(peer_id, user_id, action, std::time::Instant::now());
+                        if self.chat == Some(peer_id)
+                            && let Some(ui) = self.ui.upgrade()
+                        {
+                            self.show_subtitle(&ui, None);
+                        }
+                    }
+                }
                 UiEvent::Message { message, peer } => {
+                    if let Some(sender) = message.sender_id {
+                        self.typing.remove(message.peer_id, sender);
+                    }
+                    if self.chat == Some(message.peer_id)
+                        && let Some(ui) = self.ui.upgrade()
+                    {
+                        self.show_subtitle(&ui, None);
+                    }
                     let open = self.chat == Some(message.peer_id);
                     match self.dialogs.iter_mut().find(|d| d.id == message.peer_id) {
                         Some(dialog) => {
