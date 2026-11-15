@@ -606,6 +606,10 @@ fn open_chat(peer: i64) {
             ui.set_history_loading(true);
             ui.invoke_set_composer(SharedString::new());
             ui.invoke_scroll_to_bottom();
+            // Type right away, without clicking the field (not in read-only channels).
+            if ui.get_chat_can_post() {
+                ui.invoke_focus_composer();
+            }
         }
         app.refresh_dialogs();
         app.generation
