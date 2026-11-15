@@ -43,6 +43,16 @@ windows = { version = "0.62", features = [
 # `#[implement]` for the engine's notification callback.
 windows-core = "0.62"
 
+# Video playback on macOS goes through AVFoundation.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+# The CMTime / CVPixelBuffer methods are behind these features.
+objc2-av-foundation = { version = "0.3", features = ["objc2-core-media", "objc2-core-video", "objc2-core-foundation"] }
+objc2-core-media = "0.3"
+objc2-core-video = "0.3"
+objc2-core-foundation = "0.3"
+
 [features]
 default = ["gpu"]
 # OpenGL rendering through femtovg. Built in by default so one binary has both
