@@ -124,7 +124,7 @@ npm run tauri dev      # run with hot reload
 npm run tauri build    # release build
 ```
 
-**Native window (experimental, branch `native-ui`).** The same backend with a
+**Native window (experimental, work in progress).** The same backend with a
 [Slint](https://slint.dev) window instead of a WebView: no Node.js, no WebView2.
 
 ```sh
