@@ -2181,11 +2181,14 @@ export component AppWindow inherits Window {
         close => {
             root.saver-open = false;
         }
+        // Fixed heights: Slint underestimates wrapped text inside nested
+        // layouts, so the dialog could not tell it overflows and never scrolled.
         Text {
             text: "Что включено, то занимает память и трафик. Выключенное не загружается совсем.";
             color: Theme.dim;
             font-size: 13px;
             wrap: word-wrap;
+            height: 36px;
         }
 
         for option in root.saver-options: Rectangle {
@@ -2207,7 +2210,8 @@ export component AppWindow inherits Window {
                         text: option.title;
                         color: Theme.text;
                         font-size: 15px;
-                        wrap: word-wrap;
+                        overflow: elide;
+                        height: 21px;
                     }
 
                     Text {
@@ -2215,6 +2219,7 @@ export component AppWindow inherits Window {
                         color: Theme.dim;
                         font-size: 13px;
                         wrap: word-wrap;
+                        height: 54px;
                     }
                 }
 
