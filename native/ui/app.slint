@@ -458,6 +458,7 @@ component MessageView inherits VerticalLayout {
     in property <MessageItem> m;
     in property <length> max-bubble;
     callback context(length, length);
+    callback wheel(length);
     padding-top: root.m.day != "" ? 0 : root.m.joined ? 2px : 8px;
     if root.m.day != "": HorizontalLayout {
         alignment: center;
@@ -524,6 +525,10 @@ component MessageView inherits VerticalLayout {
                     if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
                         root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
                     }
+                }
+                scroll-event(event) => {
+                    root.wheel(event.delta-y);
+                    accept
                 }
             }
 
@@ -1064,6 +1069,37 @@ export component AppWindow inherits Window {
     // scrolling and made the list jerk.
     // It stops once the estimate has held for three ticks (at most ~1 s):
     // tall channel posts take a while to be measured.
+    // Slint scrolls a whole wheel notch in one frame, which reads as jerky;
+    // the same distance is spread over a few frames, easing out. Relative
+    // steps, not a target position: the ListView re-anchors its content-y
+    // while it measures rows, and a fixed target would fight that.
+    property <length> wheel-pending;
+    public function smooth-scroll(dy: length) {
+        root.settle-frames = 0;
+        root.wheel-pending += dy;
+    }
+    Timer {
+        interval: 16ms;
+        running: abs(root.wheel-pending) > 0.5px;
+        triggered => {
+            let step = abs(root.wheel-pending) < 2px ? root.wheel-pending : root.wheel-pending * 0.3;
+            let lowest = min(0px, history.visible-height - history.content-height);
+            let next = max(lowest, min(0px, history.content-y + step));
+            root.wheel-pending = next == history.content-y + step ? root.wheel-pending - step : 0px;
+            history.content-y = next;
+        }
+    }
+
+    // OXIGRAM_BENCH: scrolls the open chat up by itself, to measure the
+    // frame rate of scrolling (with SLINT_DEBUG_PERFORMANCE).
+    in property <bool> bench;
+    Timer {
+        interval: 16ms;
+        running: root.bench && root.chat-open;
+        triggered => {
+            history.content-y = history.content-y + 8px;
+        }
+    }
     property <int> settle-frames;
     property <int> stable-frames;
     property <length> settled-height;
@@ -1345,16 +1381,30 @@ export component AppWindow inherits Window {
                         // column in the middle, as in Telegram Desktop.
                         property <length> column-width: min(Theme.column, self.visible-width);
                         property <length> side: (self.visible-width - self.column-width) / 2 + 16px;
-                        for m[index] in root.messages: HorizontalLayout {
-                            padding-left: history.side;
-                            padding-right: history.side;
-                            padding-top: index == 0 ? 10px : 0;
-                            padding-bottom: index == root.messages.length - 1 ? 12px : 0;
-                            MessageView {
-                                m: m;
-                                max-bubble: min(520px, (history.column-width - 32px) * 0.74);
-                                context(x, y) => {
-                                    root.message-menu(m.id, x, y);
+                        for m[index] in root.messages: Rectangle {
+                            height: row.preferred-height;
+                            // The wheel over a row scrolls smoothly (see smooth-scroll).
+                            TouchArea {
+                                scroll-event(event) => {
+                                    root.smooth-scroll(event.delta-y);
+                                    accept
+                                }
+                            }
+                            row := HorizontalLayout {
+                                width: parent.width;
+                                padding-left: history.side;
+                                padding-right: history.side;
+                                padding-top: index == 0 ? 10px : 0;
+                                padding-bottom: index == root.messages.length - 1 ? 12px : 0;
+                                MessageView {
+                                    m: m;
+                                    max-bubble: min(520px, (history.column-width - 32px) * 0.74);
+                                    context(x, y) => {
+                                        root.message-menu(m.id, x, y);
+                                    }
+                                    wheel(dy) => {
+                                        root.smooth-scroll(dy);
+                                    }
                                 }
                             }
                         }

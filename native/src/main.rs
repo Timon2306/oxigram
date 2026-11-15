@@ -192,6 +192,7 @@ fn main() {
             menu_target: None,
         })
     });
+    ui.set_bench(std::env::var_os("OXIGRAM_BENCH").is_some());
     wire_login(&ui);
     wire_main(&ui);
     menus::wire(&ui);
