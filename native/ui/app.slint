@@ -1391,6 +1391,15 @@ export component AppWindow inherits Window {
     callback viewer-close();
     callback viewer-save();
     callback viewer-menu(length, length);
+    // Video in the viewer
+    in property <bool> viewer-video;
+    in property <bool> viewer-playing;
+    in-out property <bool> viewer-muted;
+    in property <float> viewer-progress;
+    in property <string> viewer-time;
+    callback viewer-toggle-play();
+    callback viewer-seek(float);
+    callback viewer-toggle-mute();
     // Esc must reach the window's key handler even when a text field had focus.
     public function focus-keys() {
         keys.focus();
@@ -1410,11 +1419,18 @@ export component AppWindow inherits Window {
         width: root.width;
         height: root.height;
         capture-key-pressed(event) => {
+            // Space pauses a video in the viewer.
+            if (event.text == " " && root.viewer-open && root.viewer-video) {
+                root.viewer-toggle-play();
+                return accept;
+            }
             if (event.text != Key.Escape) {
                 return reject;
             }
             if (root.menu-open) {
                 root.menu-open = false;
+            } else if (root.viewer-open && root.viewer-video && event.text == " ") {
+                root.viewer-toggle-play();
             } else if (root.viewer-open) {
                 root.viewer-close();
             } else if (root.confirm-open) {
@@ -2378,9 +2394,104 @@ export component AppWindow inherits Window {
             x: 28px;
             y: 56px;
             width: parent.width - 56px;
-            height: parent.height - 84px;
+            height: parent.height - (root.viewer-video ? 128px : 84px);
             source: root.viewer-image;
             image-fit: contain;
+        }
+        // Video controls: play/pause, time, seek bar, sound.
+        if root.viewer-video: Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - 60px;
+            width: min(680px, parent.width - 56px);
+            height: 44px;
+            border-radius: 22px;
+            background: #000000b3;
+            TouchArea { }
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 12px;
+                spacing: 10px;
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    y: 6px;
+                    border-radius: 16px;
+                    background: play-touch.has-hover ? #ffffff22 : transparent;
+                    play-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.viewer-toggle-play();
+                        }
+                    }
+                    Path {
+                        x: 8px;
+                        y: 8px;
+                        width: 16px;
+                        height: 16px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        fill: white;
+                        commands: root.viewer-playing ? "M6 4h4v16H6zM14 4h4v16h-4z" : "M7 4l13 8-13 8z";
+                    }
+                }
+
+                Text {
+                    text: root.viewer-time;
+                    color: white;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    min-width: self.preferred-width;
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    seek := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.viewer-seek(self.mouse-x / self.width);
+                        }
+                        moved => {
+                            if (self.pressed) {
+                                root.viewer-seek(self.mouse-x / self.width);
+                            }
+                        }
+                    }
+                    Rectangle {
+                        y: (parent.height - self.height) / 2;
+                        height: seek.has-hover ? 6px : 4px;
+                        border-radius: 3px;
+                        background: #ffffff40;
+                    }
+                    Rectangle {
+                        x: 0;
+                        y: (parent.height - self.height) / 2;
+                        width: parent.width * root.viewer-progress;
+                        height: seek.has-hover ? 6px : 4px;
+                        border-radius: 3px;
+                        background: white;
+                    }
+                }
+
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    y: 6px;
+                    border-radius: 16px;
+                    background: sound-touch.has-hover ? #ffffff22 : transparent;
+                    sound-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.viewer-toggle-mute();
+                        }
+                    }
+                    StrokeIcon {
+                        x: 6px;
+                        y: 6px;
+                        tint: white;
+                        commands: root.viewer-muted ? "M11 5 6 9H3v6h3l5 4V5zM16 9l5 6M21 9l-5 6" : "M11 5 6 9H3v6h3l5 4V5zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13";
+                    }
+                }
+            }
         }
         if root.viewer-status != "": Rectangle {
             x: (parent.width - self.width) / 2;

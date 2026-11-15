@@ -83,6 +83,8 @@ impl Thumbs {
 
 /// The full-window viewer's state.
 pub struct Viewer {
+    /// A video playing in the viewer, and the timer that pulls its frames.
+    player: Option<(Box<dyn crate::video::Player>, slint::Timer)>,
     pub id: i32,
     /// Bumped on every open and close, so late downloads are dropped.
     token: u64,
@@ -290,20 +292,42 @@ pub fn wire(window: &AppWindow) {
     window.on_viewer_close(close_viewer);
     window.on_viewer_save(save);
     window.on_viewer_menu(|x, y| viewer_menu(x, y));
+    window.on_viewer_toggle_play(|| {
+        with_player(|player| if player.is_paused() { player.play() } else { player.pause() });
+    });
+    window.on_viewer_seek(|share| {
+        with_player(|player| {
+            let duration = player.duration();
+            if duration > 0.0 {
+                player.seek(duration * share.clamp(0.0, 1.0) as f64);
+            }
+        });
+    });
+    window.on_viewer_toggle_mute(|| {
+        let Some(window) = ui() else { return };
+        let muted = !window.get_viewer_muted();
+        window.set_viewer_muted(muted);
+        with_player(|player| player.set_muted(muted));
+    });
 }
 
 /// Right click in the viewer: the same dark menu as elsewhere.
 fn viewer_menu(x: f32, y: f32) {
-    let Some(Some((id, has_file, saved, caption))) = with_app(|app| {
+    let Some(Some((id, has_file, saved, caption, video))) = with_app(|app| {
         let viewer = app.viewer.as_ref()?;
         let m = app.messages.iter().find(|m| m.id == viewer.id)?;
-        Some((viewer.id, viewer.file.is_some(), viewer.saved.is_some(), !m.text.is_empty()))
+        Some((viewer.id, viewer.file.is_some(), viewer.saved.is_some(), !m.text.is_empty(), viewer.player.is_some()))
     }) else {
         return;
     };
     let mut items = Vec::new();
     if has_file {
-        items.push(crate::context_menu::entry("copy-image", "Копировать картинку", crate::context_menu::COPY));
+        // A video copies the frame on screen.
+        items.push(if video {
+            crate::context_menu::entry("copy-frame", "Копировать кадр", crate::context_menu::COPY)
+        } else {
+            crate::context_menu::entry("copy-image", "Копировать картинку", crate::context_menu::COPY)
+        });
         items.push(if saved {
             crate::context_menu::entry("save", "Показать в папке", crate::context_menu::SAVE)
         } else {
@@ -319,6 +343,12 @@ fn viewer_menu(x: f32, y: f32) {
 
 pub fn viewer_action(id: i32, name: &str) {
     match name {
+        "copy-frame" => {
+            let frame = ui().map(|window| window.get_viewer_image()).and_then(|image| image.to_rgba8());
+            if let Some(frame) = frame {
+                copy_pixels(frame.width(), frame.height(), frame.as_bytes().to_vec());
+            }
+        }
         "copy-image" => {
             let file = with_app(|app| app.viewer.as_ref().and_then(|v| v.file.clone())).flatten();
             if let Some(file) = file {
@@ -333,6 +363,30 @@ pub fn viewer_action(id: i32, name: &str) {
         "copy" => crate::messages::message_action(id, "copy".into()),
         _ => {}
     }
+}
+
+/// Puts RGBA pixels on the clipboard.
+fn copy_pixels(width: u32, height: u32, rgba: Vec<u8>) {
+    run(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                arboard::Clipboard::new()
+                    .ok()?
+                    .set_image(arboard::ImageData {
+                        width: width as usize,
+                        height: height as usize,
+                        bytes: rgba.into(),
+                    })
+                    .ok()
+            })
+            .await
+            .ok()
+            .flatten()
+        },
+        |done| {
+            crate::menus::toast(if done.is_some() { "Кадр скопирован" } else { "Не удалось скопировать кадр" });
+        },
+    );
 }
 
 /// Puts the full picture on the clipboard.
@@ -574,12 +628,13 @@ fn show(id: i32, peer: i64, size: i64, shown: Shown) {
         (size.width.max(1), size.height.max(1))
     };
     with_app(|app| {
-        app.viewer = Some(Viewer { id, token, file: None, saved: None });
+        app.viewer = Some(Viewer { id, token, file: None, saved: None, player: None });
     });
     window.set_viewer_image(Image::default());
     window.set_viewer_has_image(false);
     window.set_viewer_status("Загрузка…".into());
     window.set_viewer_save_text(SharedString::new());
+    window.set_viewer_video(false);
     window.set_viewer_open(true);
     window.invoke_focus_keys();
     drop(window);
@@ -639,9 +694,12 @@ fn show(id: i32, peer: i64, size: i64, shown: Shown) {
             let Some(window) = ui() else { return };
             match result {
                 Ok((path, None)) => {
-                    // Videos play in the system player.
-                    open_external(&path);
-                    close_viewer();
+                    // Played here when the system has an engine for it,
+                    // otherwise in the system player.
+                    if !play_here(&path, max_w, max_h) {
+                        open_external(&path);
+                        close_viewer();
+                    }
                 }
                 Ok((path, Some(pixels))) => {
                     let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
@@ -679,10 +737,99 @@ fn progress_text(done: u64, total: u64) -> String {
     }
 }
 
+/// Starts `path` in the viewer. False when no engine can play it.
+fn play_here(path: &Path, max_w: u32, max_h: u32) -> bool {
+    let Some(Some(looped)) = with_app(|app| {
+        let id = app.viewer.as_ref()?.id;
+        Some(app.messages.iter().find(|m| m.id == id).is_some_and(|m| m.kind == "gif"))
+    }) else {
+        return false;
+    };
+    let options = crate::video::Options {
+        autoplay: true,
+        looped,
+        muted: looped,
+        max_width: max_w,
+        max_height: max_h,
+    };
+    let player = match crate::video::open(path, options) {
+        Ok(player) => player,
+        Err(_) => return false,
+    };
+    let fallback = path.to_path_buf();
+    let timer = slint::Timer::default();
+    // About once per display frame; a frame is copied only when a new one
+    // was decoded.
+    timer.start(slint::TimerMode::Repeated, Duration::from_millis(15), move || tick(&fallback));
+    with_app(|app| {
+        if let Some(viewer) = app.viewer.as_mut() {
+            viewer.player = Some((player, timer));
+            viewer.file = Some(path.to_path_buf());
+        }
+    });
+    if let Some(window) = ui() {
+        window.set_viewer_status(SharedString::new());
+        window.set_viewer_video(true);
+        window.set_viewer_save_text("Сохранить".into());
+        window.set_viewer_muted(looped);
+    }
+    true
+}
+
+/// Pulls the newest frame and the playback state into the viewer.
+fn tick(path: &Path) {
+    let state = with_app(|app| {
+        let (player, _) = app.viewer.as_mut()?.player.as_mut()?;
+        if let Some(error) = player.error() {
+            return Some(Err(error));
+        }
+        let frame = player.frame();
+        Some(Ok((frame, player.position(), player.duration(), player.is_paused())))
+    })
+    .flatten();
+    let Some(window) = ui() else { return };
+    match state {
+        Some(Ok((frame, position, duration, paused))) => {
+            if let Some(frame) = frame {
+                let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                    &frame.rgba,
+                    frame.width,
+                    frame.height,
+                );
+                window.set_viewer_image(Image::from_rgba8(buffer));
+                window.set_viewer_has_image(true);
+            }
+            window.set_viewer_playing(!paused);
+            window.set_viewer_progress(if duration > 0.0 { (position / duration) as f32 } else { 0.0 });
+            window.set_viewer_time(format!("{} / {}", duration_text(position), duration_text(duration)).into());
+        }
+        // The system cannot decode it after all: hand it to the system player.
+        Some(Err(_)) => {
+            open_external(path);
+            close_viewer();
+        }
+        None => {}
+    }
+}
+
+fn duration_text(seconds: f64) -> String {
+    duration(seconds.max(0.0).floor() as i32)
+}
+
+fn with_player(f: impl FnOnce(&mut Box<dyn crate::video::Player>)) {
+    with_app(|app| {
+        if let Some((player, _)) = app.viewer.as_mut().and_then(|v| v.player.as_mut()) {
+            f(player);
+        }
+    });
+}
+
 pub fn close_viewer() {
+    // Dropping the player stops the sound and frees the decoder.
     with_app(|app| app.viewer = None);
     if let Some(ui) = ui() {
         ui.set_viewer_open(false);
+        ui.set_viewer_video(false);
         // The decoded original is the biggest thing the app holds: drop it.
         ui.set_viewer_image(Image::default());
         ui.set_viewer_has_image(false);

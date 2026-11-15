@@ -32,6 +32,17 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 # "Копировать картинку": puts pixels on the system clipboard.
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 
+# In-app video on Windows 8+ (Media Foundation's media engine, WIC frames).
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Imaging",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+] }
+# `#[implement]` for the engine's notification callback.
+windows-core = "0.62"
+
 [features]
 default = ["gpu"]
 # OpenGL rendering through femtovg. Built in by default so one binary has both
