@@ -9,9 +9,11 @@
 // No console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod context_menu;
 mod format;
 mod menus;
 mod messages;
+mod settings;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -94,6 +96,11 @@ struct App {
     pending: Option<Box<dyn FnOnce(bool)>>,
     me_id: i64,
     me_photo_id: Option<String>,
+    settings: settings::Settings,
+    /// The top chats are prefetched once per start.
+    prefetched: bool,
+    /// What the open right-click menu acts on.
+    menu_target: Option<context_menu::MenuTarget>,
 }
 
 thread_local! {
@@ -135,6 +142,7 @@ fn main() {
         eprintln!("no per-user folders on this system");
         return;
     };
+    settings::set_dir(config.join(APP_ID));
     let _ = TELEGRAM.set(Telegram::new(
         config.join(APP_ID),
         data.join(APP_ID),
@@ -179,12 +187,17 @@ fn main() {
             pending: None,
             me_id: 0,
             me_photo_id: None,
+            settings: settings::Settings::load(),
+            prefetched: false,
+            menu_target: None,
         })
     });
     wire_login(&ui);
     wire_main(&ui);
     menus::wire(&ui);
+    settings::wire(&ui);
     messages::wire(&ui);
+    context_menu::wire(&ui);
 
     // "Oxigram — 31 МБ ОЗУ", measured like the Tauri build does.
     let title_timer = slint::Timer::default();
@@ -351,8 +364,36 @@ fn load_dialogs() {
                     Err(err) => app.chat_error(&err),
                 }
             });
+            prefetch_top();
             more_dialogs();
         });
+    });
+}
+
+/// Fills the SQLite cache with the first page of the top chats, one after
+/// another, so they open without waiting for the network. Read-only: it never
+/// marks anything as read.
+pub(crate) fn prefetch_top() {
+    let peers = with_app(|app| {
+        if !app.settings.prefetch_chats || app.prefetched || app.dialogs.is_empty() {
+            return Vec::new();
+        }
+        app.prefetched = true;
+        app.dialogs
+            .iter()
+            .filter(|d| !d.archived)
+            .take(settings::PREFETCH_CHATS)
+            .map(|d| d.id)
+            .collect()
+    })
+    .unwrap_or_default();
+    if peers.is_empty() {
+        return;
+    }
+    RUNTIME.get().expect("set in main").spawn(async move {
+        for peer in peers {
+            let _ = chats::history(tg(), peer, None, settings::PREFETCH_PAGE).await;
+        }
     });
 }
 
@@ -392,7 +433,8 @@ fn more_dialogs() {
 /// to the size it is drawn at.
 fn request_avatar(peer: i64) {
     let Some(Some((photo_id, px))) = with_app(|app| {
-        if app.avatars.contains_key(&peer) || app.avatar_pending.contains(&peer) {
+        // "Фото на аватарках" off: nothing is fetched at all.
+        if !app.settings.avatars || app.avatars.contains_key(&peer) || app.avatar_pending.contains(&peer) {
             return None;
         }
         let dialog = app.dialog(peer)?;
@@ -423,6 +465,10 @@ fn request_avatar(peer: i64) {
                 // A failure stays "pending", so the photo is not retried in a loop.
                 let Some(pixels) = pixels else { return };
                 app.avatar_pending.remove(&peer);
+                // Switched off while it was downloading.
+                if !app.settings.avatars {
+                    return;
+                }
                 let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
                     pixels.as_raw(),
                     pixels.width(),

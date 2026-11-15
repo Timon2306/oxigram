@@ -4726,6 +4726,8 @@ dependencies = [
  "dirs 6.0.0",
  "image",
  "oxigram-core",
+ "serde",
+ "serde_json",
  "slint",
  "slint-build",
  "tokio",

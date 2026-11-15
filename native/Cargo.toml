@@ -24,6 +24,8 @@ slint = { version = "1.18", default-features = false, features = [
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 dirs = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # Avatars are decoded and shrunk to their on-screen size before they reach
 # the UI, so a 640 px photo costs ~10 KB of memory, not 1.6 MB.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }

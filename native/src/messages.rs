@@ -19,7 +19,6 @@ pub(crate) enum Compose {
 }
 
 pub fn wire(ui: &AppWindow) {
-    ui.on_message_action(message_action);
     ui.on_bar_cancel(cancel_compose);
     ui.on_send_text(send_text);
     ui.on_forward_filter(|text| {
@@ -28,7 +27,7 @@ pub fn wire(ui: &AppWindow) {
     ui.on_forward_pick(forward_pick);
 }
 
-fn message_action(id: i32, name: SharedString) {
+pub(crate) fn message_action(id: i32, name: SharedString) {
     let Some(Some(row)) = with_app(|app| app.messages.iter().find(|m| m.id == id).cloned()) else {
         return;
     };

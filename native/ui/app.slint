@@ -6,6 +6,20 @@ import { ScrollView, ListView } from "std-widgets.slint";
 import "../fonts/OpenSans-Regular.ttf";
 import "../fonts/OpenSans-SemiBold.ttf";
 
+export struct MenuEntry {
+    id: string,
+    label: string,
+    icon: string,
+    danger: bool,
+}
+
+export struct SaverOption {
+    key: string,
+    title: string,
+    note: string,
+    on: bool,
+}
+
 export struct DialogItem {
     title: string,
     initial: string,
@@ -239,69 +253,16 @@ component Badge inherits Rectangle {
 component DialogRow inherits Rectangle {
     in property <DialogItem> item;
     callback clicked();
-    // A context menu entry: "open", "pin", "read", "unread", "archive",
-    // "mute", "clear", "delete".
-    callback action(string);
+    callback context(length, length);
     height: 66px;
     background: root.item.active ? Theme.active : touch.has-hover ? Theme.hover : transparent;
     touch := TouchArea {
         clicked => {
             root.clicked();
         }
-    }
-
-    // Right click only; left clicks reach the touch area below.
-    ContextMenuArea {
-        width: parent.width;
-        height: parent.height;
-        Menu {
-            MenuItem {
-                title: "Открыть";
-                activated => {
-                    root.action("open");
-                }
-            }
-
-            MenuItem {
-                title: root.item.pinned ? "Открепить" : "Закрепить";
-                activated => {
-                    root.action("pin");
-                }
-            }
-
-            MenuItem {
-                title: root.item.unread > 0 ? "Отметить как прочитанное" : "Отметить как непрочитанное";
-                activated => {
-                    root.action(root.item.unread > 0 ? "read" : "unread");
-                }
-            }
-
-            MenuItem {
-                title: root.item.archived ? "Из архива" : "В архив";
-                activated => {
-                    root.action("archive");
-                }
-            }
-
-            if !root.item.saved: MenuItem {
-                title: root.item.muted ? "Включить уведомления" : "Выключить уведомления";
-                activated => {
-                    root.action("mute");
-                }
-            }
-            MenuSeparator { }
-
-            if root.item.kind != "channel": MenuItem {
-                title: "Очистить историю";
-                activated => {
-                    root.action("clear");
-                }
-            }
-            MenuItem {
-                title: root.item.kind == "group" ? "Покинуть группу" : root.item.kind == "channel" ? "Покинуть канал" : "Удалить чат";
-                activated => {
-                    root.action("delete");
-                }
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
             }
         }
     }
@@ -496,8 +457,7 @@ component Meta inherits HorizontalLayout {
 component MessageView inherits VerticalLayout {
     in property <MessageItem> m;
     in property <length> max-bubble;
-    // A context menu entry: "reply", "copy", "edit", "pin", "forward", "delete".
-    callback action(string);
+    callback context(length, length);
     padding-top: root.m.day != "" ? 0 : root.m.joined ? 2px : 8px;
     if root.m.day != "": HorizontalLayout {
         alignment: center;
@@ -555,55 +515,17 @@ component MessageView inherits VerticalLayout {
                 visible: false;
             }
 
-            // The content is inside the menu area so a right click on the text
-            // opens the menu too, while left clicks still select text.
             height: content.preferred-height;
-            ContextMenuArea {
+            // Below the text: a right click on it is ignored by the text input and lands here.
+            TouchArea {
                 width: parent.width;
                 height: parent.height;
-                Menu {
-                    MenuItem {
-                        title: "Ответить";
-                        activated => {
-                            root.action("reply");
-                        }
-                    }
-
-                    if root.m.text != "": MenuItem {
-                        title: "Копировать текст";
-                        activated => {
-                            root.action("copy");
-                        }
-                    }
-                    if root.m.can-edit: MenuItem {
-                        title: "Изменить";
-                        activated => {
-                            root.action("edit");
-                        }
-                    }
-                    MenuItem {
-                        title: "Закрепить";
-                        activated => {
-                            root.action("pin");
-                        }
-                    }
-
-                    MenuItem {
-                        title: "Переслать";
-                        activated => {
-                            root.action("forward");
-                        }
-                    }
-
-                    MenuSeparator { }
-
-                    MenuItem {
-                        title: "Удалить";
-                        activated => {
-                            root.action("delete");
-                        }
+                pointer-event(event) => {
+                    if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                        root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
                     }
                 }
+            }
 
             content := VerticalLayout {
                 width: parent.width;
@@ -659,7 +581,6 @@ component MessageView inherits VerticalLayout {
                 if !bubble.inline: Meta {
                     m: root.m;
                 }
-            }
             }
         }
     }
@@ -1048,8 +969,13 @@ export component AppWindow inherits Window {
     callback send-text(string);
 
     // Context menus
-    callback dialog-action(int, string);
-    callback message-action(int, string);
+    callback dialog-menu(int, length, length);
+    callback message-menu(int, length, length);
+    in property <[MenuEntry]> menu-items;
+    in-out property <bool> menu-open;
+    in property <length> menu-x;
+    in property <length> menu-y;
+    callback menu-pick(string);
 
     // Reply / edit bar above the composer: mode "", "reply" or "edit"
     in property <string> bar-mode;
@@ -1069,6 +995,12 @@ export component AppWindow inherits Window {
     callback open-saved();
     callback reload-dialogs();
     callback open-settings();
+
+    // Memory saver
+    in property <[SaverOption]> saver-options;
+    in-out property <bool> saver-open;
+    callback open-saver();
+    callback saver-toggle(string);
 
     // Settings
     in-out property <bool> settings-open;
@@ -1252,8 +1184,8 @@ export component AppWindow inherits Window {
                         clicked => {
                             root.open-chat(index);
                         }
-                        action(name) => {
-                            root.dialog-action(index, name);
+                        context(x, y) => {
+                            root.dialog-menu(index, x, y);
                         }
                     }
                     changed content-y => {
@@ -1403,8 +1335,8 @@ export component AppWindow inherits Window {
                             MessageView {
                                 m: m;
                                 max-bubble: min(520px, (history.column-width - 32px) * 0.74);
-                                action(name) => {
-                                    root.message-action(m.id, name);
+                                context(x, y) => {
+                                    root.message-menu(m.id, x, y);
                                 }
                             }
                         }
@@ -1671,6 +1603,14 @@ export component AppWindow inherits Window {
             }
 
             DrawerItem {
+                text: "Экономия памяти";
+                clicked => {
+                    root.drawer-open = false;
+                    root.open-saver();
+                }
+            }
+
+            DrawerItem {
                 text: "Настройки";
                 clicked => {
                     root.drawer-open = false;
@@ -1780,6 +1720,82 @@ export component AppWindow inherits Window {
                 width: 110px;
                 clicked => {
                     root.settings-open = false;
+                }
+            }
+        }
+    }
+
+    // ---- Memory saver
+    if root.saver-open: Modal {
+        title: "Экономия памяти";
+        close => {
+            root.saver-open = false;
+        }
+        Text {
+            text: "Что включено, то занимает память и трафик. Выключенное не загружается совсем.";
+            color: Theme.dim;
+            font-size: 13px;
+            wrap: word-wrap;
+        }
+
+        for option in root.saver-options: Rectangle {
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.saver-toggle(option.key);
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 14px;
+                padding-top: 4px;
+                padding-bottom: 4px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    Text {
+                        text: option.title;
+                        color: Theme.text;
+                        font-size: 15px;
+                        wrap: word-wrap;
+                    }
+
+                    Text {
+                        text: option.note;
+                        color: Theme.dim;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 34px;
+                        height: 18px;
+                        border-radius: 9px;
+                        background: option.on ? Theme.accent : Theme.input;
+                        Rectangle {
+                            x: option.on ? parent.width - self.width - 3px : 3px;
+                            y: 3px;
+                            width: 12px;
+                            height: 12px;
+                            border-radius: 6px;
+                            background: option.on ? white : Theme.dim;
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            Button {
+                kind: "ghost";
+                text: "Закрыть";
+                width: 110px;
+                clicked => {
+                    root.saver-open = false;
                 }
             }
         }
@@ -1906,6 +1922,76 @@ export component AppWindow inherits Window {
                 text: root.confirm-ok;
                 clicked => {
                     root.confirm-done(true);
+                }
+            }
+        }
+    }
+
+    // ---- Context menu
+    if root.menu-open: TouchArea {
+        width: parent.width;
+        height: parent.height;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.menu-open = false;
+            }
+        }
+    }
+    if root.menu-open: Rectangle {
+        width: 220px;
+        height: menu-column.preferred-height + 10px;
+        x: max(4px, min(root.menu-x, root.width - self.width - 4px));
+        y: max(4px, min(root.menu-y, root.height - self.height - 4px));
+        background: #1f2c3a;
+        border-radius: 10px;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000073;
+        menu-column := VerticalLayout {
+            padding: 5px;
+            for entry in root.menu-items: Rectangle {
+                height: entry.id == "-" ? 9px : 34px;
+                if entry.id == "-": Rectangle {
+                    y: 4px;
+                    height: 1px;
+                    background: #ffffff14;
+                }
+                if entry.id != "-": Rectangle {
+                    border-radius: 6px;
+                    background: item-touch.has-hover ? #ffffff14 : transparent;
+                    item-touch := TouchArea {
+                        clicked => {
+                            root.menu-open = false;
+                            root.menu-pick(entry.id);
+                        }
+                    }
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 12px;
+                        spacing: 10px;
+                        alignment: start;
+                        Path {
+                            width: 18px;
+                            height: 18px;
+                            y: (parent.height - self.height) / 2;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: entry.icon;
+                            fill: transparent;
+                            stroke: entry.danger ? Theme.danger : Theme.dim;
+                            stroke-width: 1.8px;
+                            stroke-line-cap: round;
+                            stroke-line-join: round;
+                        }
+
+                        Text {
+                            text: entry.label;
+                            color: entry.danger ? Theme.danger : Theme.text;
+                            font-size: 15px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
                 }
             }
         }

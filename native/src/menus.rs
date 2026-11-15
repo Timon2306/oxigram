@@ -18,12 +18,6 @@ const TOAST_FOR: Duration = Duration::from_millis(2500);
 const ME_AVATAR_PX: f32 = 64.0;
 
 pub fn wire(window: &AppWindow) {
-    window.on_dialog_action(|index, name| {
-        let peer = with_app(|app| app.shown.get(index as usize).copied()).flatten();
-        if let Some(peer) = peer {
-            dialog_action(peer, name.as_str());
-        }
-    });
     window.on_confirm_done(|accepted| {
         if let Some(ui) = ui() {
             ui.set_confirm_open(false);
@@ -117,10 +111,19 @@ pub fn show_me(me: &Me) {
         app.me_photo_id = me.photo_id.clone();
         changed
     });
+    let avatars = with_app(|app| app.settings.avatars).unwrap_or(true);
     match (&me.photo_id, fetch) {
-        (Some(photo_id), Some(true)) => load_me_photo(me.id, photo_id.clone(), &ui),
+        (Some(photo_id), Some(true)) if avatars => load_me_photo(me.id, photo_id.clone(), &ui),
         (None, _) => ui.set_me_has_photo(false),
         _ => {}
+    }
+}
+
+/// Fetches the own photo again after "Фото на аватарках" is switched back on.
+pub fn reload_me_photo() {
+    let known = with_app(|app| app.me_photo_id.clone().map(|p| (app.me_id, p))).flatten();
+    if let (Some((id, photo_id)), Some(ui)) = (known, ui()) {
+        load_me_photo(id, photo_id, &ui);
     }
 }
 
@@ -187,7 +190,7 @@ fn update(peer: i64, change: impl FnOnce(&mut DialogRow)) {
     });
 }
 
-fn dialog_action(peer: i64, name: &str) {
+pub(crate) fn dialog_action(peer: i64, name: &str) {
     if name == "open" {
         open_chat(peer);
         return;
