@@ -36,6 +36,9 @@ pub struct Settings {
     pub custom_emoji: bool,
     #[serde(rename = "prefetchChats")]
     pub prefetch_chats: bool,
+    /// OpenGL renderer instead of the software one; read once at start-up.
+    #[serde(rename = "gpuRender")]
+    pub gpu_render: bool,
 }
 
 impl Default for Settings {
@@ -46,6 +49,7 @@ impl Default for Settings {
             autoplay_gifs: true,
             custom_emoji: false,
             prefetch_chats: true,
+            gpu_render: false,
         }
     }
 }
@@ -83,6 +87,7 @@ impl Settings {
             "autoplayGifs" => &mut self.autoplay_gifs,
             "customEmoji" => &mut self.custom_emoji,
             "prefetchChats" => &mut self.prefetch_chats,
+            "gpuRender" => &mut self.gpu_render,
             _ => return None,
         })
     }
@@ -111,6 +116,11 @@ impl Settings {
                 "prefetchChats",
                 "Подгружать верхние чаты заранее",
                 "Десять верхних чатов открываются сразу, без ожидания сети.",
+            ),
+            (
+                "gpuRender",
+                "Отрисовка на видеокарте",
+                "Плавнее прокрутка и цветные эмодзи, но OpenGL-драйвер добавляет около 75 МБ ОЗУ. Применится после перезапуска.",
             ),
         ];
         rows.into_iter()
@@ -221,6 +231,14 @@ mod tests {
         s.custom_emoji = true;
         s.save_to(&dir);
         assert_eq!(Settings::load_from(&dir), s);
+    }
+
+    #[test]
+    fn gpu_render_is_off_by_default() {
+        assert!(!Settings::default().gpu_render);
+        let dir = temp("gpu");
+        std::fs::write(dir.join(FILE), r#"{"gpuRender": true}"#).unwrap();
+        assert!(Settings::load_from(&dir).gpu_render);
     }
 
     #[test]

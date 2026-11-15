@@ -128,6 +128,26 @@ impl EventSink for WindowSink {
     }
 }
 
+/// Picks the renderer once, before the first window: OpenGL (femtovg) when the
+/// "GPU rendering" setting is on, software otherwise. `SLINT_BACKEND` in the
+/// environment overrides this (used for measurements).
+fn select_renderer() {
+    if std::env::var_os("SLINT_BACKEND").is_some() {
+        return;
+    }
+    let select = |renderer: &str| {
+        slint::BackendSelector::new()
+            .backend_name("winit".into())
+            .renderer_name(renderer.into())
+            .select()
+    };
+    #[cfg(feature = "gpu")]
+    if settings::Settings::load().gpu_render && select("femtovg").is_ok() {
+        return;
+    }
+    let _ = select("software");
+}
+
 fn main() {
     // OXIGRAM_HOME puts everything in one folder: a clean profile for tests
     // and measurements that never touches the real account.
@@ -157,6 +177,7 @@ fn main() {
         .expect("tokio runtime");
     let _ = RUNTIME.set(runtime);
 
+    select_renderer();
     let ui = AppWindow::new().expect("window");
     let dialog_model = Rc::new(VecModel::default());
     let message_model = Rc::new(VecModel::default());
@@ -359,6 +380,22 @@ fn wire_main(ui: &AppWindow) {
     });
     ui.on_load_more_dialogs(more_dialogs);
     ui.on_load_older(load_older);
+    // Esc with nothing else open: hide the chat, as Telegram Desktop does.
+    ui.on_close_chat(|| {
+        with_app(|app| {
+            app.chat = None;
+            app.generation += 1;
+            app.compose = messages::Compose::None;
+            app.set_messages(Vec::new());
+            if let Some(ui) = app.ui.upgrade() {
+                ui.set_chat_open(false);
+                ui.set_bar_mode(SharedString::new());
+                ui.set_selecting_id(-1);
+            }
+            app.refresh_dialogs();
+        });
+        tg().ui.set_active_chat(None);
+    });
     ui.on_toggle_mute(|| {
         if let Some(Some(peer)) = with_app(|app| app.chat) {
             menus::dialog_action(peer, "mute");

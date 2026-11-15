@@ -39,6 +39,12 @@ pub(crate) fn message_action(id: i32, name: SharedString) {
             }
             crate::menus::toast("Текст скопирован");
         }
+        // Makes this one bubble selectable (see MessageView in app.slint).
+        "select" => {
+            if let Some(ui) = ui() {
+                ui.set_selecting_id(row.id);
+            }
+        }
         "edit" => start_edit(&row),
         "pin" => {
             let peer = row.peer_id;

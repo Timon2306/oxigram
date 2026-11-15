@@ -16,6 +16,8 @@ const CLEAR: &str = "M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6";
 const DELETE: &str = "M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13";
 const LEAVE: &str = "M10 4H5v16h5M14 8l4 4-4 4M18 12H9";
 const REPLY: &str = "M10 7 4 12l6 5v-3c5 0 8 1 10 5 0-6-3-10-10-10V7z";
+/// A text cursor between selection handles.
+const SELECT: &str = "M9 4h6M9 20h6M12 4v16";
 const COPY: &str = "M8 8h11v12H8zM5 16V4h11";
 const EDIT: &str = "M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4";
 const FORWARD: &str = "M14 7l6 5-6 5v-3c-5 0-8 1-10 5 0-6 3-10 10-10V7z";
@@ -107,6 +109,7 @@ pub fn wire(ui: &AppWindow) {
         }
         if !m.text.is_empty() {
             items.push(entry("copy", "Копировать текст", COPY));
+            items.push(entry("select", "Выделить текст", SELECT));
         }
         if can_post && m.outgoing && m.kind == "text" {
             items.push(entry("edit", "Изменить", EDIT));

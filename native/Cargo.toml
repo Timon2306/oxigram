@@ -12,8 +12,8 @@ path = "src/main.rs"
 
 [dependencies]
 oxigram-core = { path = "../core" }
-# Software renderer only: no OpenGL/Vulkan context, whose driver memory would
-# cost more than the whole UI. No accessibility tree for now (AccessKit keeps
+# Software renderer is the default (see [features]): no OpenGL context, whose
+# driver memory would cost more than the whole UI. No accessibility tree for now (AccessKit keeps
 # a second copy of every widget).
 slint = { version = "1.18", default-features = false, features = [
     "std",
@@ -31,10 +31,11 @@ serde_json = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 
 [features]
-# OpenGL rendering through femtovg, chosen at run time with
-# SLINT_BACKEND=winit-femtovg. Not the default: the OpenGL driver alone took
-# the process to ~85 MB (software renderer: ~8 MB), and scrolling stalls
-# came from row layout, not drawing. It does draw colour emoji.
+default = ["gpu"]
+# OpenGL rendering through femtovg. Built in by default so one binary has both
+# renderers; which one runs is chosen at start-up from the "GPU rendering"
+# setting (software is the default: ~8 MB, while the OpenGL driver alone adds
+# ~75-80 MB). It draws colour emoji. SLINT_BACKEND in the environment wins.
 gpu = ["slint/renderer-femtovg"]
 
 [build-dependencies]

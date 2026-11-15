@@ -459,12 +459,13 @@ component MessageView inherits VerticalLayout {
     in property <length> max-bubble;
     callback context(length, length);
     callback wheel(length);
-    // Text is drawn with the light Text element; only the message the user
-    // clicked becomes a selectable TextInput. A TextInput per bubble made
-    // rows several times costlier to create while scrolling (stalls up to
-    // 165 ms, against ~20 ms with Text).
+    // Text is drawn with the light Text element; only a message picked with
+    // "Выделить текст" in its menu becomes a selectable TextInput. A
+    // TextInput per bubble made rows several times costlier to create while
+    // scrolling (stalls up to 165 ms, against ~20 ms with Text).
     in property <bool> selecting;
-    callback start-select();
+    // A left click on another bubble ends the selection mode.
+    callback stop-select();
     padding-top: root.m.day != "" ? 0 : root.m.joined ? 2px : 8px;
     if root.m.day != "": HorizontalLayout {
         alignment: center;
@@ -529,7 +530,7 @@ component MessageView inherits VerticalLayout {
                 height: parent.height;
                 pointer-event(event) => {
                     if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down && !root.selecting) {
-                        root.start-select();
+                        root.stop-select();
                     }
                     if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
                         root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
@@ -911,34 +912,59 @@ component DangerButton inherits Rectangle {
 // A dialog box over a dimmed window; a click outside closes it.
 component Modal inherits Rectangle {
     in property <string> title;
+    in property <length> box-width: 420px;
     callback close();
     background: #00000073;
+    // Swallows clicks and the wheel: neither may reach the window below.
     TouchArea {
         clicked => {
             root.close();
+        }
+        scroll-event(event) => {
+            accept
         }
     }
     Rectangle {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        width: min(420px, parent.width - 32px);
-        height: body.preferred-height;
+        width: min(root.box-width, parent.width - 32px);
+        // Never taller than the window: a long dialog scrolls inside.
+        height: min(body.preferred-height, parent.height - 32px);
         border-radius: 12px;
         background: Theme.raised;
         drop-shadow-blur: 30px;
         drop-shadow-color: #00000080;
+        clip: true;
         TouchArea { }
-        body := VerticalLayout {
-            padding: 22px;
-            spacing: 16px;
-            Text {
-                text: root.title;
-                color: Theme.text;
-                font-size: 18px;
-                font-weight: 600;
+        // Scrolled by hand: a wheel over the dialog never reached Slint's own
+        // scrolling here. The touch area under the content takes the wheel
+        // wherever the content itself does not (text, gaps, rows).
+        flick := Flickable {
+            width: parent.width;
+            height: parent.height;
+            content-height: body.preferred-height;
+            interactive: false;
+            TouchArea {
+                width: parent.width;
+                height: body.preferred-height;
+                scroll-event(event) => {
+                    flick.content-y = max(min(0px, flick.height - body.preferred-height), min(0px, flick.content-y + event.delta-y));
+                    accept
+                }
             }
+            body := VerticalLayout {
+                width: parent.width;
+                padding: 22px;
+                spacing: 16px;
+                Text {
+                    text: root.title;
+                    color: Theme.text;
+                    font-size: 18px;
+                    font-weight: 600;
+                }
 
-            @children
+                @children
+            }
         }
     }
 }
@@ -1097,34 +1123,35 @@ export component AppWindow inherits Window {
     // scrolling and made the list jerk.
     // It stops once the estimate has held for three ticks (at most ~1 s):
     // tall channel posts take a while to be measured.
-    // Slint scrolls a whole wheel notch in one frame, which reads as jerky;
-    // the same distance is spread over a few frames, easing out. A property
-    // animation drives it (animations advance once per rendered frame,
-    // unlike a Timer, whose ~15.6 ms Windows ticks drift against the
-    // display). Each frame applies only the step since the last frame, not a
-    // target position: the ListView re-anchors its content-y while it
-    // measures rows, and a fixed target would fight that.
-    property <length> wheel-target;
-    property <length> wheel-pos;
-    property <length> wheel-applied;
-    animate wheel-pos {
-        duration: 90ms;
-        easing: ease-out;
-    }
+    // Slint scrolls a whole wheel notch in one frame, which reads as jerky.
+    // Each notch adds to the distance still to go, and every rendered frame
+    // covers a share of it that depends on the frame time (half of it every
+    // 35 ms). Spinning the wheel keeps the motion going without the stops
+    // ("steps") that restarting an ease-out animation per notch produced.
+    // Relative steps, not a target position: the ListView re-anchors its
+    // content-y while it measures rows, and a fixed target would fight that.
+    property <length> wheel-pending;
+    property <duration> wheel-last;
+    // Reading animation-tick() makes this change on every frame, but only
+    // while there is distance left; otherwise the window stays idle.
+    property <duration> wheel-clock: abs(root.wheel-pending) > 0.5px ? animation-tick() : 0ms;
     public function smooth-scroll(dy: length) {
         root.settle-frames = 0;
-        root.wheel-target += dy;
-        root.wheel-pos = root.wheel-target;
+        root.wheel-pending += dy;
     }
-    changed wheel-pos => {
-        let step = root.wheel-pos - root.wheel-applied;
-        root.wheel-applied = root.wheel-pos;
-        let lowest = min(0px, history.visible-height - history.content-height);
-        let wanted = history.content-y + step;
-        history.content-y = max(lowest, min(0px, wanted));
-        // At an end: drop the rest of the motion instead of pushing against it.
-        if (wanted != history.content-y) {
-            root.wheel-target = root.wheel-pos;
+    changed wheel-clock => {
+        if (root.wheel-clock == 0ms) {
+            root.wheel-last = 0ms;
+        } else {
+            let dt = root.wheel-last == 0ms ? 16ms : max(1ms, min(50ms, root.wheel-clock - root.wheel-last));
+            root.wheel-last = root.wheel-clock;
+            let share = 1 - pow(0.5, (dt / 1ms) / 35);
+            let step = abs(root.wheel-pending) < 1px ? root.wheel-pending : root.wheel-pending * share;
+            let lowest = min(0px, history.visible-height - history.content-height);
+            let wanted = history.content-y + step;
+            history.content-y = max(lowest, min(0px, wanted));
+            // At an end the rest of the motion is dropped.
+            root.wheel-pending = wanted == history.content-y ? root.wheel-pending - step : 0px;
         }
     }
 
@@ -1155,6 +1182,39 @@ export component AppWindow inherits Window {
             root.settle-frames = root.stable-frames >= 3 ? 0 : root.settle-frames - 1;
         }
     }
+
+    callback close-chat();
+    // Esc peels one layer at a time, as in Telegram Desktop: an open menu or
+    // dialog, the reply/edit strip, then the open chat.
+    forward-focus: keys;
+    keys := FocusScope {
+        width: root.width;
+        height: root.height;
+        capture-key-pressed(event) => {
+            if (event.text != Key.Escape) {
+                return reject;
+            }
+            if (root.menu-open) {
+                root.menu-open = false;
+            } else if (root.confirm-open) {
+                root.confirm-done(false);
+            } else if (root.forward-open) {
+                root.forward-open = false;
+            } else if (root.saver-open) {
+                root.saver-open = false;
+            } else if (root.settings-open) {
+                root.settings-open = false;
+            } else if (root.drawer-open) {
+                root.drawer-open = false;
+            } else if (root.bar-mode != "") {
+                root.bar-cancel();
+            } else if (root.chat-open) {
+                root.close-chat();
+            } else {
+                return reject;
+            }
+            accept
+        }
 
     if root.stage != "ready": LoginCard {
         stage: root.stage;
@@ -1444,8 +1504,8 @@ export component AppWindow inherits Window {
                                         root.smooth-scroll(dy);
                                     }
                                     selecting: root.selecting-id == m.id;
-                                    start-select => {
-                                        root.selecting-id = m.id;
+                                    stop-select => {
+                                        root.selecting-id = -1;
                                     }
                                 }
                             }
@@ -1659,6 +1719,9 @@ export component AppWindow inherits Window {
             clicked => {
                 root.drawer-open = false;
             }
+            scroll-event(event) => {
+                accept
+            }
         }
     }
     if root.drawer-open: Rectangle {
@@ -1668,7 +1731,11 @@ export component AppWindow inherits Window {
         background: Theme.raised;
         drop-shadow-blur: 20px;
         drop-shadow-color: #00000066;
-        TouchArea { }
+        TouchArea {
+            scroll-event(event) => {
+                accept
+            }
+        }
         VerticalLayout {
             VerticalLayout {
                 // Only the spacer above the version takes the free height.
@@ -1772,6 +1839,8 @@ export component AppWindow inherits Window {
 
     // ---- Settings
     if root.settings-open: Modal {
+        width: root.width;
+        height: root.height;
         title: "Настройки";
         close => {
             root.settings-open = false;
@@ -1862,6 +1931,9 @@ export component AppWindow inherits Window {
 
     // ---- Memory saver
     if root.saver-open: Modal {
+        width: root.width;
+        height: root.height;
+        box-width: 640px;
         title: "Экономия памяти";
         close => {
             root.saver-open = false;
@@ -1923,21 +1995,12 @@ export component AppWindow inherits Window {
             }
         }
 
-        HorizontalLayout {
-            alignment: end;
-            Button {
-                kind: "ghost";
-                text: "Закрыть";
-                width: 110px;
-                clicked => {
-                    root.saver-open = false;
-                }
-            }
-        }
     }
 
     // ---- Forward picker
     if root.forward-open: Modal {
+        width: root.width;
+        height: root.height;
         title: "Переслать в…";
         close => {
             root.forward-open = false;
@@ -1994,6 +2057,8 @@ export component AppWindow inherits Window {
 
     // ---- Confirmation
     if root.confirm-open: Modal {
+        width: root.width;
+        height: root.height;
         title: root.confirm-title;
         close => {
             root.confirm-done(false);
@@ -2071,6 +2136,10 @@ export component AppWindow inherits Window {
                 root.menu-open = false;
             }
         }
+        scroll-event(event) => {
+            root.menu-open = false;
+            accept
+        }
     }
     if root.menu-open: Rectangle {
         width: 220px;
@@ -2145,5 +2214,6 @@ export component AppWindow inherits Window {
             color: Theme.text;
             font-size: 14px;
         }
+    }
     }
 }
