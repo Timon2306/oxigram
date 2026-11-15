@@ -1239,23 +1239,9 @@ export component AppWindow inherits Window {
             horizontal-stretch: 1;
             background: @linear-gradient(180deg, #0e1621 0%, #0b121a 100%);
             clip: true;
-            // Soft glows, as in the WebView's --chat-bg.
-            Rectangle {
-                x: parent.width * 0.15 - 450px;
-                y: -260px;
-                width: 900px;
-                height: 520px;
-                background: @radial-gradient(circle, #14212f 0%, #14212f00 70%);
-            }
-
-            Rectangle {
-                x: parent.width * 0.95 - 400px;
-                y: parent.height - 280px;
-                width: 800px;
-                height: 560px;
-                background: @radial-gradient(circle, #121e2b 0%, #121e2b00 70%);
-            }
-
+            // No radial glows as in the WebView's --chat-bg: the software
+            // renderer computes gradients per pixel on every frame, and the two
+            // glows alone pushed a scrolling frame from under 16 ms to ~20 ms.
             Image {
                 width: parent.width;
                 height: parent.height;
