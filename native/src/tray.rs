@@ -142,6 +142,21 @@ pub fn show_window(ui: &AppWindow) {
         w.set_visible(true);
         w.focus_window();
     });
+    repaint_all(ui);
+}
+
+/// Repaints the whole window, now and again shortly after (the first frame
+/// after showing can come before the surface is ready).
+pub fn repaint_all(ui: &AppWindow) {
+    ui.set_repaint_flip(!ui.get_repaint_flip());
+    for delay in [60, 300] {
+        let weak = ui.as_weak();
+        slint::Timer::single_shot(std::time::Duration::from_millis(delay), move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_repaint_flip(!ui.get_repaint_flip());
+            }
+        });
+    }
 }
 
 fn toggle_mute() {
@@ -152,6 +167,15 @@ fn toggle_mute() {
         app.settings.save();
     });
     sync_icon();
+}
+
+/// `repaint_all` from inside a winit event, where the window is borrowed.
+fn repaint_soon() {
+    slint::Timer::single_shot(std::time::Duration::ZERO, || {
+        if let Some(ui) = crate::ui() {
+            repaint_all(&ui);
+        }
+    });
 }
 
 /// Creates the tray, hooks window close and focus, and starts the poll timer.
@@ -168,7 +192,14 @@ pub fn init(ui: &AppWindow) -> slint::Timer {
     });
     ui.window().on_winit_window_event(|_, event| {
         match event {
-            winit::event::WindowEvent::Focused(on) => notify::set_focused(*on),
+            winit::event::WindowEvent::Focused(on) => {
+                notify::set_focused(*on);
+                if *on {
+                    repaint_soon();
+                }
+            }
+            // Restored or uncovered: the old picture may be gone.
+            winit::event::WindowEvent::Occluded(false) => repaint_soon(),
             // Files dragged onto the window (see sending.rs).
             winit::event::WindowEvent::DroppedFile(path) => crate::sending::dropped(path.clone()),
             winit::event::WindowEvent::HoveredFile(_) => crate::sending::hover(true),

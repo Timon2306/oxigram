@@ -1762,7 +1762,11 @@ export component AppWindow inherits Window {
     preferred-height: 680px;
     min-width: 640px;
     min-height: 480px;
-    background: Theme.bg;
+    // Flipped by Rust to repaint the whole window: the software renderer
+    // redraws only changed areas, and a window shown again from the tray has
+    // lost its old picture (it came back transparent until hovered).
+    in property <bool> repaint-flip;
+    background: root.repaint-flip ? #0e1622 : Theme.bg;
     default-font-family: "Open Sans";
     default-font-size: 15px;
 
