@@ -168,6 +168,15 @@ pub fn wire(window: &AppWindow) {
             "avatars" => apply_avatars(on),
             "muteAll" => crate::notify::set_mute_all(on),
             "prefetchChats" if on => crate::prefetch_top(),
+            // Custom emoji reactions: pictures, or one ✨ for all of them.
+            "customEmoji" => {
+                with_app(|app| {
+                    if !on {
+                        crate::reactions::drop_pictures(app);
+                    }
+                    app.refresh_all_rows();
+                });
+            }
             // Cells waiting for a click start loading, or the other way round.
             "autoloadImages" => {
                 with_app(|app| app.refresh_all_rows());
