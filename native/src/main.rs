@@ -9,6 +9,7 @@
 // No console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod autostart;
 mod context_menu;
 mod format;
 mod menus;
@@ -18,6 +19,7 @@ mod notify;
 mod proxy;
 mod reactions;
 mod settings;
+mod single;
 mod tray;
 mod typing;
 mod video;
@@ -183,6 +185,10 @@ fn main() {
         eprintln!("no per-user folders on this system");
         return;
     };
+    // One copy per profile: a second launch wakes the first and leaves.
+    if matches!(single::claim(&config.join(APP_ID)), single::Role::Second) {
+        return;
+    }
     settings::set_dir(config.join(APP_ID));
     let _ = TELEGRAM.set(Telegram::new(
         config.join(APP_ID),
@@ -304,6 +310,16 @@ fn main() {
     // window so the app can sit in the tray.
     ui.show().expect("window");
     let _tray_timer = tray::init(&ui);
+    single::listen(&ui);
+    autostart::sync(with_app(|app| app.settings.autostart).unwrap_or(false));
+    if autostart::launched_by_system() {
+        // Quietly in the tray; without a tray, minimized.
+        if tray::available() {
+            let _ = ui.hide();
+        } else {
+            ui.window().set_minimized(true);
+        }
+    }
     slint::run_event_loop_until_quit().expect("event loop");
 }
 

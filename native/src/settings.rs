@@ -42,6 +42,8 @@ pub struct Settings {
     /// "Выключить все уведомления": no system notifications at all.
     #[serde(rename = "muteAll")]
     pub mute_all: bool,
+    /// Start with the system, hidden in the tray.
+    pub autostart: bool,
 }
 
 impl Default for Settings {
@@ -54,6 +56,7 @@ impl Default for Settings {
             prefetch_chats: true,
             gpu_render: false,
             mute_all: false,
+            autostart: false,
         }
     }
 }
@@ -93,6 +96,7 @@ impl Settings {
             "prefetchChats" => &mut self.prefetch_chats,
             "gpuRender" => &mut self.gpu_render,
             "muteAll" => &mut self.mute_all,
+            "autostart" => &mut self.autostart,
             _ => return None,
         })
     }
@@ -132,6 +136,11 @@ impl Settings {
                 "Выключить все уведомления",
                 "Системные уведомления о новых сообщениях не показываются.",
             ),
+            (
+                "autostart",
+                "Запускать вместе с системой",
+                "Oxigram стартует при входе в систему и ждёт в трее, окно не открывается.",
+            ),
         ];
         rows.into_iter()
             .map(|(key, title, note)| SaverOption {
@@ -167,6 +176,7 @@ pub fn wire(window: &AppWindow) {
         match key.as_str() {
             "avatars" => apply_avatars(on),
             "muteAll" => crate::notify::set_mute_all(on),
+            "autostart" => crate::autostart::set(on),
             "prefetchChats" if on => crate::prefetch_top(),
             // Custom emoji reactions: pictures, or one ✨ for all of them.
             "customEmoji" => {
