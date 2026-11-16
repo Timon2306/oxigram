@@ -20,3 +20,5 @@ vite.config.ts.timestamp-*
 
 # Demo screenshots are regenerated on demand
 demo/screens/
+# Worktree build output
+/target-wt

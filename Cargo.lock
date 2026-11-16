@@ -5333,6 +5333,7 @@ dependencies = [
  "serde_json",
  "slint",
  "slint-build",
+ "tauri-winres",
  "tokio",
  "tray-icon",
  "windows",

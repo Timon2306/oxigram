@@ -42,16 +42,61 @@ impl Notifier for SystemNotifier {
             return;
         }
         // Errors (no notification service, Windows 7) are not worth a crash.
-        let _ = notify_rust::Notification::new()
-            .appname("Oxigram")
-            .summary(&title)
-            .body(&body)
-            .show();
+        let mut n = notify_rust::Notification::new();
+        n.appname("Oxigram").summary(&title).body(&body);
+        #[cfg(windows)]
+        n.app_id(APP_USER_MODEL_ID);
+        let _ = n.show();
     }
 }
 
 /// Registers the notifier with the core; once at start-up.
 pub fn install(ui: &oxigram_core::updates::UiSink, mute_all: bool) {
+    #[cfg(windows)]
+    win_identity::register();
     MUTE_ALL.store(mute_all, Ordering::Relaxed);
     ui.set_notifier(Box::new(SystemNotifier));
+}
+
+/// Same as APP_ID in main.rs and the installer's shortcut.
+#[cfg(windows)]
+const APP_USER_MODEL_ID: &str = "app.oxigram.desktop";
+
+/// Windows shows a toast under the name registered for its AppUserModelID.
+/// The installer's Start-menu shortcut does it for installed copies; this also
+/// covers a portable exe.
+#[cfg(windows)]
+mod win_identity {
+    use windows::Win32::System::Registry::{
+        HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey,
+        RegCreateKeyExW, RegSetValueExW,
+    };
+    use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+    use windows::core::{HSTRING, PCWSTR, w};
+
+    pub fn register() {
+        unsafe {
+            let _ = SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(super::APP_USER_MODEL_ID));
+            let mut key = HKEY::default();
+            let path = HSTRING::from(format!(r"Software\Classes\AppUserModelId\{}", super::APP_USER_MODEL_ID));
+            if RegCreateKeyExW(
+                HKEY_CURRENT_USER,
+                &path,
+                None,
+                PCWSTR::null(),
+                REG_OPTION_NON_VOLATILE,
+                KEY_SET_VALUE,
+                None,
+                &mut key,
+                None,
+            )
+            .is_err()
+            {
+                return;
+            }
+            let name: Vec<u8> = "Oxigram\0".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+            let _ = RegSetValueExW(key, w!("DisplayName"), None, REG_SZ, Some(&name));
+            let _ = RegCloseKey(key);
+        }
+    }
 }
