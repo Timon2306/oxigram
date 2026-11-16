@@ -28,7 +28,7 @@ static AVAILABLE: AtomicBool = AtomicBool::new(false);
 /// The tooltip the tray should show; the Linux GTK thread reads it.
 static TOOLTIP: Mutex<String> = Mutex::new(String::new());
 
-fn available() -> bool {
+pub fn available() -> bool {
     AVAILABLE.load(Ordering::Relaxed)
 }
 
@@ -134,7 +134,7 @@ fn sync_icon() {
 }
 
 /// Shows, restores and focuses the window.
-fn show_window(ui: &AppWindow) {
+pub fn show_window(ui: &AppWindow) {
     let window = ui.window();
     let _ = ui.show();
     window.set_minimized(false);
