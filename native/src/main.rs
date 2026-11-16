@@ -18,6 +18,7 @@ mod pictures;
 mod notify;
 mod proxy;
 mod reactions;
+mod select;
 mod sending;
 mod settings;
 mod single;
@@ -125,6 +126,8 @@ struct App {
     allowed: reactions::Allowed,
     /// Width of the widest bubble, for wrapping reaction chips.
     reaction_width: f32,
+    /// Bubbles picked in selection mode, by their first message's ID.
+    selected: Vec<i32>,
 }
 
 thread_local! {
@@ -246,6 +249,7 @@ fn main() {
             emoji: reactions::Emoji::default(),
             allowed: reactions::Allowed::default(),
             reaction_width: 300.0,
+            selected: Vec::new(),
         })
     });
     let bench = std::env::var_os("OXIGRAM_BENCH").is_some();
@@ -284,6 +288,7 @@ fn main() {
     context_menu::wire(&ui);
     pictures::wire(&ui);
     reactions::wire(&ui);
+    select::wire(&ui);
     proxy::wire(&ui);
 
     // Expires "печатает…" entries; does nothing while nobody types.
@@ -448,6 +453,10 @@ fn wire_main(ui: &AppWindow) {
             app.generation += 1;
             app.compose = messages::Compose::None;
             app.thumbs.clear();
+            app.selected.clear();
+            if let Some(ui) = app.ui.upgrade() {
+                ui.set_select_mode(false);
+            }
             app.set_messages(Vec::new());
             if let Some(ui) = app.ui.upgrade() {
                 ui.set_chat_open(false);
@@ -635,6 +644,10 @@ fn open_chat(peer: i64) {
         app.messages.clear();
         app.message_model.clear();
         app.thumbs.clear();
+        app.selected.clear();
+        if let Some(ui) = app.ui.upgrade() {
+            ui.set_select_mode(false);
+        }
         app.history_done = false;
         app.history_loading = true;
         app.compose = messages::Compose::None;
@@ -1064,6 +1077,7 @@ impl App {
             hidden: false,
             wide,
             reactions: reaction_rows,
+            selected: self.selected.contains(&m.id),
             time: format::time(m.date).into(),
             outgoing: m.outgoing,
             ticks,
@@ -1131,6 +1145,12 @@ impl App {
             self.refresh_row(index);
             return;
         }
+        // Decided before the list grows: own messages and further parts of
+        // an album that is being followed keep the view at the bottom (an
+        // album arrives one message at a time and its bubble grows).
+        let same_album = row.grouped_id.is_some()
+            && self.messages.last().is_some_and(|last| last.grouped_id == row.grouped_id);
+        let stick = self.ui.upgrade().is_some_and(|ui| ui.get_stick_bottom()) || row.outgoing || same_album;
         self.messages.push(row);
         let index = self.messages.len() - 1;
         self.message_model.push(self.item(index));
@@ -1139,9 +1159,27 @@ impl App {
             self.refresh_row(prev);
         }
         // Follow new messages only when the user is already at the bottom.
-        if let Some(ui) = self.ui.upgrade()
-            && ui.get_stick_bottom()
-        {
+        if stick && let Some(ui) = self.ui.upgrade() {
+            ui.invoke_scroll_to_bottom();
+        }
+    }
+
+    /// Takes messages out of the open chat; a view at the bottom stays there
+    /// (otherwise it would jump as the list gets shorter).
+    pub(crate) fn remove_ids(&mut self, ids: &[i32]) {
+        let stick = self.ui.upgrade().is_some_and(|ui| ui.get_stick_bottom());
+        let mut removed = false;
+        while let Some(index) = self.messages.iter().position(|m| ids.contains(&m.id)) {
+            self.messages.remove(index);
+            self.message_model.remove(index);
+            if let Some(prev) = index.checked_sub(1) {
+                self.refresh_row(prev);
+            }
+            self.refresh_row(index);
+            removed = true;
+        }
+        self.selected.retain(|id| !ids.contains(id));
+        if removed && stick && let Some(ui) = self.ui.upgrade() {
             ui.invoke_scroll_to_bottom();
         }
     }
@@ -1221,14 +1259,7 @@ impl App {
                 UiEvent::Deleted { peer_id, ids } => {
                     let here = peer_id.is_none_or(|peer| self.chat == Some(peer));
                     if here {
-                        while let Some(index) = self.messages.iter().position(|m| ids.contains(&m.id)) {
-                            self.messages.remove(index);
-                            self.message_model.remove(index);
-                            if let Some(prev) = index.checked_sub(1) {
-                                self.refresh_row(prev);
-                            }
-                            self.refresh_row(index);
-                        }
+                        self.remove_ids(&ids);
                     }
                 }
                 UiEvent::ReadOutbox { peer_id, max_id } => {

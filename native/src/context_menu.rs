@@ -21,6 +21,8 @@ const SELECT: &str = "M9 4h6M9 20h6M12 4v16";
 pub(crate) const COPY: &str = "M8 8h11v12H8zM5 16V4h11";
 const EDIT: &str = "M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4";
 pub(crate) const FORWARD: &str = "M14 7l6 5-6 5v-3c-5 0-8 1-10 5 0-6 3-10 10-10V7z";
+/// A ticked circle.
+const CHOOSE: &str = "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12.5l3 3 5-6";
 pub(crate) const SAVE: &str = "M12 4v11M7 10l5 5 5-5M5 19h14";
 const MUTE: &str = "M11 5 6 9H3v6h3l5 4V5zM16 9l5 6M21 9l-5 6";
 const UNMUTE: &str = "M11 5 6 9H3v6h3l5 4V5zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13";
@@ -126,6 +128,7 @@ pub fn wire(ui: &AppWindow) {
             items.push(entry("pin", "Закрепить", PIN));
         }
         items.push(entry("forward", "Переслать", FORWARD));
+        items.push(entry("choose", "Выбрать", CHOOSE));
         if can_post {
             items.push(separator());
             items.push(danger("delete", "Удалить", DELETE));
@@ -141,6 +144,7 @@ pub fn wire(ui: &AppWindow) {
         match target {
             Some(MenuTarget::Dialog(peer)) => menus::dialog_action(peer, id.as_str()),
             Some(MenuTarget::Message(message)) if id == "copy-image" => crate::pictures::copy_message_image(message),
+            Some(MenuTarget::Message(message)) if id == "choose" => crate::select::start(message),
             Some(MenuTarget::Message(message)) => messages::message_action(message, id),
             Some(MenuTarget::Viewer(message)) => crate::pictures::viewer_action(message, id.as_str()),
             None => {}

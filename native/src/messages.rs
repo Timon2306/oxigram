@@ -56,16 +56,15 @@ pub(crate) fn message_action(id: i32, name: SharedString) {
                 },
             );
         }
+        // An album goes as a whole.
         "forward" => {
-            with_app(|app| {
-                app.forward_ids = vec![id];
-                app.fill_forward("");
-                if let Some(ui) = app.ui.upgrade() {
-                    ui.set_forward_open(true);
-                }
-            });
+            let ids = with_app(|app| app.with_albums(&[id])).unwrap_or_default();
+            open_forward(ids);
         }
-        "delete" => ask_delete(&row),
+        "delete" => {
+            let ids = with_app(|app| app.with_albums(&[row.id])).unwrap_or_default();
+            ask_delete(ids, false);
+        }
         _ => {}
     }
 }
@@ -132,30 +131,66 @@ fn cancel_compose() {
     });
 }
 
-fn ask_delete(row: &MessageRow) {
-    let peer = row.peer_id;
-    let id = row.id;
-    let Some(kind) = with_app(|app| app.chat_kind().to_owned()) else { return };
+/// Opens the forward picker for these messages.
+pub(crate) fn open_forward(ids: Vec<i32>) {
+    with_app(|app| {
+        app.forward_ids = ids;
+        app.fill_forward("");
+        if let Some(ui) = app.ui.upgrade() {
+            ui.set_forward_open(true);
+        }
+    });
+}
+
+/// Asks, then deletes these messages (one bubble, an album or a selection).
+/// `selection`: leave selection mode once done.
+pub(crate) fn ask_delete(ids: Vec<i32>, selection: bool) {
+    let Some(Some((peer, kind, all_own, bubbles))) = with_app(|app| {
+        let peer = app.chat?;
+        let all_own = ids.iter().all(|id| app.messages.iter().find(|m| m.id == *id).is_some_and(|m| m.outgoing));
+        let bubbles = if selection { app.selected.len() } else { 1 };
+        Some((peer, app.chat_kind().to_owned(), all_own, bubbles))
+    }) else {
+        return;
+    };
     let big = peer <= -1_000_000_000_000;
-    let check = if !big && row.outgoing && kind != "saved" {
+    let check = if !big && all_own && kind != "saved" {
         if kind == "user" { "Удалить также у собеседника" } else { "Удалить также у всех" }
     } else {
         ""
     };
+    let title = if bubbles > 1 {
+        format!("Удалить {bubbles} {}?", format::plural(bubbles as i64, "сообщение", "сообщения", "сообщений"))
+    } else {
+        "Удалить сообщение?".to_owned()
+    };
     crate::menus::confirm(
-        "Удалить сообщение?",
+        &title,
         "Это действие нельзя отменить.",
         "Удалить",
         check,
         move |checked| {
             let for_everyone = big || (!check.is_empty() && checked);
+            // Gone from the chat at once, as in the official apps: the request
+            // can take a while (a connection that slept reconnects first).
+            with_app(|app| {
+                for id in &ids {
+                    app.remove_message(peer, *id);
+                }
+                if selection {
+                    app.clear_selection();
+                }
+            });
             run(
-                async move { actions::delete_messages(tg(), peer, &[id], for_everyone).await },
-                move |done| match done {
-                    Ok(()) => {
-                        with_app(|app| app.remove_message(peer, id));
+                async move { actions::delete_messages(tg(), peer, &ids, for_everyone).await },
+                move |done| {
+                    if let Err(err) = done {
+                        crate::menus::toast(&format!("Не удалось удалить: {}", format::error(&err)));
+                        // Bring the messages back by reloading the chat.
+                        if with_app(|app| app.chat == Some(peer)).unwrap_or(false) {
+                            crate::open_chat(peer);
+                        }
                     }
-                    Err(err) => crate::menus::toast(&format::error(&err)),
                 },
             );
         },
@@ -245,7 +280,7 @@ fn send_text(text: SharedString) {
 impl App {
     /// Fills the forward picker: active chats first, then the archive, narrowed
     /// by `needle` (lowercase part of a title).
-    fn fill_forward(&mut self, needle: &str) {
+    pub(crate) fn fill_forward(&mut self, needle: &str) {
         let rows: Vec<&oxigram_core::store::chats::DialogRow> = self
             .dialogs
             .iter()
@@ -276,14 +311,7 @@ impl App {
                 }
             }
         }
-        if let Some(index) = self.messages.iter().position(|m| m.id == id) {
-            self.messages.remove(index);
-            self.message_model.remove(index);
-            if let Some(prev) = index.checked_sub(1) {
-                self.refresh_row(prev);
-            }
-            self.refresh_row(index);
-        }
+        self.remove_ids(&[id]);
     }
 
     /// Shows the text of an edit that Telegram accepted; the live `Edited`

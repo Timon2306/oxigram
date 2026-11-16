@@ -137,6 +137,8 @@ export struct MessageItem {
     // Channel posts: every bubble as wide as the column allows
     wide: bool,
     reactions: [ReactionRow],
+    // Picked in selection mode
+    selected: bool,
 }
 
 global Theme {
@@ -701,6 +703,9 @@ component MessageView inherits VerticalLayout {
     callback open-picture(int);
     callback react(int, string);
     callback want-emoji(string);
+    // Selection mode: a click on the bubble picks it instead of acting.
+    in property <bool> select-mode;
+    callback pick(int);
     padding-top: root.m.hidden || root.m.day != "" ? 0 : root.m.joined ? 2px : 8px;
     if root.m.day != "": HorizontalLayout {
         alignment: center;
@@ -783,7 +788,9 @@ component MessageView inherits VerticalLayout {
                 width: parent.width;
                 height: parent.height;
                 pointer-event(event) => {
-                    if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down && !root.selecting) {
+                    if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down && root.select-mode) {
+                        root.pick(root.m.id);
+                    } else if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down && !root.selecting) {
                         root.stop-select();
                     }
                     if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
@@ -815,7 +822,11 @@ component MessageView inherits VerticalLayout {
                     root.want-picture(id);
                 }
                 open(id) => {
-                    root.open-picture(id);
+                    if (root.select-mode) {
+                        root.pick(root.m.id);
+                    } else {
+                        root.open-picture(id);
+                    }
                 }
                 context(x, y) => {
                     root.context(x, y);
@@ -1836,6 +1847,14 @@ export component AppWindow inherits Window {
     callback want-emoji(string);
     // The widest bubble changed (window resized): reaction rows rewrap.
     callback reaction-width(length);
+    // Selection of several messages
+    in property <bool> select-mode;
+    in property <int> selected-count;
+    in property <bool> select-can-delete;
+    callback pick-message(int);
+    callback select-forward();
+    callback select-delete();
+    callback select-cancel();
 
     // Reply / edit bar above the composer: mode "", "reply" or "edit"
     in property <string> bar-mode;
@@ -2094,6 +2113,8 @@ export component AppWindow inherits Window {
                 root.settings-open = false;
             } else if (root.drawer-open) {
                 root.drawer-open = false;
+            } else if (root.select-mode) {
+                root.select-cancel();
             } else if (root.bar-mode != "") {
                 root.bar-cancel();
             } else if (root.chat-open) {
@@ -2329,6 +2350,52 @@ export component AppWindow inherits Window {
                         height: 1px;
                         background: Theme.border;
                     }
+
+                    // Selection mode: the header becomes the actions bar.
+                    if root.select-mode: Rectangle {
+                        background: Theme.raised;
+                        TouchArea { }
+                        HorizontalLayout {
+                            padding-left: 16px;
+                            padding-right: 10px;
+                            padding-top: 6px;
+                            padding-bottom: 6px;
+                            spacing: 8px;
+                            Text {
+                                text: "Выбрано: " + root.selected-count;
+                                color: Theme.text;
+                                font-size: 16px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                            }
+
+                            Button {
+                                kind: "ghost";
+                                text: "Переслать";
+                                width: 120px;
+                                clicked => {
+                                    root.select-forward();
+                                }
+                            }
+
+                            if root.select-can-delete: DangerButton {
+                                text: "Удалить";
+                                clicked => {
+                                    root.select-delete();
+                                }
+                            }
+
+                            Button {
+                                kind: "ghost";
+                                text: "Отмена";
+                                width: 100px;
+                                clicked => {
+                                    root.select-cancel();
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Rectangle {
@@ -2380,8 +2447,15 @@ export component AppWindow inherits Window {
                         property <length> side: (self.visible-width - self.column-width) / 2 + 16px;
                         for m[index] in root.messages: Rectangle {
                             height: row.preferred-height;
+                            // A picked row is tinted across the whole width, as in Telegram.
+                            background: m.selected ? #2b527866 : transparent;
                             // The wheel over a row scrolls smoothly (see smooth-scroll).
                             TouchArea {
+                                clicked => {
+                                    if (root.select-mode && !m.hidden) {
+                                        root.pick-message(m.id);
+                                    }
+                                }
                                 scroll-event(event) => {
                                     root.smooth-scroll(event.delta-y);
                                     accept
@@ -2417,6 +2491,10 @@ export component AppWindow inherits Window {
                                     }
                                     want-emoji(id) => {
                                         root.want-emoji(id);
+                                    }
+                                    select-mode: root.select-mode;
+                                    pick(id) => {
+                                        root.pick-message(id);
                                     }
                                 }
                             }
