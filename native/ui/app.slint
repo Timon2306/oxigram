@@ -2066,7 +2066,9 @@ export component AppWindow inherits Window {
                 return accept;
             }
             // Ctrl+V of pictures or files from the clipboard (text pastes as usual).
-            if ((event.text == "v" || event.text == "V") && (event.modifiers.control || event.modifiers.meta) && root.paste-files()) {
+            // The key comes as "м" in the Russian layout, or as the control
+            // character U+0016 on some systems.
+            if ((event.text == "v" || event.text == "V" || event.text == "м" || event.text == "М" || event.text == "\u{16}") && (event.modifiers.control || event.modifiers.meta) && root.paste-files()) {
                 return accept;
             }
             if (event.text != Key.Escape) {
