@@ -386,6 +386,17 @@ pub async fn send_file(
     file: OutgoingFile,
     bytes: Vec<u8>,
 ) -> Result<MessageRow, UiError> {
+    send_file_with_thumb(tg, file, bytes, None).await
+}
+
+/// Like [`send_file`]; `thumb` is a small JPEG shown as the preview of a
+/// video (ignored for photos and plain files).
+pub async fn send_file_with_thumb(
+    tg: &Telegram,
+    file: OutgoingFile,
+    bytes: Vec<u8>,
+    thumb: Option<Vec<u8>>,
+) -> Result<MessageRow, UiError> {
     use grammers_client::message::InputMessage;
 
     if file.caption.encode_utf16().count() > 1024 {
@@ -394,6 +405,10 @@ pub async fn send_file(
     let handles = tg.handles().await?;
     let peer = resolve_peer(&handles, file.peer_id).await?;
     let uploaded = upload(tg, &handles, &file.name, &file.token, bytes).await?;
+    let thumb = match thumb.filter(|_| !file.as_photo && file.video.is_some()) {
+        Some(bytes) => Some(upload(tg, &handles, "thumb.jpg", &format!("{}#thumb", file.token), bytes).await?),
+        None => None,
+    };
 
     let (caption, entities) = crate::markup::parse(file.caption.trim());
     let message = InputMessage::new()
@@ -405,7 +420,7 @@ pub async fn send_file(
     } else if let Some((seconds, w, h)) = file.video {
         // Without this attribute Telegram files the upload under documents:
         // no inline player, no preview, in every client.
-        message
+        let message = message
             .document(uploaded)
             .attribute(grammers_client::media::Attribute::Video {
                 round_message: false,
@@ -413,7 +428,11 @@ pub async fn send_file(
                 duration: std::time::Duration::from_secs(seconds),
                 w,
                 h,
-            })
+            });
+        match thumb {
+            Some(thumb) => message.thumbnail(thumb),
+            None => message,
+        }
     } else {
         message.document(uploaded)
     };
@@ -455,13 +474,43 @@ async fn upload(
 
 /// Uploads one file of an album and keeps it until `send_album` asks for it.
 pub async fn upload_file(tg: &Telegram, name: &str, token: &str, bytes: Vec<u8>) -> Result<(), UiError> {
+    upload_file_with_thumb(tg, name, token, bytes, None).await
+}
+
+/// Like [`upload_file`]; `thumb` is a small JPEG preview for a video, kept
+/// under `"{token}#thumb"` for `send_album`.
+pub async fn upload_file_with_thumb(
+    tg: &Telegram,
+    name: &str,
+    token: &str,
+    bytes: Vec<u8>,
+    thumb: Option<Vec<u8>>,
+) -> Result<(), UiError> {
     let handles = tg.handles().await?;
     let uploaded = upload(tg, &handles, name, token, bytes).await?;
-    tg.uploads
+    let thumb = match thumb {
+        Some(bytes) => Some(upload(tg, &handles, "thumb.jpg", &format!("{token}#thumb"), bytes).await?),
+        None => None,
+    };
+    let mut waiting = tg
+        .uploads
         .lock()
-        .map_err(|_| UiError::internal("uploads lock is poisoned"))?
-        .insert(token.to_owned(), uploaded);
+        .map_err(|_| UiError::internal("uploads lock is poisoned"))?;
+    waiting.insert(token.to_owned(), uploaded);
+    if let Some(thumb) = thumb {
+        waiting.insert(format!("{token}#thumb"), thumb);
+    }
     Ok(())
+}
+
+/// Forgets uploads that will never be sent (the user cancelled).
+pub fn discard_uploads(tg: &Telegram, tokens: &[String]) {
+    if let Ok(mut waiting) = tg.uploads.lock() {
+        for token in tokens {
+            waiting.remove(token);
+            waiting.remove(&format!("{token}#thumb"));
+        }
+    }
 }
 
 /// One file of an album, already uploaded under `token`.
@@ -488,6 +537,7 @@ pub async fn send_album(
 
     // Whatever happens next, the uploads leave the waiting room.
     let mut uploaded = Vec::with_capacity(items.len());
+    let mut thumbs = Vec::with_capacity(items.len());
     {
         let mut waiting = tg
             .uploads
@@ -495,6 +545,7 @@ pub async fn send_album(
             .map_err(|_| UiError::internal("uploads lock is poisoned"))?;
         for item in &items {
             uploaded.push(waiting.remove(&item.token));
+            thumbs.push(waiting.remove(&format!("{}#thumb", item.token)));
         }
     }
     if caption.encode_utf16().count() > 1024 {
@@ -505,7 +556,7 @@ pub async fn send_album(
     let (caption, entities) = crate::markup::parse(caption.trim());
 
     let mut medias = Vec::with_capacity(items.len());
-    for (index, (item, file)) in items.iter().zip(uploaded).enumerate() {
+    for (index, ((item, file), thumb)) in items.iter().zip(uploaded).zip(thumbs).enumerate() {
         let file = file.ok_or_else(|| UiError::new("UPLOAD_FAILED", "the upload is gone"))?;
         let mut media = InputMedia::new();
         if index == 0 {
@@ -514,13 +565,17 @@ pub async fn send_album(
         media = if item.as_photo {
             media.photo(file)
         } else if let Some((seconds, w, h)) = parse_video(&item.video) {
-            media.document(file).attribute(Attribute::Video {
+            let media = media.document(file).attribute(Attribute::Video {
                 round_message: false,
                 supports_streaming: true,
                 duration: std::time::Duration::from_secs(seconds),
                 w,
                 h,
-            })
+            });
+            match thumb {
+                Some(thumb) => media.thumbnail(thumb),
+                None => media,
+            }
         } else {
             media.document(file)
         };

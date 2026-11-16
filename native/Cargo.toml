@@ -29,7 +29,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Avatars are decoded and shrunk to their on-screen size before they reach
 # the UI, so a 640 px photo costs ~10 KB of memory, not 1.6 MB.
-image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "bmp"] }
+# "Прикрепить файл": the system file dialog (native on Windows and macOS; on
+# Linux the xdg-desktop-portal over D-Bus, so no GTK is needed for it).
+rfd = { version = "0.16", default-features = false, features = ["xdg-portal", "tokio"] }
 # "Копировать картинку": puts pixels on the system clipboard.
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 
@@ -44,6 +47,9 @@ windows = { version = "0.62", features = [
     "Win32_Graphics_Imaging",
     "Win32_Media_MediaFoundation",
     "Win32_System_Com",
+    # Files copied in Explorer (CF_HDROP).
+    "Win32_System_DataExchange",
+    "Win32_UI_Shell",
 ] }
 # `#[implement]` for the engine's notification callback.
 windows-core = "0.62"
