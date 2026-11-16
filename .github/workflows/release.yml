@@ -1,23 +1,41 @@
 name: Release
 
-# Manual only: builds installers for Windows and Linux and attaches them to a
-# draft GitHub release, which is published by hand after a check.
+# Manual only: builds installers of the native app for Windows, Linux and
+# macOS and attaches them to a DRAFT pre-release, which is published by hand
+# after a check. Uses only the built-in GITHUB_TOKEN; no other secrets.
 on:
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 concurrency:
   group: release
   cancel-in-progress: false
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   build:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-22.04]
+        include:
+          - os: windows-latest
+            name: windows-x86_64
+            features: ""
+            formats: nsis
+            glob: "*.exe"
+          - os: ubuntu-22.04
+            name: linux-x86_64
+            features: "--features gstreamer"
+            formats: deb,appimage
+            glob: "*.{deb,AppImage}"
+          - os: macos-latest
+            name: macos-aarch64
+            features: ""
+            formats: dmg
+            glob: "*.dmg"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -26,13 +44,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+          sudo apt-get install -y build-essential pkg-config file wget \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev \
+            libfontconfig1-dev libfreetype6-dev libgl1-mesa-dev libegl1-mesa-dev \
+            libgtk-3-dev libayatana-appindicator3-dev libxdo-dev \
+            libdbus-1-dev libasound2-dev libssl-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libfuse2
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -40,20 +58,51 @@ jobs:
         with:
           workspaces: .
 
-      - run: npm ci
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
 
-      # No secrets: Oxigram ships without API keys, users bring their own.
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build
+        run: cargo build --release --locked -p oxigram-native ${{ matrix.features }}
+
+      # Packages the binary built above (target/release) into target/packager.
+      - name: Package
+        working-directory: native
+        shell: bash
+        run: cargo packager --release --formats ${{ matrix.formats }} ${{ matrix.features }}
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          shopt -s extglob nullglob
+          mkdir -p out
+          cd target/packager
+          for f in ${{ matrix.glob }}; do cp "$f" "../../out/oxigram-${{ matrix.name }}-$f"; done
+          ls -l ../../out
+
+      - uses: actions/upload-artifact@v4
         with:
-          tagName: v__VERSION__
-          releaseName: Oxigram v__VERSION__
-          releaseBody: |
-            Windows: `Oxigram_*_x64-setup.exe` (installer) or the `.msi`.
-            Linux: `.AppImage`, `.deb` or `.rpm`.
+          name: oxigram-${{ matrix.name }}
+          path: out/*
+          if-no-files-found: error
 
-            On first start Oxigram asks for your own `api_id` / `api_hash` from https://my.telegram.org.
-          releaseDraft: true
+  release:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Draft pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: native-${{ github.run_number }}
+          name: Oxigram native build ${{ github.run_number }}
+          draft: true
           prerelease: true
-          uploadPlainBinary: true
+          target_commitish: ${{ github.sha }}
+          files: out/*
+          generate_release_notes: true
