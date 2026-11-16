@@ -35,6 +35,13 @@ jobs:
             features: ""
             formats: nsis
             glob: "*.exe"
+          # Cross-compiled on the x64 runner (its Visual Studio has the ARM64 tools).
+          - os: windows-latest
+            name: windows-arm64
+            target: aarch64-pc-windows-msvc
+            features: ""
+            formats: nsis
+            glob: "*.exe"
           # Ubuntu 22.04 base: runs on glibc 2.35+ (Ubuntu 22.04, Debian 12,
           # Fedora 36 and newer).
           - os: ubuntu-22.04
@@ -129,7 +136,15 @@ jobs:
           files: out/*
           generate_release_notes: true
           body: |
-            Сборки без цифровой подписи.
-            - Windows: если SmartScreen предупреждает — «Подробнее» → «Выполнить в любом случае». windows-x64 — для 64-битной Windows 10/11, windows-x86 — для 32-битной.
-            - macOS: правый клик по Oxigram → «Открыть» (или Системные настройки → Конфиденциальность и безопасность → «Всё равно открыть»). apple-silicon — M1/M2/M3, intel — Mac на Intel.
-            - Linux: .deb для Ubuntu/Debian, .AppImage для остальных (chmod +x). Нужен glibc 2.35+ (Ubuntu 22.04 и новее).
+            Какой файл скачать:
+            - `oxigram-windows-x64-…-setup.exe` — Windows 10/11, 64 бита (обычный ПК)
+            - `oxigram-windows-x86-…-setup.exe` — Windows 10/11, 32 бита
+            - `oxigram-windows-arm64-…-setup.exe` — Windows 11 на ARM (Snapdragon, Surface Pro X)
+            - `oxigram-linux-x64-….deb` — Ubuntu, Debian, Mint (22.04 / Debian 12 и новее)
+            - `oxigram-linux-x64-….AppImage` — другие дистрибутивы (`chmod +x`, затем запустить); нужен glibc 2.35+
+            - `oxigram-macos-apple-silicon-….dmg` — Mac на M1/M2/M3/M4
+            - `oxigram-macos-intel-….dmg` — Mac на Intel
+
+            Сборки без цифровой подписи:
+            - Windows: если SmartScreen предупреждает — «Подробнее» → «Выполнить в любом случае».
+            - macOS: при первом запуске правый клик по Oxigram → «Открыть» (или Системные настройки → Конфиденциальность и безопасность → «Всё равно открыть»).
