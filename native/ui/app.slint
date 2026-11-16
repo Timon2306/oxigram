@@ -41,6 +41,8 @@ export struct DialogItem {
     // "user", "group", "channel", "saved": decides the menu's wording
     kind: string,
     archived: bool,
+    // the row shows "печатает…" instead of the last message
+    typing: bool,
 }
 
 // One picture inside a bubble (a whole single picture, or an album cell).
@@ -62,6 +64,28 @@ export struct MediaCell {
     tr: bool,
     bl: bool,
     br: bool,
+}
+
+// One reaction under a message.
+export struct ReactionChip {
+    // The message it belongs to (an album's part that carries them)
+    message: int,
+    // "👍", "custom:<id>", "paid", or "" for the folded custom ones
+    key: string,
+    // Document ID of a custom emoji, to fetch its picture
+    custom: string,
+    text: string,
+    image: image,
+    has-image: bool,
+    count: int,
+    mine: bool,
+    // Paid and folded reactions cannot be clicked
+    enabled: bool,
+}
+
+// Slint has no wrapping layout: chips come in rows of four.
+export struct ReactionRow {
+    chips: [ReactionChip],
 }
 
 export struct MessageItem {
@@ -100,6 +124,7 @@ export struct MessageItem {
     hidden: bool,
     // Channel posts: every bubble as wide as the column allows
     wide: bool,
+    reactions: [ReactionRow],
 }
 
 global Theme {
@@ -375,7 +400,7 @@ component DialogRow inherits Rectangle {
                 spacing: 8px;
                 Text {
                     text: (root.item.you ? "Вы: " : "") + root.item.preview;
-                    color: root.soft;
+                    color: root.item.typing && !root.item.active ? Theme.accent : root.soft;
                     font-size: 15px;
                     overflow: elide;
                     horizontal-stretch: 1;
@@ -486,6 +511,66 @@ component Meta inherits HorizontalLayout {
         Ticks {
             count: root.m.ticks;
             tint: root.m.ticks > 1 && !root.on-media ? Theme.read-tick : root.tint;
+        }
+    }
+}
+
+// The reactions under a message: emoji (or a custom emoji's picture) and a
+// count; the own one is marked. A click sets or removes the own reaction.
+component Reactions inherits VerticalLayout {
+    in property <[ReactionRow]> rows;
+    in property <bool> outgoing;
+    callback react(int, string);
+    callback want-emoji(string);
+    spacing: 4px;
+    for row in root.rows: HorizontalLayout {
+        spacing: 4px;
+        alignment: start;
+        for chip in row.chips: Rectangle {
+            width: chip-row.preferred-width;
+            height: 26px;
+            border-radius: 13px;
+            background: chip.mine ? (root.outgoing ? #ffffff45 : #3a6ea5) : (root.outgoing ? #ffffff1f : #ffffff14);
+            border-width: chip.mine ? 1px : 0;
+            border-color: root.outgoing ? #ffffffa0 : Theme.accent;
+            init => {
+                if (chip.custom != "" && !chip.has-image) {
+                    root.want-emoji(chip.custom);
+                }
+            }
+            TouchArea {
+                mouse-cursor: chip.enabled ? pointer : default;
+                clicked => {
+                    if (chip.enabled) {
+                        root.react(chip.message, chip.key);
+                    }
+                }
+            }
+            chip-row := HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 9px;
+                spacing: 4px;
+                if chip.has-image: VerticalLayout {
+                    alignment: center;
+                    Image {
+                        width: 18px;
+                        height: 18px;
+                        source: chip.image;
+                    }
+                }
+                if !chip.has-image: Text {
+                    text: chip.text;
+                    font-size: 15px;
+                    vertical-alignment: center;
+                }
+                if chip.count > 1: Text {
+                    text: chip.count;
+                    color: Theme.text;
+                    font-size: 13px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
         }
     }
 }
@@ -602,6 +687,8 @@ component MessageView inherits VerticalLayout {
     callback stop-select();
     callback want-picture(int);
     callback open-picture(int);
+    callback react(int, string);
+    callback want-emoji(string);
     padding-top: root.m.hidden || root.m.day != "" ? 0 : root.m.joined ? 2px : 8px;
     if root.m.day != "": HorizontalLayout {
         alignment: center;
@@ -641,7 +728,7 @@ component MessageView inherits VerticalLayout {
             property <length> meta-w: meta-probe.preferred-width + 10px;
             // A short single line keeps the time on the same line, as Telegram does.
             property <bool> inline: !root.m.multiline && root.m.text != "" && measure.preferred-width + self.meta-w <= self.max-text;
-            property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width);
+            property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width, react-probe.preferred-width);
             width: self.has-media ? self.mw + 2 * self.mpad : self.wide ? root.max-bubble : min(root.max-bubble, self.content + 2 * self.pad-x + 1px);
             background: self.bare ? transparent : root.m.outgoing ? Theme.bubble-out : Theme.bubble-in;
             border-top-left-radius: 18px;
@@ -670,6 +757,11 @@ component MessageView inherits VerticalLayout {
             kind := Text {
                 text: root.m.media;
                 font-size: 14px;
+                visible: false;
+            }
+
+            react-probe := Reactions {
+                rows: root.m.reactions;
                 visible: false;
             }
 
@@ -789,6 +881,16 @@ component MessageView inherits VerticalLayout {
                     wrap: word-wrap;
                     color: Theme.text;
                     font-size: 15.5px;
+                }
+                if root.m.reactions.length > 0: Reactions {
+                    rows: root.m.reactions;
+                    outgoing: root.m.outgoing;
+                    react(message, key) => {
+                        root.react(message, key);
+                    }
+                    want-emoji(id) => {
+                        root.want-emoji(id);
+                    }
                 }
                 if !bubble.inline && !root.m.media-only: Meta {
                     m: root.m;
@@ -1258,6 +1360,12 @@ export component AppWindow inherits Window {
     in property <length> menu-x;
     in property <length> menu-y;
     callback menu-pick(string);
+    // Quick reactions on top of a message's menu, the own one marked
+    in property <[string]> menu-reactions;
+    in property <string> menu-reaction-mine;
+    callback menu-react(string);
+    callback react(int, string);
+    callback want-emoji(string);
 
     // Reply / edit bar above the composer: mode "", "reply" or "edit"
     in property <string> bar-mode;
@@ -1792,6 +1900,12 @@ export component AppWindow inherits Window {
                                     }
                                     open-picture(id) => {
                                         root.open-picture(id);
+                                    }
+                                    react(message, key) => {
+                                        root.react(message, key);
+                                    }
+                                    want-emoji(id) => {
+                                        root.want-emoji(id);
                                     }
                                 }
                             }
@@ -2805,6 +2919,31 @@ export component AppWindow inherits Window {
         drop-shadow-color: #00000073;
         menu-column := VerticalLayout {
             padding: 5px;
+            if root.menu-reactions.length > 0: HorizontalLayout {
+                spacing: 1px;
+                padding-bottom: 4px;
+                for emoji in root.menu-reactions: Rectangle {
+                    width: 29px;
+                    height: 32px;
+                    border-radius: 16px;
+                    background: emoji == root.menu-reaction-mine ? #3a6ea5 : quick-touch.has-hover ? #ffffff14 : transparent;
+                    quick-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.menu-open = false;
+                            root.menu-react(emoji);
+                        }
+                    }
+                    Text {
+                        width: parent.width;
+                        height: parent.height;
+                        text: emoji;
+                        font-size: 18px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
             for entry in root.menu-items: Rectangle {
                 height: entry.id == "-" ? 9px : 34px;
                 if entry.id == "-": Rectangle {
