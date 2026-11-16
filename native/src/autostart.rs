@@ -187,3 +187,20 @@ mod imp {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Touches the real autostart entry of this user, so run by hand:
+    /// `cargo test -p oxigram-native autostart -- --ignored`.
+    #[test]
+    #[ignore]
+    fn write_read_remove() {
+        let exe = std::env::current_exe().unwrap();
+        set(true);
+        assert_eq!(imp::current().as_deref(), Some(imp::command(&exe).as_str()));
+        set(false);
+        assert_eq!(imp::current(), None);
+    }
+}
