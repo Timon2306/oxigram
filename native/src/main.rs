@@ -673,6 +673,10 @@ fn open_chat(peer: i64) {
             // Type right away, without clicking the field (not in read-only channels).
             if ui.get_chat_can_post() {
                 ui.invoke_focus_composer();
+            } else {
+                // No field to focus: the window's key handler takes focus,
+                // or Esc (close the chat) would reach nothing.
+                ui.invoke_focus_keys();
             }
         }
         app.allowed = reactions::Allowed::Unknown;
