@@ -17,6 +17,7 @@ mod pictures;
 mod notify;
 mod proxy;
 mod reactions;
+mod sending;
 mod settings;
 mod tray;
 mod typing;
@@ -270,6 +271,7 @@ fn main() {
     menus::wire(&ui);
     settings::wire(&ui);
     messages::wire(&ui);
+    sending::wire(&ui);
     context_menu::wire(&ui);
     pictures::wire(&ui);
     reactions::wire(&ui);
@@ -1238,6 +1240,7 @@ impl App {
                         self.show_subtitle(&ui, None);
                     }
                 }
+                UiEvent::Upload { token, bytes } => sending::progress(&token, bytes),
                 UiEvent::Connection { online } => {
                     if let Some(ui) = self.ui.upgrade() {
                         ui.set_online(online);

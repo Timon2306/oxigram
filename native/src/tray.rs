@@ -167,8 +167,13 @@ pub fn init(ui: &AppWindow) -> slint::Timer {
         slint::CloseRequestResponse::HideWindow
     });
     ui.window().on_winit_window_event(|_, event| {
-        if let winit::event::WindowEvent::Focused(on) = event {
-            notify::set_focused(*on);
+        match event {
+            winit::event::WindowEvent::Focused(on) => notify::set_focused(*on),
+            // Files dragged onto the window (see sending.rs).
+            winit::event::WindowEvent::DroppedFile(path) => crate::sending::dropped(path.clone()),
+            winit::event::WindowEvent::HoveredFile(_) => crate::sending::hover(true),
+            winit::event::WindowEvent::HoveredFileCancelled => crate::sending::hover(false),
+            _ => {}
         }
         slint::winit_030::EventResult::Propagate
     });
