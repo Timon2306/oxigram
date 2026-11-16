@@ -293,6 +293,40 @@ fn main() {
     sending::wire(&ui);
     context_menu::wire(&ui);
     pictures::wire(&ui);
+    // Ctrl+Tab: the next (or previous) chat of the list on screen.
+    ui.on_next_chat(|forward| {
+        let next = with_app(|app| {
+            if app.shown.is_empty() {
+                return None;
+            }
+            let len = app.shown.len();
+            let at = app.chat.and_then(|peer| app.shown.iter().position(|p| *p == peer));
+            let index = match at {
+                None => 0,
+                Some(i) if forward => (i + 1) % len,
+                Some(i) => (i + len - 1) % len,
+            };
+            app.shown.get(index).copied()
+        })
+        .flatten();
+        if let Some(peer) = next {
+            open_chat(peer);
+        }
+    });
+    // Up in an empty field: edit the last own text message.
+    ui.on_edit_last(|| {
+        let last = with_app(|app| {
+            app.messages
+                .iter()
+                .rev()
+                .find(|m| m.outgoing && m.kind == "text" && m.grouped_id.is_none())
+                .cloned()
+        })
+        .flatten();
+        if let Some(row) = last {
+            messages::start_edit(&row);
+        }
+    });
     audio::wire(&ui);
     reactions::wire(&ui);
     select::wire(&ui);

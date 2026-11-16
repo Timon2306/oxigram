@@ -185,22 +185,39 @@ export global Player {
     callback seek(int, float);
 }
 
-global Theme {
-    out property <color> bg: #0e1621;
-    out property <color> raised: #17212b;
-    out property <color> input: #242f3d;
-    out property <color> hover: #202b36;
-    out property <color> active: #2b5278;
-    out property <color> border: #0f1923;
-    out property <color> text: #f5f5f5;
-    out property <color> dim: #7f91a4;
-    out property <color> accent: #5ea5e8;
-    out property <color> accent-text: #06121f;
-    out property <color> danger: #ff6b6b;
-    out property <color> bubble-in: #182533;
-    out property <color> bubble-out: #2b5278;
-    out property <color> pill: #0e1621b8;
-    out property <color> read-tick: #6ec6ff;
+// Colours of the dark and the light look (the light one as in the WebView
+// build), and the message text scale. Rust sets `light` and `scale` from the
+// settings at start and when they change.
+export global Theme {
+    in-out property <bool> light: false;
+    // "Размер текста": 0.9 small, 1 normal, 1.12 large
+    in-out property <float> scale: 1;
+    out property <color> bg: root.light ? #ffffff : #0e1621;
+    out property <color> raised: root.light ? #ffffff : #17212b;
+    out property <color> input: root.light ? #f1f3f5 : #242f3d;
+    out property <color> hover: root.light ? #f1f3f5 : #202b36;
+    out property <color> active: root.light ? #3e88f7 : #2b5278;
+    // Text on the selected chat
+    out property <color> active-text: root.light ? #ffffff : #f5f5f5;
+    out property <color> border: root.light ? #e3e6ea : #0f1923;
+    out property <color> text: root.light ? #0f1419 : #f5f5f5;
+    // Text on an outgoing bubble (blue in both looks)
+    out property <color> text-out: root.light ? #ffffff : #f5f5f5;
+    out property <color> dim: root.light ? #707a85 : #7f91a4;
+    out property <color> accent: root.light ? #3390ec : #5ea5e8;
+    out property <color> accent-text: root.light ? #ffffff : #06121f;
+    out property <color> danger: root.light ? #e53935 : #ff6b6b;
+    out property <color> bubble-in: root.light ? #ffffff : #182533;
+    out property <color> bubble-out: root.light ? #3d8ee6 : #2b5278;
+    out property <color> pill: root.light ? #3c5a7852 : #0e1621b8;
+    out property <color> read-tick: root.light ? #ffffff : #6ec6ff;
+    // Menus and toasts
+    out property <color> menu: root.light ? #ffffff : #1f2c3a;
+    // The chat background: a vertical gradient under the doodle pattern
+    out property <color> chat-top: root.light ? #cfe3f5 : #0e1621;
+    out property <color> chat-bottom: root.light ? #d7ead9 : #0b121a;
+    // The pattern is drawn in white; the light look tints it dark blue.
+    out property <color> pattern-tint: root.light ? #305070 : transparent;
     out property <length> column: 820px;
 }
 
@@ -423,7 +440,7 @@ component DialogRow inherits Rectangle {
                 spacing: 8px;
                 Text {
                     text: root.item.title;
-                    color: Theme.text;
+                    color: root.item.active ? Theme.active-text : Theme.text;
                     font-weight: 600;
                     font-size: 15px;
                     overflow: elide;
@@ -896,7 +913,7 @@ component Reactions inherits VerticalLayout {
             width: chip-row.preferred-width;
             height: 26px;
             border-radius: 13px;
-            background: chip.mine ? (root.outgoing ? #ffffff45 : #3a6ea5) : (root.outgoing ? #ffffff1f : #ffffff14);
+            background: chip.mine ? (root.outgoing ? #ffffff45 : #3a6ea5) : (root.outgoing ? #ffffff1f : Theme.hover);
             border-width: chip.mine ? 1px : 0;
             border-color: root.outgoing ? #ffffffa0 : Theme.accent;
             init => {
@@ -1284,7 +1301,7 @@ component MessageView inherits VerticalLayout {
             border-bottom-right-radius: root.m.tail && root.m.outgoing ? 6px : 18px;
             measure := Text {
                 text: root.m.text;
-                font-size: 15.5px;
+                font-size: 15.5px * Theme.scale;
                 visible: false;
             }
 
@@ -1296,14 +1313,14 @@ component MessageView inherits VerticalLayout {
             // Widths of the optional lines, measured outside the layout.
             sender := Text {
                 text: root.m.sender;
-                font-size: 13px;
+                font-size: 13px * Theme.scale;
                 font-weight: 600;
                 visible: false;
             }
 
             kind := Text {
                 text: root.m.media;
-                font-size: 14px;
+                font-size: 14px * Theme.scale;
                 visible: false;
             }
 
@@ -1339,7 +1356,7 @@ component MessageView inherits VerticalLayout {
                 width: parent.width - 2 * bubble.pad-x;
                 text: root.m.sender;
                 color: root.m.sender-color;
-                font-size: 13px;
+                font-size: 13px * Theme.scale;
                 font-weight: 600;
                 overflow: elide;
             }
@@ -1379,7 +1396,7 @@ component MessageView inherits VerticalLayout {
                 if root.m.sender != "" && !bubble.has-media: Text {
                     text: root.m.sender;
                     color: root.m.sender-color;
-                    font-size: 13px;
+                    font-size: 13px * Theme.scale;
                     font-weight: 600;
                 }
                 if root.m.track > 0: TrackRow {
@@ -1398,7 +1415,7 @@ component MessageView inherits VerticalLayout {
                 if root.m.media != "": Text {
                     text: root.m.media;
                     color: root.m.outgoing ? #a9d4ff : Theme.accent;
-                    font-size: 14px;
+                    font-size: 14px * Theme.scale;
                 }
 
                 if bubble.inline: HorizontalLayout {
@@ -1407,8 +1424,8 @@ component MessageView inherits VerticalLayout {
                         text: root.m.text;
                         read-only: true;
                         single-line: true;
-                        color: Theme.text;
-                        font-size: 15.5px;
+                        color: root.m.outgoing ? Theme.text-out : Theme.text;
+                        font-size: 15.5px * Theme.scale;
                         selection-background-color: #4a7bb7;
                         selection-foreground-color: white;
                         init => {
@@ -1417,8 +1434,8 @@ component MessageView inherits VerticalLayout {
                     }
                     if !root.selecting: Text {
                         text: root.m.text;
-                        color: Theme.text;
-                        font-size: 15.5px;
+                        color: root.m.outgoing ? Theme.text-out : Theme.text;
+                        font-size: 15.5px * Theme.scale;
                     }
 
                     VerticalLayout {
@@ -1434,8 +1451,8 @@ component MessageView inherits VerticalLayout {
                     read-only: true;
                     single-line: false;
                     wrap: word-wrap;
-                    color: Theme.text;
-                    font-size: 15.5px;
+                    color: root.m.outgoing ? Theme.text-out : Theme.text;
+                    font-size: 15.5px * Theme.scale;
                     selection-background-color: #4a7bb7;
                     selection-foreground-color: white;
                     init => {
@@ -1445,8 +1462,8 @@ component MessageView inherits VerticalLayout {
                 if !bubble.inline && root.m.text != "" && !root.selecting: Text {
                     text: root.m.text;
                     wrap: word-wrap;
-                    color: Theme.text;
-                    font-size: 15.5px;
+                    color: root.m.outgoing ? Theme.text-out : Theme.text;
+                    font-size: 15.5px * Theme.scale;
                 }
                 if root.m.reactions.length > 0: Reactions {
                     rows: root.m.reactions;
@@ -2044,6 +2061,9 @@ component SettingsPanel inherits Rectangle {
     in property <string> cache-text;
     in property <string> version;
     in property <string> proxy-summary;
+    // "Мелкий" / "Обычный" / "Крупный"
+    in property <string> text-size;
+    callback cycle-text-size();
     callback close();
     callback toggle(string);
     callback clear-cache();
@@ -2251,6 +2271,18 @@ component SettingsPanel inherits Rectangle {
                 }
             }
 
+            if root.page == "general": SettingsCard {
+                SettingsRow {
+                    label: "Размер текста";
+                    value: root.text-size;
+                    tint: #f0a33a;
+                    icon: "M4 7V5h10v2M9 5v14M7 19h4M14 12v-1h6v1M17 11v8M16 19h2";
+                    clicked => {
+                        root.cycle-text-size();
+                    }
+                }
+            }
+
             if root.page == "data": SettingsCard {
                 HorizontalLayout {
                     padding: 12px;
@@ -2320,7 +2352,7 @@ export component AppWindow inherits Window {
     // redraws only changed areas, and a window shown again from the tray has
     // lost its old picture (it came back transparent until hovered).
     in property <bool> repaint-flip;
-    background: root.repaint-flip ? #0e1622 : Theme.bg;
+    background: root.repaint-flip ? Theme.bg.darker(0.01) : Theme.bg;
     default-font-family: "Open Sans";
     default-font-size: 15px;
 
@@ -2428,6 +2460,11 @@ export component AppWindow inherits Window {
     callback want-emoji(string);
     // The widest bubble changed (window resized): reaction rows rewrap.
     callback reaction-width(length);
+    // Look and hotkeys
+    in property <string> text-size-label: "Обычный";
+    callback cycle-text-size();
+    callback next-chat(bool);
+    callback edit-last();
     // Selection of several messages
     in property <bool> select-mode;
     in property <int> selected-count;
@@ -2674,6 +2711,16 @@ export component AppWindow inherits Window {
             if ((event.text == "v" || event.text == "V" || event.text == "м" || event.text == "М" || event.text == "\u{16}") && (event.modifiers.control || event.modifiers.meta) && root.paste-files()) {
                 return accept;
             }
+            // Ctrl+Tab / Ctrl+Shift+Tab: next / previous chat, as in Telegram Desktop.
+            if ((event.text == Key.Tab || event.text == Key.Backtab) && event.modifiers.control) {
+                root.next-chat(!(event.modifiers.shift || event.text == Key.Backtab));
+                return accept;
+            }
+            // Up in an empty field edits the last own text message.
+            if (event.text == Key.UpArrow && root.chat-open && root.chat-can-post && root.bar-mode == "" && !root.select-mode && composer.has-focus && composer.text == "") {
+                root.edit-last();
+                return accept;
+            }
             if (event.text != Key.Escape) {
                 return reject;
             }
@@ -2877,7 +2924,7 @@ export component AppWindow inherits Window {
         // ---- Right pane: the open chat
         Rectangle {
             horizontal-stretch: 1;
-            background: @linear-gradient(180deg, #0e1621 0%, #0b121a 100%);
+            background: @linear-gradient(180deg, Theme.chat-top 0%, Theme.chat-bottom 100%);
             clip: true;
             // No radial glows as in the WebView's --chat-bg: the software
             // renderer computes gradients per pixel on every frame, and the two
@@ -2886,6 +2933,7 @@ export component AppWindow inherits Window {
                 width: parent.width;
                 height: parent.height;
                 source: @image-url("pattern.svg");
+                colorize: Theme.pattern-tint;
                 horizontal-tiling: repeat;
                 vertical-tiling: repeat;
             }
@@ -3679,6 +3727,10 @@ export component AppWindow inherits Window {
         cache-text: root.cache-text;
         version: root.version;
         proxy-summary: root.proxy-summary;
+        text-size: root.text-size-label;
+        cycle-text-size => {
+            root.cycle-text-size();
+        }
         close => {
             root.settings-open = false;
         }
@@ -4193,7 +4245,7 @@ export component AppWindow inherits Window {
         x: (root.width - self.width) / 2;
         y: root.height - 160px;
         border-radius: 12px;
-        background: #1f2c3af2;
+        background: Theme.menu;
         drop-shadow-blur: 16px;
         drop-shadow-color: #00000080;
         Text {
@@ -4469,7 +4521,7 @@ export component AppWindow inherits Window {
         height: menu-column.preferred-height + 10px;
         x: max(4px, min(root.menu-x, root.width - self.width - 4px));
         y: max(4px, min(root.menu-y, root.height - self.height - 4px));
-        background: #1f2c3a;
+        background: Theme.menu;
         border-radius: 10px;
         drop-shadow-blur: 24px;
         drop-shadow-color: #00000073;
@@ -4482,7 +4534,7 @@ export component AppWindow inherits Window {
                     width: 29px;
                     height: 32px;
                     border-radius: 16px;
-                    background: emoji == root.menu-reaction-mine ? #3a6ea5 : quick-touch.has-hover ? #ffffff14 : transparent;
+                    background: emoji == root.menu-reaction-mine ? #3a6ea5 : quick-touch.has-hover ? Theme.hover : transparent;
                     quick-touch := TouchArea {
                         mouse-cursor: pointer;
                         clicked => {
@@ -4505,11 +4557,11 @@ export component AppWindow inherits Window {
                 if entry.id == "-": Rectangle {
                     y: 4px;
                     height: 1px;
-                    background: #ffffff14;
+                    background: Theme.hover;
                 }
                 if entry.id != "-": Rectangle {
                     border-radius: 6px;
-                    background: item-touch.has-hover ? #ffffff14 : transparent;
+                    background: item-touch.has-hover ? Theme.hover : transparent;
                     item-touch := TouchArea {
                         clicked => {
                             root.menu-open = false;
@@ -4556,7 +4608,7 @@ export component AppWindow inherits Window {
         width: toast-text.preferred-width + 28px;
         height: 34px;
         border-radius: 17px;
-        background: #1f2c3aee;
+        background: Theme.menu;
         toast-text := Text {
             text: root.toast;
             color: Theme.text;

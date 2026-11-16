@@ -102,7 +102,7 @@ fn start_reply(row: &MessageRow) {
     });
 }
 
-fn start_edit(row: &MessageRow) {
+pub(crate) fn start_edit(row: &MessageRow) {
     if !(row.outgoing && row.kind == "text") {
         return;
     }

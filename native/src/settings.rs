@@ -49,6 +49,12 @@ pub struct Settings {
     pub mute_all: bool,
     /// Start with the system, hidden in the tray.
     pub autostart: bool,
+    /// The light look (as in the WebView build); dark by default.
+    #[serde(rename = "lightTheme")]
+    pub light_theme: bool,
+    /// "small", "normal" or "large" message text.
+    #[serde(rename = "textSize")]
+    pub text_size: String,
 }
 
 impl Default for Settings {
@@ -62,6 +68,8 @@ impl Default for Settings {
             gpu_render: false,
             mute_all: false,
             autostart: false,
+            light_theme: false,
+            text_size: "normal".to_owned(),
         }
     }
 }
@@ -102,6 +110,7 @@ impl Settings {
             "gpuRender" => &mut self.gpu_render,
             "muteAll" => &mut self.mute_all,
             "autostart" => &mut self.autostart,
+            "lightTheme" => &mut self.light_theme,
             _ => return None,
         })
     }
@@ -146,6 +155,7 @@ impl Settings {
                 "Запускать вместе с системой",
                 "Oxigram стартует при входе в систему и ждёт в трее, окно не открывается.",
             ),
+            ("lightTheme", "Светлая тема", "Светлое оформление вместо тёмного."),
         ];
         rows.into_iter()
             .map(|(key, title, note)| SaverOption {
@@ -165,12 +175,14 @@ impl Settings {
 fn group(key: &str) -> &'static str {
     match key {
         "muteAll" => "notifications",
-        "gpuRender" | "autostart" => "general",
+        "gpuRender" | "autostart" | "lightTheme" => "general",
         _ => "data",
     }
 }
 
 pub fn wire(window: &AppWindow) {
+    window.on_cycle_text_size(cycle_text_size);
+    apply_look(window);
     // "Экономия памяти" in the burger menu opens the settings on that page.
     window.on_open_saver(|| {
         if let Some(ui) = ui() {
@@ -198,6 +210,11 @@ pub fn wire(window: &AppWindow) {
             "muteAll" => crate::notify::set_mute_all(on),
             "autostart" => crate::autostart::set(on),
             "prefetchChats" if on => crate::prefetch_top(),
+            "lightTheme" => {
+                if let Some(ui) = ui() {
+                    apply_look(&ui);
+                }
+            }
             // Custom emoji reactions: pictures, or one ✨ for all of them.
             "customEmoji" => {
                 with_app(|app| {
@@ -214,6 +231,51 @@ pub fn wire(window: &AppWindow) {
             _ => {}
         }
     });
+}
+
+/// The message text scale of a "Размер текста" choice (as in the WebView build).
+fn scale(size: &str) -> f32 {
+    match size {
+        "small" => 0.9,
+        "large" => 1.12,
+        _ => 1.0,
+    }
+}
+
+fn size_label(size: &str) -> &'static str {
+    match size {
+        "small" => "Мелкий",
+        "large" => "Крупный",
+        _ => "Обычный",
+    }
+}
+
+/// Puts the theme and the text size from the settings on screen.
+pub fn apply_look(ui: &AppWindow) {
+    use slint::ComponentHandle;
+    let Some((light, size)) = with_app(|app| (app.settings.light_theme, app.settings.text_size.clone())) else {
+        return;
+    };
+    let theme = ui.global::<crate::Theme>();
+    theme.set_light(light);
+    theme.set_scale(scale(&size));
+    ui.set_text_size_label(size_label(&size).into());
+}
+
+/// "Размер текста" in the settings: normal → large → small → normal.
+fn cycle_text_size() {
+    with_app(|app| {
+        let next = match app.settings.text_size.as_str() {
+            "normal" => "large",
+            "large" => "small",
+            _ => "normal",
+        };
+        app.settings.text_size = next.to_owned();
+        app.settings.save();
+    });
+    if let Some(ui) = ui() {
+        apply_look(&ui);
+    }
 }
 
 pub(crate) fn fill(ui: &AppWindow) {
