@@ -48,6 +48,10 @@ pub struct MediaInfo {
     pub file_size: i64,
     /// Seconds of audio or video; 0 when not known.
     pub duration: i32,
+    /// Voice messages: the waveform, 5 bits per bar, packed little-endian.
+    pub waveform: Vec<u8>,
+    /// Audio files: "performer — title" when the tags carry them.
+    pub track: String,
 }
 
 impl MediaInfo {
@@ -59,6 +63,8 @@ impl MediaInfo {
             file_name: String::new(),
             file_size: 0,
             duration: 0,
+            waveform: Vec::new(),
+            track: String::new(),
         }
     }
 }
@@ -200,6 +206,8 @@ fn document_info(media: &tl::types::MessageMediaDocument) -> MediaInfo {
     let mut image_size = None;
     let mut file_name = String::new();
     let mut duration = 0;
+    let mut waveform = Vec::new();
+    let mut track = String::new();
     for attribute in &document.attributes {
         use tl::enums::DocumentAttribute as A;
         match attribute {
@@ -208,6 +216,13 @@ fn document_info(media: &tl::types::MessageMediaDocument) -> MediaInfo {
             A::Audio(audio) => {
                 is_voice = audio.voice;
                 duration = audio.duration;
+                waveform = audio.waveform.clone().unwrap_or_default();
+                track = match (audio.performer.as_deref(), audio.title.as_deref()) {
+                    (Some(p), Some(t)) if !p.is_empty() && !t.is_empty() => format!("{p} — {t}"),
+                    (_, Some(t)) if !t.is_empty() => t.to_owned(),
+                    (Some(p), _) if !p.is_empty() => p.to_owned(),
+                    _ => String::new(),
+                };
             }
             A::Video(video) => {
                 is_round = video.round_message;
@@ -290,6 +305,8 @@ fn document_info(media: &tl::types::MessageMediaDocument) -> MediaInfo {
         file_name,
         file_size: document.size,
         duration,
+        waveform,
+        track,
     }
 }
 

@@ -36,6 +36,13 @@ rfd = { version = "0.16", default-features = false, features = ["xdg-portal", "t
 # "Копировать картинку": puts pixels on the system clipboard.
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 
+# In-app voice and audio: symphonia demuxes and decodes MP3/AAC/M4A/Vorbis/
+# FLAC/WAV in pure Rust; Ogg Opus (Telegram voice) goes through the pure-Rust
+# opus-decoder; cpal does the output (WASAPI / CoreAudio / ALSA).
+symphonia = { version = "0.6", default-features = false, features = ["mp3", "aac", "isomp4", "ogg", "vorbis", "flac", "wav", "pcm", "alac"] }
+opus-decoder = "0.1"
+cpal = "0.16"
+
 # System tray and notifications (the versions the Tauri build uses).
 tray-icon = "0.25"
 notify-rust = "4.19"

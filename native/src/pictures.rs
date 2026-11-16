@@ -926,6 +926,8 @@ mod tests {
             file_size: 0,
             playable: true,
             duration: 0,
+            waveform: Vec::new(),
+            track: String::new(),
             grouped_id: None,
             reactions: Vec::new(),
             reply_to_id: None,

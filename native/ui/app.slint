@@ -139,6 +139,24 @@ export struct MessageItem {
     reactions: [ReactionRow],
     // Picked in selection mode
     selected: bool,
+    // Voice (1) or audio file (2) with a player row; 0 for anything else
+    track: int,
+    track-title: string,
+    track-total: string,
+    // Waveform of a voice message as an SVG path in a 180x26 box
+    wave: string,
+}
+
+// What plays now; the state lives in Rust (rows are recreated while scrolling).
+export global Player {
+    // Message id of the track in the open chat, -1 when none
+    in property <int> shown: -1;
+    // 0 idle, 1 downloading, 2 playing, 3 paused
+    in property <int> state: 0;
+    in property <float> progress: 0;
+    in property <string> elapsed;
+    callback toggle(int);
+    callback seek(int, float);
 }
 
 global Theme {
@@ -687,6 +705,184 @@ component MediaBox inherits Rectangle {
     }
 }
 
+// Player row of a voice message or audio file: round button, waveform (or a
+// plain bar) that seeks on click and drag, and the time.
+component TrackRow inherits Rectangle {
+    in property <MessageItem> m;
+    in property <bool> select-mode;
+    callback pick();
+    callback context(length, length);
+    callback wheel(length);
+    width: 230px;
+    height: 44px;
+    property <bool> active: Player.shown == root.m.id && Player.state != 0;
+    property <bool> running: root.active && Player.state == 2;
+    property <bool> dragging: false;
+    property <float> scrub: 0;
+    property <float> shown-progress: root.dragging ? root.scrub : root.active ? Player.progress : 0;
+    property <color> base: root.m.outgoing ? #ffffff59 : #7f91a466;
+    property <color> lit: root.m.outgoing ? #ffffff : Theme.accent;
+    property <length> bar-w: 180px;
+    // Round button
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: 40px;
+        height: 40px;
+        border-radius: 20px;
+        background: root.m.outgoing ? #ffffff : Theme.accent;
+        if !root.running: Path {
+            x: 11px;
+            y: 10px;
+            width: 20px;
+            height: 20px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M7 4 L20 12 L7 20 Z";
+            fill: root.m.outgoing ? Theme.bubble-out : Theme.accent-text;
+        }
+        if root.running: Path {
+            x: 11px;
+            y: 10px;
+            width: 20px;
+            height: 20px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M6 4 L10 4 L10 20 L6 20 Z M14 4 L18 4 L18 20 L14 20 Z";
+            fill: root.m.outgoing ? Theme.bubble-out : Theme.accent-text;
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                if (root.select-mode) {
+                    root.pick();
+                } else {
+                    Player.toggle(root.m.id);
+                }
+            }
+            pointer-event(event) => {
+                if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                    root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            }
+            scroll-event(event) => {
+                root.wheel(event.delta-y);
+                accept
+            }
+        }
+    }
+
+    // Title of an audio file
+    if root.m.track == 2: Text {
+        x: 50px;
+        y: 2px;
+        width: root.bar-w;
+        text: root.m.track-title;
+        color: Theme.text;
+        font-size: 14px;
+        overflow: elide;
+    }
+    // Waveform
+    if root.m.wave != "": Rectangle {
+        x: 50px;
+        y: 0px;
+        width: root.bar-w;
+        height: 26px;
+        Path {
+            width: 180px;
+            height: 26px;
+            viewbox-width: 180;
+            viewbox-height: 26;
+            commands: root.m.wave;
+            stroke: root.base;
+            stroke-width: 2.5px;
+            fill: transparent;
+        }
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width * root.shown-progress;
+            height: parent.height;
+            clip: true;
+            Path {
+                x: 0;
+                y: 0;
+                width: 180px;
+                height: 26px;
+                viewbox-width: 180;
+                viewbox-height: 26;
+                commands: root.m.wave;
+                stroke: root.lit;
+                stroke-width: 2.5px;
+                fill: transparent;
+            }
+        }
+    }
+    // Plain bar: audio files and voice without a waveform
+    if root.m.wave == "": Rectangle {
+        x: 50px;
+        y: root.m.track == 2 ? 26px : 11px;
+        width: root.bar-w;
+        height: 4px;
+        border-radius: 2px;
+        background: root.base;
+        Rectangle {
+            width: parent.width * root.shown-progress;
+            height: parent.height;
+            border-radius: 2px;
+            background: root.lit;
+        }
+        Rectangle {
+            x: parent.width * root.shown-progress - 5px;
+            y: -3px;
+            width: 10px;
+            height: 10px;
+            border-radius: 5px;
+            background: root.lit;
+            visible: root.active;
+        }
+    }
+    Text {
+        x: 50px;
+        y: 29px;
+        text: root.active ? Player.elapsed + (Player.state == 1 ? "" : " / " + root.m.track-total) : root.m.track-total;
+        color: root.m.outgoing ? #ffffff99 : Theme.dim;
+        font-size: 12px;
+    }
+    // Seek area over the bar
+    TouchArea {
+        x: 50px;
+        y: 0px;
+        width: root.bar-w;
+        height: 34px;
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            } else if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                if (root.select-mode) {
+                    root.pick();
+                } else {
+                    root.dragging = true;
+                    root.scrub = clamp(self.mouse-x / self.width, 0, 1);
+                }
+            } else if (event.button == PointerEventButton.left && event.kind == PointerEventKind.up && root.dragging) {
+                root.dragging = false;
+                Player.seek(root.m.id, clamp(self.mouse-x / self.width, 0, 1));
+            }
+        }
+        moved => {
+            if (root.dragging) {
+                root.scrub = clamp(self.mouse-x / self.width, 0, 1);
+            }
+        }
+        scroll-event(event) => {
+            root.wheel(event.delta-y);
+            accept
+        }
+    }
+}
+
 component MessageView inherits VerticalLayout {
     in property <MessageItem> m;
     in property <length> max-bubble;
@@ -745,7 +941,7 @@ component MessageView inherits VerticalLayout {
             property <length> meta-w: meta-probe.preferred-width + 10px;
             // A short single line keeps the time on the same line, as Telegram does.
             property <bool> inline: !root.m.multiline && root.m.text != "" && measure.preferred-width + self.meta-w <= self.max-text;
-            property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width, react-probe.preferred-width);
+            property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width, react-probe.preferred-width, root.m.track > 0 ? 230px : 0px);
             width: self.has-media ? self.mw + 2 * self.mpad : self.wide ? root.max-bubble : min(root.max-bubble, self.content + 2 * self.pad-x + 1px);
             background: self.bare ? transparent : root.m.outgoing ? Theme.bubble-out : Theme.bubble-in;
             border-top-left-radius: 18px;
@@ -851,6 +1047,19 @@ component MessageView inherits VerticalLayout {
                     color: root.m.sender-color;
                     font-size: 13px;
                     font-weight: 600;
+                }
+                if root.m.track > 0: TrackRow {
+                    m: root.m;
+                    select-mode: root.select-mode;
+                    pick => {
+                        root.pick(root.m.id);
+                    }
+                    context(x, y) => {
+                        root.context(x, y);
+                    }
+                    wheel(dy) => {
+                        root.wheel(dy);
+                    }
                 }
                 if root.m.media != "": Text {
                     text: root.m.media;

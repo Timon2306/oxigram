@@ -77,6 +77,13 @@ pub struct MessageRow {
     pub playable: bool,
     /// Seconds of audio or video; 0 when not known.
     pub duration: i32,
+    /// Voice messages: the waveform, 5 bits per bar, packed (see Telegram's
+    /// `DocumentAttributeAudio.waveform`). The Tauri front end ignores it.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub waveform: Vec<u8>,
+    /// Audio files: "performer — title" when the tags carry them.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub track: String,
     /// Messages sharing this value form one album.
     pub grouped_id: Option<String>,
     pub reactions: Vec<Reaction>,
@@ -168,6 +175,8 @@ pub const SCHEMA: &str = "
         entities TEXT NOT NULL,
         web TEXT,
         duration INTEGER NOT NULL,
+        waveform BLOB NOT NULL,
+        track TEXT NOT NULL,
         PRIMARY KEY (peer_id, id)) WITHOUT ROWID;";
 
 /// Stores one page of the dialog list. `start` is the position of the first
@@ -327,7 +336,7 @@ pub fn save_messages(conn: &mut Connection, rows: &[MessageRow]) -> rusqlite::Re
     {
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO messages
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
         )?;
         for row in rows {
             stmt.execute(params![
@@ -351,6 +360,8 @@ pub fn save_messages(conn: &mut Connection, rows: &[MessageRow]) -> rusqlite::Re
                 to_json(&row.entities),
                 row.web.as_ref().map(|web| serde_json::to_string(web).unwrap_or_default()),
                 row.duration,
+                row.waveform,
+                row.track,
             ])?;
         }
     }
@@ -420,7 +431,7 @@ pub fn load_messages(
 ) -> rusqlite::Result<Vec<MessageRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, peer_id, sender_id, sender_name, date, text, kind, outgoing, edited,
-                image_w, image_h, file_name, file_size, playable, grouped_id, reactions, reply_to_id, entities, web, duration
+                image_w, image_h, file_name, file_size, playable, grouped_id, reactions, reply_to_id, entities, web, duration, waveform, track
          FROM messages WHERE peer_id = ?1 AND id < ?2 ORDER BY id DESC LIMIT ?3",
     )?;
     stmt.query_map(
@@ -449,6 +460,8 @@ pub fn load_messages(
                     .get::<_, Option<String>>(18)?
                     .and_then(|text| serde_json::from_str(&text).ok()),
                 duration: row.get(19)?,
+                waveform: row.get(20)?,
+                track: row.get(21)?,
             })
         },
     )?
@@ -505,6 +518,8 @@ mod tests {
             entities: Vec::new(),
             web: None,
             duration: 0,
+            waveform: Vec::new(),
+            track: String::new(),
         }
     }
 
