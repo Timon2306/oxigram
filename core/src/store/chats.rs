@@ -77,6 +77,16 @@ pub struct MessageRow {
     pub playable: bool,
     /// Seconds of audio or video; 0 when not known.
     pub duration: i32,
+    /// Voice messages: the waveform, 5 bits per bar, packed (see Telegram's
+    /// `DocumentAttributeAudio.waveform`). The Tauri front end ignores it.
+    /// Not cached: the database is shared with installed Tauri builds, whose
+    /// positional INSERT breaks on extra columns; fresh history brings it.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub waveform: Vec<u8>,
+    /// Audio files: "performer — title" when the tags carry them (not cached
+    /// either, see `waveform`).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub track: String,
     /// Messages sharing this value form one album.
     pub grouped_id: Option<String>,
     pub reactions: Vec<Reaction>,
@@ -449,6 +459,8 @@ pub fn load_messages(
                     .get::<_, Option<String>>(18)?
                     .and_then(|text| serde_json::from_str(&text).ok()),
                 duration: row.get(19)?,
+                waveform: Vec::new(),
+                track: String::new(),
             })
         },
     )?
@@ -505,6 +517,8 @@ mod tests {
             entities: Vec::new(),
             web: None,
             duration: 0,
+            waveform: Vec::new(),
+            track: String::new(),
         }
     }
 

@@ -9,6 +9,7 @@
 // No console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod audio;
 mod autostart;
 mod contacts;
 mod context_menu;
@@ -292,6 +293,7 @@ fn main() {
     sending::wire(&ui);
     context_menu::wire(&ui);
     pictures::wire(&ui);
+    audio::wire(&ui);
     reactions::wire(&ui);
     select::wire(&ui);
     proxy::wire(&ui);
@@ -1085,10 +1087,11 @@ impl App {
         // A label only for what is not drawn as a picture (files, voice…).
         let label = parts
             .iter()
-            .find(|p| !pictures::has_picture(p))
+            .find(|p| !pictures::has_picture(p) && !audio::is_track(p))
             .and_then(|p| format::kind_label(&p.kind))
             .unwrap_or_default();
         let reaction_rows = self.reaction_rows(&parts);
+        let track = audio::item(m);
         let has_reactions = parts.iter().any(|p| !p.reactions.is_empty());
         // Reactions go under the picture, with the time below them.
         let media_only = media.is_some() && text.is_empty() && label.is_empty() && !has_reactions;
@@ -1097,6 +1100,10 @@ impl App {
             multiline: text.contains('\n'),
             text: text.into(),
             media: label.into(),
+            track: track.kind,
+            track_title: track.title.into(),
+            track_total: track.total.into(),
+            wave: track.wave.into(),
             cells: media.as_ref().map(|l| self.media_cells(l)).unwrap_or_default(),
             media_w: media.as_ref().map_or(0.0, |l| l.w),
             media_h: media.as_ref().map_or(0.0, |l| l.h),

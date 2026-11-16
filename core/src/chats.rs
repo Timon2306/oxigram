@@ -1089,6 +1089,8 @@ pub fn message_row(message: &Message, peer_id: i64) -> MessageRow {
         file_size: info.file_size,
         playable: info.file_ext.is_some(),
         duration: info.duration,
+        waveform: info.waveform,
+        track: info.track,
         grouped_id: message.grouped_id().map(|id| id.to_string()),
         reply_to_id: message.reply_to_message_id(),
         entities: if message.action().is_some() {
