@@ -55,6 +55,32 @@ export struct DialogItem {
     archived: bool,
     // the row shows "печатает…" instead of the last message
     typing: bool,
+    // the preview is an unsent draft (shown after "Черновик: ")
+    draft: bool,
+}
+
+// A chat folder tab above the list.
+export struct FolderTab {
+    title: string,
+    unread: int,
+    on: bool,
+}
+
+// One row of the contacts window.
+export struct ContactItem {
+    title: string,
+    status: string,
+    online: bool,
+    initial: string,
+    color: color,
+    photo: image,
+    has-photo: bool,
+}
+
+// One line of the profile column. `value` may wrap; the label is one line.
+export struct ProfileLine {
+    value: string,
+    label: string,
 }
 
 // One picture inside a bubble (a whole single picture, or an album cell).
@@ -412,12 +438,21 @@ component DialogRow inherits Rectangle {
 
             HorizontalLayout {
                 spacing: 8px;
-                Text {
-                    text: (root.item.you ? "Вы: " : "") + root.item.preview;
-                    color: root.item.typing && !root.item.active ? Theme.accent : root.soft;
-                    font-size: 15px;
-                    overflow: elide;
+                HorizontalLayout {
                     horizontal-stretch: 1;
+                    spacing: 0;
+                    if root.item.draft: Text {
+                        text: "Черновик: ";
+                        color: root.item.active ? white : Theme.danger;
+                        font-size: 15px;
+                    }
+                    Text {
+                        text: (root.item.you ? "Вы: " : "") + root.item.preview;
+                        color: root.item.typing && !root.item.active ? Theme.accent : root.soft;
+                        font-size: 15px;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
                 }
 
                 if root.item.unread > 0: Badge {
@@ -481,6 +516,305 @@ component ArchiveRow inherits Rectangle {
                 text: root.label;
                 color: Theme.dim;
                 font-size: 15px;
+            }
+        }
+    }
+}
+
+// Chat folders as tabs, scrolled sideways by the wheel.
+component FolderTabs inherits Rectangle {
+    in property <[FolderTab]> tabs;
+    callback pick(int);
+    height: 40px;
+    clip: true;
+    function scroll(dy: length) {
+        flick.content-x = max(min(0px, flick.width - flick.content-width), min(0px, flick.content-x + dy));
+    }
+    flick := Flickable {
+        width: parent.width;
+        height: parent.height;
+        content-width: max(row.preferred-width, self.width);
+        interactive: false;
+        TouchArea {
+            width: parent.content-width;
+            scroll-event(event) => {
+                root.scroll(event.delta-y + event.delta-x);
+                accept
+            }
+        }
+        row := HorizontalLayout {
+            padding-left: 6px;
+            padding-right: 6px;
+            alignment: start;
+            for tab[index] in root.tabs: Rectangle {
+                width: tab-row.preferred-width;
+                tab-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.pick(index);
+                    }
+                    scroll-event(event) => {
+                        root.scroll(event.delta-y + event.delta-x);
+                        accept
+                    }
+                }
+                tab-row := HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 6px;
+                    Text {
+                        text: tab.title;
+                        color: tab.on ? Theme.accent : tab-touch.has-hover ? Theme.text : Theme.dim;
+                        font-size: 14px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+
+                    if tab.unread > 0: VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            height: 18px;
+                            min-width: 18px;
+                            border-radius: 9px;
+                            background: tab.on ? Theme.accent : Theme.dim;
+                            HorizontalLayout {
+                                padding-left: 5px;
+                                padding-right: 5px;
+                                Text {
+                                    text: tab.unread > 999 ? "999+" : tab.unread;
+                                    color: Theme.accent-text;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if tab.on: Rectangle {
+                    x: 8px;
+                    y: parent.height - 3px;
+                    width: parent.width - 16px;
+                    height: 3px;
+                    border-radius: 1.5px;
+                    background: Theme.accent;
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.border;
+    }
+}
+
+// One contact: avatar, name, last seen.
+component ContactRow inherits Rectangle {
+    in property <ContactItem> item;
+    callback clicked();
+    height: 58px;
+    background: touch.has-hover ? Theme.hover : transparent;
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Avatar {
+                size: 42px;
+                initial: root.item.initial;
+                tint: root.item.color;
+                photo: root.item.photo;
+                has-photo: root.item.has-photo;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.item.title;
+                color: Theme.text;
+                font-weight: 600;
+                font-size: 15px;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.item.status;
+                color: root.item.online ? Theme.accent : Theme.dim;
+                font-size: 13px;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+// A line of the profile column. The value wraps inside a box whose width is
+// set by hand (not by a layout), and the row takes its height from the text.
+component ProfileRow inherits Rectangle {
+    in property <ProfileLine> line;
+    height: 14px + value.preferred-height + 3px + 16px + 12px;
+    value := Text {
+        x: 20px;
+        y: 14px;
+        width: parent.width - 40px;
+        text: root.line.value;
+        color: Theme.text;
+        font-size: 15px;
+        wrap: word-wrap;
+    }
+
+    Text {
+        x: 20px;
+        y: 14px + value.preferred-height + 3px;
+        width: parent.width - 40px;
+        text: root.line.label;
+        color: Theme.dim;
+        font-size: 13px;
+        overflow: elide;
+    }
+}
+
+// The contacts window: search, then a list; a click opens the chat.
+component ContactsWindow inherits Rectangle {
+    in property <[ContactItem]> items;
+    in property <string> note;
+    callback close();
+    callback filter(string);
+    callback pick(int);
+    callback avatar(int);
+    background: #00000073;
+    init => {
+        search.focus();
+    }
+    // Swallows clicks and the wheel; a click on the dim area closes the window.
+    TouchArea {
+        clicked => {
+            root.close();
+        }
+        scroll-event(event) => {
+            accept
+        }
+    }
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(400px, parent.width - 32px);
+        height: min(560px, parent.height - 48px);
+        border-radius: 12px;
+        background: Theme.raised;
+        drop-shadow-blur: 30px;
+        drop-shadow-color: #00000080;
+        clip: true;
+        TouchArea { }
+        VerticalLayout {
+            HorizontalLayout {
+                height: 56px;
+                padding-left: 18px;
+                padding-right: 10px;
+                Text {
+                    text: "Контакты";
+                    color: Theme.text;
+                    font-size: 18px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 18px;
+                        background: close-touch.has-hover ? Theme.hover : transparent;
+                        close-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.close();
+                            }
+                        }
+                        StrokeIcon {
+                            size: 20px;
+                            x: 8px;
+                            y: 8px;
+                            stroke-width: 2px;
+                            commands: "M6 6l12 12M18 6L6 18";
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 50px;
+                Rectangle {
+                    x: 14px;
+                    y: 0;
+                    width: parent.width - 28px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: Theme.input;
+                    border-width: 1px;
+                    border-color: search.has-focus ? Theme.accent : transparent;
+                    if search.text == "": Text {
+                        x: 14px;
+                        height: parent.height;
+                        text: "Поиск";
+                        color: Theme.dim;
+                        vertical-alignment: center;
+                    }
+                    search := TextInput {
+                        x: 14px;
+                        width: parent.width - 28px;
+                        height: parent.height;
+                        vertical-alignment: center;
+                        single-line: true;
+                        color: Theme.text;
+                        selection-background-color: #4a7bb7;
+                        edited => {
+                            root.filter(self.text);
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                vertical-stretch: 1;
+                ListView {
+                    width: parent.width;
+                    height: parent.height;
+                    for item[index] in root.items: ContactRow {
+                        item: item;
+                        init => {
+                            if (!item.has-photo) {
+                                root.avatar(index);
+                            }
+                        }
+                        clicked => {
+                            root.pick(index);
+                        }
+                    }
+                }
+
+                if root.items.length == 0: Text {
+                    text: root.note;
+                    color: Theme.dim;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
             }
         }
     }
@@ -1831,6 +2165,44 @@ export component AppWindow inherits Window {
     in property <bool> chat-muted;
     callback toggle-mute();
 
+    // Chat folders (tabs above the list); index 0 is "Все чаты"
+    in property <[FolderTab]> folder-tabs;
+    // The list shows the main chats (the archive row belongs to it)
+    in property <bool> folder-all: true;
+    callback pick-folder(int);
+
+    // Unsent text of the open chat; Rust keeps it per chat
+    in-out property <string> composer-text <=> composer.text;
+    callback composer-changed(string);
+
+    // Contacts window
+    in-out property <bool> contacts-open;
+    in property <[ContactItem]> contacts-items;
+    // "Загрузка…", "Контактов нет"… shown when the list is empty
+    in property <string> contacts-note;
+    callback open-contacts();
+    callback contacts-filter(string);
+    callback contacts-pick(int);
+    callback contacts-avatar(int);
+
+    // Profile column of the open chat
+    in-out property <bool> info-open;
+    in property <bool> info-loading;
+    in property <string> info-error;
+    in property <string> info-title;
+    in property <string> info-subtitle;
+    in property <string> info-initial;
+    in property <color> info-color;
+    in property <image> info-photo;
+    in property <bool> info-has-photo;
+    in property <bool> info-saved;
+    in property <bool> info-can-mute;
+    in property <[ProfileLine]> info-lines;
+    callback open-info();
+    // Wide windows keep the column beside the chat; narrow ones draw it over the chat
+    property <length> info-width: min(340px, root.width);
+    property <bool> info-docked: root.width >= 1060px;
+
     // Context menus
     callback dialog-menu(int, length, length);
     callback message-menu(int, length, length);
@@ -1938,6 +2310,9 @@ export component AppWindow inherits Window {
         clipboard.select-all();
         clipboard.copy();
         clipboard.text = "";
+    }
+    public function scroll-dialogs-top() {
+        dialog-list.content-y = 0;
     }
     public function focus-composer() {
         composer.focus();
@@ -2107,6 +2482,8 @@ export component AppWindow inherits Window {
                 root.confirm-done(false);
             } else if (root.forward-open) {
                 root.forward-open = false;
+            } else if (root.contacts-open) {
+                root.contacts-open = false;
             } else if (root.settings-open && root.settings-page != "main") {
                 root.settings-page = "main";
             } else if (root.settings-open) {
@@ -2117,6 +2494,8 @@ export component AppWindow inherits Window {
                 root.select-cancel();
             } else if (root.bar-mode != "") {
                 root.bar-cancel();
+            } else if (root.info-open) {
+                root.info-open = false;
             } else if (root.chat-open) {
                 root.close-chat();
             } else {
@@ -2245,7 +2624,13 @@ export component AppWindow inherits Window {
                         font-size: 12px;
                     }
                 }
-                if root.archived-count > 0 && !root.show-archive && search.text == "": ArchiveRow {
+                if root.folder-tabs.length > 1 && !root.show-archive && search.text == "": FolderTabs {
+                    tabs: root.folder-tabs;
+                    pick(index) => {
+                        root.pick-folder(index);
+                    }
+                }
+                if root.archived-count > 0 && !root.show-archive && root.folder-all && search.text == "": ArchiveRow {
                     label: root.archived-label;
                     clicked => {
                         root.toggle-archive();
@@ -2307,9 +2692,17 @@ export component AppWindow inherits Window {
             }
             VerticalLayout {
                 visible: root.chat-open;
+                width: parent.width - (root.info-open && root.info-docked ? root.info-width : 0px);
                 Rectangle {
                     height: 52px;
                     background: Theme.raised;
+                    // The header opens the profile column.
+                    header-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.open-info();
+                        }
+                    }
                     HorizontalLayout {
                         padding-left: 14px;
                         padding-right: 14px;
@@ -2685,6 +3078,9 @@ export component AppWindow inherits Window {
                                     wrap: word-wrap;
                                     color: Theme.text;
                                     selection-background-color: #4a7bb7;
+                                    changed text => {
+                                        root.composer-changed(self.text);
+                                    }
                                 }
                             }
                         }
@@ -2712,6 +3108,204 @@ export component AppWindow inherits Window {
                                     commands: "M3 20.5v-7l10-1.5-10-1.5v-7L22 12 3 20.5z";
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // ---- Profile column (like Telegram Web's chat info)
+            if root.info-open && root.chat-open: Rectangle {
+                x: parent.width - root.info-width;
+                width: root.info-width;
+                height: parent.height;
+                background: Theme.raised;
+                drop-shadow-blur: root.info-docked ? 0px : 20px;
+                drop-shadow-color: #00000066;
+                clip: true;
+                // Clicks and the wheel stop here; the chat below must not get them.
+                TouchArea {
+                    scroll-event(event) => {
+                        accept
+                    }
+                }
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: 1px;
+                    height: parent.height;
+                    background: Theme.border;
+                }
+
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: parent.width;
+                    height: 52px;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 14px;
+                        spacing: 10px;
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 36px;
+                                height: 36px;
+                                border-radius: 18px;
+                                background: info-close.has-hover ? Theme.hover : transparent;
+                                info-close := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => {
+                                        root.info-open = false;
+                                    }
+                                }
+                                StrokeIcon {
+                                    size: 20px;
+                                    x: 8px;
+                                    y: 8px;
+                                    stroke-width: 2px;
+                                    commands: "M6 6l12 12M18 6L6 18";
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: "Информация";
+                            color: Theme.text;
+                            font-size: 17px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                }
+
+                info-flick := Flickable {
+                    y: 52px;
+                    width: parent.width;
+                    height: parent.height - 52px;
+                    content-height: info-body.preferred-height;
+                    interactive: false;
+                    // The wheel scrolls by hand: the touch area under the content
+                    // takes it wherever the content itself does not.
+                    TouchArea {
+                        width: parent.width;
+                        height: max(parent.content-height, info-flick.height);
+                        scroll-event(event) => {
+                            info-flick.content-y = max(min(0px, info-flick.height - info-body.preferred-height), min(0px, info-flick.content-y + event.delta-y));
+                            accept
+                        }
+                    }
+                    info-body := VerticalLayout {
+                        width: parent.width;
+                        alignment: start;
+                        Rectangle {
+                            height: 212px;
+                            Avatar {
+                                x: (parent.width - self.width) / 2;
+                                y: 22px;
+                                size: 120px;
+                                initial: root.info-initial;
+                                tint: root.info-color;
+                                photo: root.info-photo;
+                                has-photo: root.info-has-photo;
+                                saved: root.info-saved;
+                            }
+
+                            Text {
+                                x: 20px;
+                                y: 154px;
+                                width: parent.width - 40px;
+                                height: 26px;
+                                text: root.info-title;
+                                color: Theme.text;
+                                font-size: 20px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+
+                            Text {
+                                x: 20px;
+                                y: 182px;
+                                width: parent.width - 40px;
+                                height: 20px;
+                                text: root.info-subtitle;
+                                color: Theme.dim;
+                                font-size: 14px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+
+                        if root.info-can-mute: Rectangle {
+                            height: 48px;
+                            background: info-mute.has-hover ? Theme.hover : transparent;
+                            info-mute := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.toggle-mute();
+                                }
+                            }
+                            StrokeIcon {
+                                x: 20px;
+                                y: 12px;
+                                size: 24px;
+                                stroke-width: 2px;
+                                tint: Theme.dim;
+                                commands: root.chat-muted ? "M18 8a6 6 0 0 0-9.3-5M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14M10.3 21a2 2 0 0 0 3.4 0M3 3l18 18" : "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M10.3 21a2 2 0 0 0 3.4 0";
+                            }
+
+                            Text {
+                                x: 64px;
+                                width: parent.width - 84px;
+                                height: parent.height;
+                                text: "Уведомления: " + (root.chat-muted ? "Выкл." : "Вкл.");
+                                color: Theme.text;
+                                font-size: 15px;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        if root.info-error != "": Rectangle {
+                            height: 44px;
+                            Text {
+                                x: 20px;
+                                width: parent.width - 40px;
+                                text: root.info-error;
+                                color: Theme.danger;
+                                font-size: 14px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                        if root.info-loading && root.info-error == "" && root.info-lines.length == 0: Rectangle {
+                            height: 44px;
+                            Text {
+                                text: "Загрузка…";
+                                color: Theme.dim;
+                                font-size: 14px;
+                            }
+                        }
+                        if root.info-lines.length > 0: Rectangle {
+                            height: 9px;
+                            Rectangle {
+                                y: 4px;
+                                height: 1px;
+                                background: Theme.border;
+                            }
+                        }
+                        for line in root.info-lines: ProfileRow {
+                            line: line;
+                        }
+                        Rectangle {
+                            height: 16px;
                         }
                     }
                 }
@@ -2802,6 +3396,14 @@ export component AppWindow inherits Window {
             }
 
             DrawerItem {
+                text: "Контакты";
+                clicked => {
+                    root.drawer-open = false;
+                    root.open-contacts();
+                }
+            }
+
+            DrawerItem {
                 text: "Архив";
                 clicked => {
                     root.drawer-open = false;
@@ -2882,6 +3484,28 @@ export component AppWindow inherits Window {
         }
         open-proxy => {
             root.open-proxy();
+        }
+    }
+
+    // ---- Contacts
+    if root.contacts-open: ContactsWindow {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        items: root.contacts-items;
+        note: root.contacts-note;
+        close => {
+            root.contacts-open = false;
+        }
+        filter(text) => {
+            root.contacts-filter(text);
+        }
+        pick(index) => {
+            root.contacts-pick(index);
+        }
+        avatar(index) => {
+            root.contacts-avatar(index);
         }
     }
 

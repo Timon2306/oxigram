@@ -296,6 +296,9 @@ fn sign_out() {
                 app.dialogs_loading = false;
                 app.me_id = 0;
                 app.me_photo_id = None;
+                crate::drafts::clear();
+                crate::folders::clear();
+                crate::contacts::clear();
                 app.set_messages(Vec::new());
                 if let Some(ui) = app.ui.upgrade() {
                     ui.set_chat_open(false);

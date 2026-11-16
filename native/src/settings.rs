@@ -23,6 +23,11 @@ pub fn set_dir(dir: PathBuf) {
     let _ = DIR.set(dir);
 }
 
+/// The config folder, once `set_dir` has run.
+pub fn dir() -> Option<&'static Path> {
+    DIR.get().map(PathBuf::as_path)
+}
+
 /// Same keys and defaults as the WebView client's settings.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]

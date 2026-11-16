@@ -125,7 +125,8 @@ fn cancel_compose() {
         if let Some(ui) = app.ui.upgrade() {
             ui.set_bar_mode(SharedString::new());
             if was_edit {
-                ui.invoke_set_composer(SharedString::new());
+                // The draft from before the edit comes back.
+                ui.invoke_set_composer(app.chat.map(crate::drafts::get).unwrap_or_default().into());
             }
         }
     });
@@ -233,7 +234,9 @@ fn send_text(text: SharedString) {
         return;
     };
     if let Some(ui) = ui() {
-        ui.invoke_set_composer(SharedString::new());
+        // After an edit the draft from before it comes back.
+        let rest = if matches!(compose, Compose::Edit(_)) { crate::drafts::get(peer) } else { String::new() };
+        ui.invoke_set_composer(rest.into());
         ui.set_chat_error(SharedString::new());
         ui.set_bar_mode(SharedString::new());
         ui.invoke_scroll_to_bottom();
@@ -242,8 +245,13 @@ fn send_text(text: SharedString) {
     let draft = text.clone();
     let failed = move |app: &mut App, err: &oxigram_core::error::UiError| {
         app.chat_error(err);
-        if let Some(ui) = app.ui.upgrade() {
-            ui.invoke_set_composer(draft.into());
+        if app.chat == Some(peer) {
+            if let Some(ui) = app.ui.upgrade() {
+                ui.invoke_set_composer(draft.into());
+            }
+        } else {
+            // Another chat is open now: the text goes back to its own draft.
+            crate::drafts::set(peer, &draft);
         }
     };
     match compose {
@@ -307,7 +315,7 @@ impl App {
             if let Some(ui) = self.ui.upgrade() {
                 ui.set_bar_mode(SharedString::new());
                 if was_edit {
-                    ui.invoke_set_composer(SharedString::new());
+                    ui.invoke_set_composer(crate::drafts::get(peer).into());
                 }
             }
         }

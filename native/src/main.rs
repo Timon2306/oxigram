@@ -10,12 +10,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod autostart;
+mod contacts;
 mod context_menu;
+mod drafts;
+mod folders;
 mod format;
 mod menus;
 mod messages;
 mod pictures;
 mod notify;
+mod profile;
 mod proxy;
 mod reactions;
 mod select;
@@ -194,6 +198,7 @@ fn main() {
         return;
     }
     settings::set_dir(config.join(APP_ID));
+    drafts::load();
     let _ = TELEGRAM.set(Telegram::new(
         config.join(APP_ID),
         data.join(APP_ID),
@@ -290,6 +295,10 @@ fn main() {
     reactions::wire(&ui);
     select::wire(&ui);
     proxy::wire(&ui);
+    folders::wire(&ui);
+    drafts::wire(&ui);
+    contacts::wire(&ui);
+    profile::wire(&ui);
 
     // Expires "печатает…" entries; does nothing while nobody types.
     let typing_timer = slint::Timer::default();
@@ -409,6 +418,7 @@ fn show_state(result: Result<UiState, UiError>) {
             if ui.get_stage() != "ready" {
                 tg().ui.attach(Box::new(WindowSink));
                 load_dialogs();
+                folders::load();
             }
             "ready"
         }
@@ -460,6 +470,7 @@ fn wire_main(ui: &AppWindow) {
             app.set_messages(Vec::new());
             if let Some(ui) = app.ui.upgrade() {
                 ui.set_chat_open(false);
+                ui.set_info_open(false);
                 ui.set_bar_mode(SharedString::new());
                 ui.set_selecting_id(-1);
             }
@@ -668,7 +679,8 @@ fn open_chat(peer: i64) {
             app.show_chat_rights(&ui);
             ui.set_chat_open(true);
             ui.set_history_loading(true);
-            ui.invoke_set_composer(SharedString::new());
+            // Its draft, if the chat has one.
+            ui.invoke_set_composer(drafts::get(peer).into());
             ui.invoke_scroll_to_bottom();
             // Type right away, without clicking the field (not in read-only channels).
             if ui.get_chat_can_post() {
@@ -686,6 +698,7 @@ fn open_chat(peer: i64) {
         return;
     };
     reactions::load_allowed(peer, generation);
+    profile::chat_changed();
     tg().ui.set_active_chat(Some(peer));
     request_avatar(peer);
 
@@ -942,15 +955,22 @@ impl App {
         };
         let photo = self.avatars.get(&d.id);
         let typing = self.typing_line(d);
+        // An unsent draft shows in every chat but the open one.
+        let draft = if self.chat == Some(d.id) || typing.is_some() { None } else { drafts::preview(d.id) };
         DialogItem {
             initial: format::initial(&title).into(),
             title: title.into(),
             color: format::avatar_color(d.id),
             photo: photo.cloned().unwrap_or_default(),
             has_photo: photo.is_some(),
-            preview: typing.clone().unwrap_or_else(|| format::preview_text(&d.last_text)).into(),
+            preview: typing
+                .clone()
+                .or_else(|| draft.clone())
+                .unwrap_or_else(|| format::preview_text(&d.last_text))
+                .into(),
             typing: typing.is_some(),
-            you: typing.is_none() && d.last_outgoing && d.kind != "saved" && d.kind != "user",
+            draft: draft.is_some(),
+            you: typing.is_none() && draft.is_none() && d.last_outgoing && d.kind != "saved" && d.kind != "user",
             time: format::list_date(d.last_date).into(),
             unread: d.unread,
             muted: d.muted,
@@ -978,7 +998,11 @@ impl App {
         let rows: Vec<&DialogRow> = self
             .dialogs
             .iter()
-            .filter(|d| if needle.is_empty() { d.archived == self.show_archive } else { true })
+            .filter(|d| match (needle.is_empty(), self.show_archive) {
+                (false, _) => true,
+                (true, true) => d.archived,
+                (true, false) => folders::keep(d),
+            })
             .filter(|d| needle.is_empty() || format::dialog_title(d).to_lowercase().contains(needle))
             .collect();
         self.shown = rows.iter().map(|d| d.id).collect();
@@ -989,6 +1013,7 @@ impl App {
         }
         if let Some(ui) = self.ui.upgrade() {
             ui.set_show_archive(self.show_archive);
+            folders::refresh_tabs(&ui, &self.dialogs);
             ui.set_archived_count(archived as i32);
             let n = archived as i64;
             ui.set_archived_label(format!("{n} {}", format::plural(n, "чат", "чата", "чатов")).into());
