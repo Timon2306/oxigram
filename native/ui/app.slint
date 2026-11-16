@@ -1366,6 +1366,8 @@ export component AppWindow inherits Window {
     callback menu-react(string);
     callback react(int, string);
     callback want-emoji(string);
+    // The widest bubble changed (window resized): reaction rows rewrap.
+    callback reaction-width(length);
 
     // Reply / edit bar above the composer: mode "", "reply" or "edit"
     in property <string> bar-mode;
@@ -1866,6 +1868,14 @@ export component AppWindow inherits Window {
                         // On a wide window the conversation stays a readable
                         // column in the middle, as in Telegram Desktop.
                         property <length> column-width: min(Theme.column, self.visible-width);
+                        // The widest bubble; Rust wraps reaction chips to it.
+                        property <length> bubble-max: min(520px, (self.column-width - 32px) * 0.74);
+                        init => {
+                            root.reaction-width(self.bubble-max);
+                        }
+                        changed bubble-max => {
+                            root.reaction-width(self.bubble-max);
+                        }
                         property <length> side: (self.visible-width - self.column-width) / 2 + 16px;
                         for m[index] in root.messages: Rectangle {
                             height: row.preferred-height;

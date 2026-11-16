@@ -19,8 +19,10 @@ const PAID: &str = "paid";
 /// The usual reactions offered first in the menu. The heart is the plain
 /// one: Telegram names reactions without U+FE0F.
 const QUICK: [&str; 7] = ["👍", "❤", "🔥", "😂", "😮", "😢", "🙏"];
-/// Chips per row: Slint has no wrapping layout, and four always fit a bubble.
-const PER_ROW: usize = 4;
+/// Room for chips is the widest bubble minus its padding.
+const BUBBLE_PADDING: f32 = 24.0;
+/// Gap between chips.
+const CHIP_GAP: f32 = 4.0;
 /// Drawn size of a custom emoji in a chip, logical pixels.
 const EMOJI_PX: f32 = 18.0;
 
@@ -91,9 +93,27 @@ impl App {
                 }
             })
             .collect();
-        let rows: Vec<ReactionRow> = chips
-            .chunks(PER_ROW)
-            .map(|chunk| ReactionRow { chips: ModelRc::new(VecModel::from(chunk.to_vec())) })
+        // Slint has no wrapping layout: rows are cut here, by estimated chip
+        // widths, to the width of the widest bubble.
+        let room = (self.reaction_width - BUBBLE_PADDING).max(120.0);
+        let mut rows: Vec<Vec<ReactionChip>> = Vec::new();
+        let mut used = 0.0;
+        for chip in chips {
+            let w = chip_width(&chip);
+            match rows.last_mut() {
+                Some(row) if used + CHIP_GAP + w <= room => {
+                    used += CHIP_GAP + w;
+                    row.push(chip);
+                }
+                _ => {
+                    used = w;
+                    rows.push(vec![chip]);
+                }
+            }
+        }
+        let rows: Vec<ReactionRow> = rows
+            .into_iter()
+            .map(|row| ReactionRow { chips: ModelRc::new(VecModel::from(row)) })
             .collect();
         ModelRc::new(VecModel::from(rows))
     }
@@ -121,7 +141,33 @@ impl App {
     }
 }
 
+/// A chip's width as drawn: padding, the emoji, and the count's digits
+/// (slightly generous, so a row never overflows).
+fn chip_width(chip: &ReactionChip) -> f32 {
+    let digits = if chip.count > 1 { chip.count.to_string().len() as f32 * 8.0 + 4.0 } else { 0.0 };
+    17.0 + 21.0 + digits
+}
+
 pub fn wire(window: &AppWindow) {
+    window.on_reaction_width(|width| {
+        with_app(|app| {
+            // Only a real change rewraps (and only bubbles with reactions).
+            if (app.reaction_width - width).abs() < 4.0 {
+                return;
+            }
+            app.reaction_width = width;
+            let rows: Vec<usize> = app
+                .messages
+                .iter()
+                .enumerate()
+                .filter(|(_, m)| !m.reactions.is_empty())
+                .map(|(i, _)| i)
+                .collect();
+            for index in rows {
+                app.refresh_row(index);
+            }
+        });
+    });
     window.on_react(|message, key| {
         let key = key.to_string();
         slint::Timer::single_shot(Duration::ZERO, move || react(message, &key));

@@ -120,6 +120,8 @@ struct App {
     emoji: reactions::Emoji,
     /// Which reactions the open chat allows.
     allowed: reactions::Allowed,
+    /// Width of the widest bubble, for wrapping reaction chips.
+    reaction_width: f32,
 }
 
 thread_local! {
@@ -236,6 +238,7 @@ fn main() {
             viewer: None,
             emoji: reactions::Emoji::default(),
             allowed: reactions::Allowed::default(),
+            reaction_width: 300.0,
         })
     });
     let bench = std::env::var_os("OXIGRAM_BENCH").is_some();
