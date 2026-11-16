@@ -20,19 +20,38 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Unsigned builds (no certificates): Windows SmartScreen and macOS
+        # Gatekeeper warn on first start; the release notes say how to open.
         include:
           - os: windows-latest
-            name: windows-x86_64
+            name: windows-x64
+            target: x86_64-pc-windows-msvc
             features: ""
             formats: nsis
             glob: "*.exe"
+          - os: windows-latest
+            name: windows-x86
+            target: i686-pc-windows-msvc
+            features: ""
+            formats: nsis
+            glob: "*.exe"
+          # Ubuntu 22.04 base: runs on glibc 2.35+ (Ubuntu 22.04, Debian 12,
+          # Fedora 36 and newer).
           - os: ubuntu-22.04
-            name: linux-x86_64
+            name: linux-x64
+            target: x86_64-unknown-linux-gnu
             features: "--features gstreamer"
             formats: deb,appimage
             glob: "*.{deb,AppImage}"
           - os: macos-latest
-            name: macos-aarch64
+            name: macos-apple-silicon
+            target: aarch64-apple-darwin
+            features: ""
+            formats: dmg
+            glob: "*.dmg"
+          - os: macos-latest
+            name: macos-intel
+            target: x86_64-apple-darwin
             features: ""
             formats: dmg
             glob: "*.dmg"
@@ -53,22 +72,25 @@ jobs:
             libfuse2
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          key: ${{ matrix.target }}
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
       - name: Build
-        run: cargo build --release --locked -p oxigram-native ${{ matrix.features }}
+        run: cargo build --release --locked -p oxigram-native --target ${{ matrix.target }} ${{ matrix.features }}
 
       # Packages the binary built above (target/release) into target/packager.
       - name: Package
         working-directory: native
         shell: bash
-        run: cargo packager --release --formats ${{ matrix.formats }} ${{ matrix.features }}
+        run: cargo packager --release --target ${{ matrix.target }} --formats ${{ matrix.formats }} ${{ matrix.features }}
 
       - name: Collect installers
         shell: bash
@@ -106,3 +128,8 @@ jobs:
           target_commitish: ${{ github.sha }}
           files: out/*
           generate_release_notes: true
+          body: |
+            Сборки без цифровой подписи.
+            - Windows: если SmartScreen предупреждает — «Подробнее» → «Выполнить в любом случае». windows-x64 — для 64-битной Windows 10/11, windows-x86 — для 32-битной.
+            - macOS: правый клик по Oxigram → «Открыть» (или Системные настройки → Конфиденциальность и безопасность → «Всё равно открыть»). apple-silicon — M1/M2/M3, intel — Mac на Intel.
+            - Linux: .deb для Ubuntu/Debian, .AppImage для остальных (chmod +x). Нужен glibc 2.35+ (Ubuntu 22.04 и новее).
