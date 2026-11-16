@@ -108,12 +108,12 @@ impl Settings {
             ("avatars", "Фото на аватарках", "Без них — цветной кружок с буквой."),
             (
                 "autoloadImages",
-                "Загружать картинки в чатах сами",
+                "Загружать картинки сами",
                 "Без этого картинка и превью видео грузятся по клику. Заработает вместе с картинками.",
             ),
             (
                 "autoplayGifs",
-                "Проигрывать GIF и видеостикеры",
+                "Проигрывать GIF и стикеры",
                 "Без этого они стоят на месте, пока не откроешь. Заработает вместе с картинками.",
             ),
             (
@@ -123,7 +123,7 @@ impl Settings {
             ),
             (
                 "prefetchChats",
-                "Подгружать верхние чаты заранее",
+                "Подгружать верхние чаты",
                 "Десять верхних чатов открываются сразу, без ожидания сети.",
             ),
             (
@@ -147,17 +147,32 @@ impl Settings {
                 on: copy.flag(key).is_some_and(|f| *f),
                 key: key.into(),
                 title: title.into(),
+                group: group(key).into(),
+                // About 34 characters fit a line of the settings column.
+                note_lines: (note.chars().count() as i32 + 33) / 34,
                 note: note.into(),
             })
             .collect()
     }
 }
 
+/// The settings page an option is on.
+fn group(key: &str) -> &'static str {
+    match key {
+        "muteAll" => "notifications",
+        "gpuRender" | "autostart" => "general",
+        _ => "data",
+    }
+}
+
 pub fn wire(window: &AppWindow) {
+    // "Экономия памяти" in the burger menu opens the settings on that page.
     window.on_open_saver(|| {
         if let Some(ui) = ui() {
             fill(&ui);
-            ui.set_saver_open(true);
+            ui.set_cache_text(crate::menus::format_size(crate::tg().cache_size()).into());
+            ui.set_settings_page("data".into());
+            ui.set_settings_open(true);
         }
     });
     window.on_saver_toggle(|key| {
@@ -196,7 +211,7 @@ pub fn wire(window: &AppWindow) {
     });
 }
 
-fn fill(ui: &AppWindow) {
+pub(crate) fn fill(ui: &AppWindow) {
     let options = with_app(|app| app.settings.options()).unwrap_or_default();
     ui.set_saver_options(ModelRc::new(VecModel::from(options)));
 }

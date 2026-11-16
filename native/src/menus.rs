@@ -41,6 +41,8 @@ pub fn wire(window: &AppWindow) {
     window.on_open_settings(|| {
         if let Some(ui) = ui() {
             ui.set_cache_text(format_size(tg().cache_size()).into());
+            crate::settings::fill(&ui);
+            ui.set_settings_page("main".into());
             ui.set_settings_open(true);
         }
     });
@@ -100,6 +102,7 @@ pub fn show_me(me: &Me) {
     ui.set_me_initial(format::initial(&me.name).into());
     ui.set_me_color(format::avatar_color(me.id));
     ui.set_version(env!("CARGO_PKG_VERSION").into());
+    ui.set_me_username(me.username.as_deref().filter(|u| !u.is_empty()).map(|u| format!("@{u}")).unwrap_or_default().into());
     ui.set_me_account(match me.username.as_deref().filter(|u| !u.is_empty()) {
         Some(user) => format!("{} · @{user}", me.name),
         None => me.name.clone(),

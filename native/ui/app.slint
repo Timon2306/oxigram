@@ -18,6 +18,10 @@ export struct SaverOption {
     title: string,
     note: string,
     on: bool,
+    // The settings page it is on: "notifications", "data" or "general"
+    group: string,
+    // Lines the note takes in the settings column (fixed heights)
+    note-lines: int,
 }
 
 export struct DialogItem {
@@ -1290,6 +1294,458 @@ component Modal inherits Rectangle {
     }
 }
 
+
+// ---- Settings panel (like Telegram Web: a column that replaces the chat list)
+
+// One line of a settings card: a coloured icon tile, a label, a value.
+component SettingsRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <color> tint;
+    in property <string> icon;
+    in property <bool> danger;
+    callback clicked();
+    height: 48px;
+    border-radius: 10px;
+    background: row-touch.has-hover ? Theme.hover : transparent;
+    row-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 12px;
+        spacing: 14px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 8px;
+                background: root.tint;
+                StrokeIcon {
+                    x: 5px;
+                    y: 5px;
+                    tint: white;
+                    stroke-width: 2px;
+                    commands: root.icon;
+                }
+            }
+        }
+
+        Text {
+            text: root.label;
+            color: root.danger ? Theme.danger : Theme.text;
+            font-size: 15px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+
+        if root.value != "": Text {
+            text: root.value;
+            color: Theme.dim;
+            font-size: 14px;
+            vertical-alignment: center;
+            overflow: elide;
+            max-width: 130px;
+        }
+    }
+}
+
+// A line of the profile card: the value and what it is.
+component InfoRow inherits Rectangle {
+    in property <string> value;
+    in property <string> label;
+    in property <color> tint;
+    in property <string> icon;
+    height: 52px;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 12px;
+        spacing: 14px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 8px;
+                background: root.tint;
+                StrokeIcon {
+                    x: 5px;
+                    y: 5px;
+                    tint: white;
+                    stroke-width: 2px;
+                    commands: root.icon;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 1px;
+            Text {
+                text: root.value;
+                color: Theme.text;
+                font-size: 15px;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.label;
+                color: Theme.dim;
+                font-size: 12px;
+            }
+        }
+    }
+}
+
+// A switch with a title and a note. Heights are fixed (the note's line count
+// comes from Rust): Slint mis-measures wrapped text in nested layouts.
+component ToggleRow inherits Rectangle {
+    in property <SaverOption> option;
+    callback toggle(string);
+    height: 12px + 21px + 2px + root.option.note-lines * 18px + 12px;
+    border-radius: 10px;
+    background: toggle-touch.has-hover ? Theme.hover : transparent;
+    toggle-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.toggle(root.option.key);
+        }
+    }
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 14px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text {
+                text: root.option.title;
+                color: Theme.text;
+                font-size: 15px;
+                overflow: elide;
+                height: 21px;
+            }
+
+            Text {
+                text: root.option.note;
+                color: Theme.dim;
+                font-size: 13px;
+                wrap: word-wrap;
+                height: root.option.note-lines * 18px;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 34px;
+                height: 18px;
+                border-radius: 9px;
+                background: root.option.on ? Theme.accent : Theme.input;
+                Rectangle {
+                    x: root.option.on ? parent.width - self.width - 3px : 3px;
+                    y: 3px;
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 6px;
+                    background: root.option.on ? white : Theme.dim;
+                }
+            }
+        }
+    }
+}
+
+component SettingsCard inherits Rectangle {
+    background: Theme.raised;
+    border-radius: 14px;
+    height: card-body.preferred-height;
+    card-body := VerticalLayout {
+        padding: 4px;
+        @children
+    }
+}
+
+component SettingsPanel inherits Rectangle {
+    in-out property <string> page: "main";
+    in property <string> name;
+    in property <string> phone;
+    in property <string> username;
+    in property <string> initial;
+    in property <color> tint;
+    in property <image> photo;
+    in property <bool> has-photo;
+    in property <[SaverOption]> options;
+    in property <string> cache-text;
+    in property <string> version;
+    in property <string> proxy-summary;
+    callback close();
+    callback toggle(string);
+    callback clear-cache();
+    callback sign-out();
+    callback open-proxy();
+    property <bool> muted: false;
+    background: Theme.bg;
+    // Swallows clicks and the wheel meant for the list below.
+    TouchArea {
+        scroll-event(event) => {
+            accept
+        }
+    }
+    // The page scrolls by hand (see Modal); a new page starts at the top.
+    changed page => {
+        flick.content-y = 0;
+    }
+
+    // Header
+    Rectangle {
+        y: 0;
+        height: 56px;
+        background: Theme.raised;
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 12px;
+            spacing: 8px;
+            Rectangle {
+                width: 40px;
+                height: 40px;
+                y: 8px;
+                border-radius: 20px;
+                background: back-touch.has-hover ? Theme.hover : transparent;
+                back-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        if (root.page == "main") {
+                            root.close();
+                        } else {
+                            root.page = "main";
+                        }
+                    }
+                }
+                StrokeIcon {
+                    x: 10px;
+                    y: 10px;
+                    tint: Theme.text;
+                    stroke-width: 2px;
+                    commands: "M15 5l-7 7 7 7";
+                }
+            }
+
+            Text {
+                text: root.page == "notifications" ? "Уведомления" : root.page == "data" ? "Данные и память" : root.page == "general" ? "Общие" : root.page == "about" ? "О программе" : "Настройки";
+                color: Theme.text;
+                font-size: 18px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    flick := Flickable {
+        y: 56px;
+        width: parent.width;
+        height: parent.height - 56px;
+        content-height: body.preferred-height;
+        interactive: false;
+        TouchArea {
+            width: parent.width;
+            height: max(body.preferred-height, flick.height);
+            scroll-event(event) => {
+                flick.content-y = max(min(0px, flick.height - body.preferred-height), min(0px, flick.content-y + event.delta-y));
+                accept
+            }
+        }
+        body := VerticalLayout {
+            width: parent.width;
+            padding: 12px;
+            spacing: 12px;
+
+            // ---- Main page: profile, then the sections
+            if root.page == "main": VerticalLayout {
+                spacing: 4px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                HorizontalLayout {
+                    alignment: center;
+                    Avatar {
+                        size: 96px;
+                        initial: root.initial;
+                        tint: root.tint;
+                        photo: root.photo;
+                        has-photo: root.has-photo;
+                    }
+                }
+
+                Rectangle {
+                    height: 6px;
+                }
+
+                Text {
+                    text: root.name;
+                    color: Theme.text;
+                    font-size: 19px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: "в сети";
+                    color: Theme.accent;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                }
+            }
+
+            if root.page == "main" && (root.phone != "" || root.username != ""): SettingsCard {
+                if root.phone != "": InfoRow {
+                    value: root.phone;
+                    label: "Телефон";
+                    tint: #4cb05e;
+                    icon: "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z";
+                }
+                if root.username != "": InfoRow {
+                    value: root.username;
+                    label: "Имя пользователя";
+                    tint: #3d8fd9;
+                    icon: "M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7.1";
+                }
+            }
+
+            if root.page == "main": SettingsCard {
+                SettingsRow {
+                    label: "Уведомления";
+                    tint: #e5534b;
+                    icon: "M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2zM10 20a2 2 0 0 0 4 0";
+                    clicked => {
+                        root.page = "notifications";
+                    }
+                }
+
+                SettingsRow {
+                    label: "Данные и память";
+                    value: root.cache-text;
+                    tint: #4cb05e;
+                    icon: "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3";
+                    clicked => {
+                        root.page = "data";
+                    }
+                }
+
+                SettingsRow {
+                    label: "Общие";
+                    tint: #6f8295;
+                    icon: "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1";
+                    clicked => {
+                        root.page = "general";
+                    }
+                }
+
+                SettingsRow {
+                    label: "Прокси";
+                    value: root.proxy-summary;
+                    tint: #3d8fd9;
+                    icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9M12 3C9.5 5.5 8.2 8.5 8.2 12s1.3 6.5 3.8 9";
+                    clicked => {
+                        root.open-proxy();
+                    }
+                }
+
+                SettingsRow {
+                    label: "О программе";
+                    value: root.version;
+                    tint: #8e6bd8;
+                    icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5";
+                    clicked => {
+                        root.page = "about";
+                    }
+                }
+            }
+
+            if root.page == "main": SettingsCard {
+                SettingsRow {
+                    label: "Выйти из аккаунта";
+                    danger: true;
+                    tint: #e5534b;
+                    icon: "M10 4H5v16h5M14 8l4 4-4 4M18 12H9";
+                    clicked => {
+                        root.sign-out();
+                    }
+                }
+            }
+
+            // ---- Toggle pages: the options of this group
+            if root.page == "notifications" || root.page == "data" || root.page == "general": SettingsCard {
+                for option in root.options: ToggleRow {
+                    visible: option.group == root.page;
+                    height: option.group == root.page ? self.preferred-height : 0;
+                    option: option;
+                    toggle(key) => {
+                        root.toggle(key);
+                    }
+                }
+            }
+
+            if root.page == "data": SettingsCard {
+                HorizontalLayout {
+                    padding: 12px;
+                    spacing: 10px;
+                    height: 64px;
+                    Text {
+                        text: "Кэш медиа: " + root.cache-text;
+                        color: Theme.text;
+                        font-size: 15px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+
+                    Button {
+                        kind: "ghost";
+                        text: "Очистить";
+                        width: 110px;
+                        clicked => {
+                            root.clear-cache();
+                        }
+                    }
+                }
+            }
+
+            if root.page == "about": SettingsCard {
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+                    Text {
+                        text: "Oxigram " + root.version;
+                        color: Theme.text;
+                        font-size: 16px;
+                        font-weight: 600;
+                        height: 22px;
+                    }
+
+                    Text {
+                        text: "Лёгкий клиент Telegram на Rust.";
+                        color: Theme.dim;
+                        font-size: 14px;
+                        height: 20px;
+                    }
+
+                    Text {
+                        text: "Ключи API свои, хранятся только на этом компьютере. Сменить их можно после выхода из аккаунта.";
+                        color: Theme.dim;
+                        font-size: 14px;
+                        wrap: word-wrap;
+                        height: 60px;
+                    }
+                }
+            }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     in property <string> window-title: "Oxigram";
     title: root.window-title;
@@ -1396,6 +1852,9 @@ export component AppWindow inherits Window {
 
     // Settings
     in-out property <bool> settings-open;
+    // "main", "notifications", "data", "general" or "about"
+    in-out property <string> settings-page: "main";
+    in property <string> me-username;
     in property <string> me-account;
     in property <string> cache-text;
     callback clear-cache();
@@ -1587,8 +2046,8 @@ export component AppWindow inherits Window {
                 root.confirm-done(false);
             } else if (root.forward-open) {
                 root.forward-open = false;
-            } else if (root.saver-open) {
-                root.saver-open = false;
+            } else if (root.settings-open && root.settings-page != "main") {
+                root.settings-page = "main";
             } else if (root.settings-open) {
                 root.settings-open = false;
             } else if (root.drawer-open) {
@@ -2247,189 +2706,39 @@ export component AppWindow inherits Window {
         }
     }
 
-    // ---- Settings
-    if root.settings-open: Modal {
-        width: root.width;
+    // ---- Settings: a column over the chat list, like Telegram Web
+    if root.settings-open: SettingsPanel {
+        x: 0;
+        y: 0;
+        width: min(340px, root.width);
         height: root.height;
-        title: "Настройки";
+        page <=> root.settings-page;
+        name: root.me-name;
+        phone: root.me-phone;
+        username: root.me-username;
+        initial: root.me-initial;
+        tint: root.me-color;
+        photo: root.me-photo;
+        has-photo: root.me-has-photo;
+        options: root.saver-options;
+        cache-text: root.cache-text;
+        version: root.version;
+        proxy-summary: root.proxy-summary;
         close => {
             root.settings-open = false;
         }
-        GridLayout {
-            spacing-horizontal: 16px;
-            spacing-vertical: 10px;
-            Row {
-                Text {
-                    text: "Версия";
-                    color: Theme.dim;
-                }
-
-                Text {
-                    text: root.version;
-                    color: Theme.text;
-                }
-            }
-
-            Row {
-                Text {
-                    text: "Аккаунт";
-                    color: Theme.dim;
-                }
-
-                Text {
-                    text: root.me-account;
-                    color: Theme.text;
-                    wrap: word-wrap;
-                }
-            }
-
-            Row {
-                Text {
-                    text: "Ключи API";
-                    color: Theme.dim;
-                }
-
-                Text {
-                    text: "Свои, хранятся только на этом компьютере. Сменить их можно после выхода из аккаунта.";
-                    color: Theme.text;
-                    wrap: word-wrap;
-                }
-            }
+        toggle(key) => {
+            root.saver-toggle(key);
         }
-
-        HorizontalLayout {
-            spacing: 10px;
-            Text {
-                text: "Прокси: " + root.proxy-summary;
-                color: Theme.text;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-                overflow: elide;
-            }
-
-            Button {
-                kind: "ghost";
-                text: "Настроить";
-                width: 110px;
-                clicked => {
-                    root.open-proxy();
-                }
-            }
+        clear-cache => {
+            root.clear-cache();
         }
-
-        HorizontalLayout {
-            spacing: 10px;
-            Text {
-                text: "Кэш медиа: " + root.cache-text;
-                color: Theme.text;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-            }
-
-            Button {
-                kind: "ghost";
-                text: "Очистить";
-                width: 110px;
-                clicked => {
-                    root.clear-cache();
-                }
-            }
+        sign-out => {
+            root.ask-sign-out();
         }
-
-        HorizontalLayout {
-            spacing: 8px;
-            alignment: end;
-            Button {
-                kind: "ghost";
-                text: "Выйти из аккаунта";
-                width: 180px;
-                clicked => {
-                    root.ask-sign-out();
-                }
-            }
-
-            Button {
-                kind: "ghost";
-                text: "Закрыть";
-                width: 110px;
-                clicked => {
-                    root.settings-open = false;
-                }
-            }
+        open-proxy => {
+            root.open-proxy();
         }
-    }
-
-    // ---- Memory saver
-    if root.saver-open: Modal {
-        width: root.width;
-        height: root.height;
-        box-width: 640px;
-        title: "Экономия памяти";
-        close => {
-            root.saver-open = false;
-        }
-        // Fixed heights: Slint underestimates wrapped text inside nested
-        // layouts, so the dialog could not tell it overflows and never scrolled.
-        Text {
-            text: "Что включено, то занимает память и трафик. Выключенное не загружается совсем.";
-            color: Theme.dim;
-            font-size: 13px;
-            wrap: word-wrap;
-            height: 36px;
-        }
-
-        for option in root.saver-options: Rectangle {
-            TouchArea {
-                mouse-cursor: pointer;
-                clicked => {
-                    root.saver-toggle(option.key);
-                }
-            }
-
-            HorizontalLayout {
-                spacing: 14px;
-                padding-top: 4px;
-                padding-bottom: 4px;
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    spacing: 2px;
-                    Text {
-                        text: option.title;
-                        color: Theme.text;
-                        font-size: 15px;
-                        overflow: elide;
-                        height: 21px;
-                    }
-
-                    Text {
-                        text: option.note;
-                        color: Theme.dim;
-                        font-size: 13px;
-                        wrap: word-wrap;
-                        height: 54px;
-                    }
-                }
-
-                VerticalLayout {
-                    alignment: center;
-                    Rectangle {
-                        width: 34px;
-                        height: 18px;
-                        border-radius: 9px;
-                        background: option.on ? Theme.accent : Theme.input;
-                        Rectangle {
-                            x: option.on ? parent.width - self.width - 3px : 3px;
-                            y: 3px;
-                            width: 12px;
-                            height: 12px;
-                            border-radius: 6px;
-                            background: option.on ? white : Theme.dim;
-                        }
-                    }
-                }
-            }
-        }
-
     }
 
     // ---- Proxy
