@@ -23,6 +23,7 @@ mod notify;
 mod profile;
 mod proxy;
 mod reactions;
+mod search;
 mod select;
 mod sending;
 mod settings;
@@ -133,6 +134,8 @@ struct App {
     reaction_width: f32,
     /// Bubbles picked in selection mode, by their first message's ID.
     selected: Vec<i32>,
+    /// Search results and the jump window.
+    search: search::State,
 }
 
 thread_local! {
@@ -256,6 +259,7 @@ fn main() {
             allowed: reactions::Allowed::default(),
             reaction_width: 300.0,
             selected: Vec::new(),
+            search: search::State::new(&ui),
         })
     });
     let bench = std::env::var_os("OXIGRAM_BENCH").is_some();
@@ -290,6 +294,7 @@ fn main() {
     menus::wire(&ui);
     settings::wire(&ui);
     messages::wire(&ui);
+    search::wire(&ui);
     sending::wire(&ui);
     context_menu::wire(&ui);
     pictures::wire(&ui);
@@ -505,6 +510,7 @@ fn wire_main(ui: &AppWindow) {
             }
             app.set_messages(Vec::new());
             if let Some(ui) = app.ui.upgrade() {
+                app.search.reset(&ui);
                 ui.set_chat_open(false);
                 ui.set_info_open(false);
                 ui.set_bar_mode(SharedString::new());
@@ -684,6 +690,11 @@ fn circle(mut pixels: image::RgbaImage) -> image::RgbaImage {
 // ---- Open chat -----------------------------------------------------------
 
 fn open_chat(peer: i64) {
+    open_chat_at(peer, None);
+}
+
+/// Opens a chat; with `target`, around that message instead of at the end.
+fn open_chat_at(peer: i64, target: Option<i32>) {
     pictures::close_viewer();
     let Some(generation) = with_app(|app| {
         app.chat = Some(peer);
@@ -699,6 +710,7 @@ fn open_chat(peer: i64) {
         app.history_loading = true;
         app.compose = messages::Compose::None;
         if let Some(ui) = app.ui.upgrade() {
+            app.search.reset(&ui);
             ui.set_bar_mode(SharedString::new());
             ui.set_selecting_id(-1);
             let (title, saved) = app
@@ -753,6 +765,12 @@ fn open_chat(peer: i64) {
         });
     }
 
+    // Jumping to a found message shows the history around it; the chat is
+    // not marked read, as nothing at its end has been seen.
+    if let Some(target) = target {
+        search::load_window(peer, target, generation);
+        return;
+    }
     let unread = with_app(|app| app.dialog(peer).is_some_and(|d| d.unread > 0)).unwrap_or(false);
     run(
         async move { chats::cached_history(tg(), peer, None, HISTORY_PAGE).await },
@@ -854,7 +872,7 @@ fn load_older() {
 
 impl App {
     fn dialog(&self, peer: i64) -> Option<&DialogRow> {
-        self.dialogs.iter().find(|d| d.id == peer)
+        self.dialogs.iter().find(|d| d.id == peer).or_else(|| self.search.stranger(peer))
     }
 
     /// The header line under the chat title: presence for people, member
@@ -953,6 +971,7 @@ impl App {
                 self.dialog_model.set_row_data(index, item);
             }
         }
+        self.search.avatar(peer, &photo);
         if self.chat == Some(peer)
             && let Some(ui) = self.ui.upgrade()
         {
@@ -1040,6 +1059,8 @@ impl App {
                 (true, false) => folders::keep(d),
             })
             .filter(|d| needle.is_empty() || format::dialog_title(d).to_lowercase().contains(needle))
+            // Search shows the first 30 chats, as the WebView build does.
+            .take(if needle.is_empty() { usize::MAX } else { 30 })
             .collect();
         self.shown = rows.iter().map(|d| d.id).collect();
         let items: Vec<DialogItem> = rows.into_iter().map(|d| self.dialog_item(d)).collect();
@@ -1213,6 +1234,10 @@ impl App {
         if let Some(index) = self.messages.iter().position(|m| m.id == row.id) {
             self.messages[index] = row;
             self.refresh_row(index);
+            return;
+        }
+        // A window around a found message has no end to append to.
+        if self.search.detached {
             return;
         }
         // Decided before the list grows: own messages and further parts of
