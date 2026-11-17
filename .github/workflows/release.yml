@@ -120,6 +120,17 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: native/Cargo.toml
+          sparse-checkout-cone-mode: false
+
+      # The tag comes from the version in native/Cargo.toml, e.g. v0.2.0.
+      - name: Read version
+        id: version
+        shell: bash
+        run: echo "value=$(grep -m1 '^version' native/Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/download-artifact@v4
         with:
           path: out
@@ -128,8 +139,8 @@ jobs:
       - name: Draft pre-release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: native-${{ github.run_number }}
-          name: Oxigram native build ${{ github.run_number }}
+          tag_name: v${{ steps.version.outputs.value }}
+          name: Oxigram v${{ steps.version.outputs.value }}
           draft: true
           prerelease: true
           target_commitish: ${{ github.sha }}
