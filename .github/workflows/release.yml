@@ -101,7 +101,7 @@ jobs:
       - name: Package
         working-directory: native
         shell: bash
-        run: cargo packager --release --target ${{ matrix.target }} --formats ${{ matrix.formats }} ${{ matrix.features }}
+        run: cargo packager --release --target ${{ matrix.target }} --formats ${{ matrix.formats }}
 
       - name: Collect installers
         shell: bash
