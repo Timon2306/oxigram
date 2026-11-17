@@ -44,7 +44,7 @@ opus-decoder = "0.1"
 cpal = "0.16"
 
 # System tray and notifications.
-tray-icon = "0.25"
+tray-icon = "0.24"
 notify-rust = "4.19"
 
 # In-app video on Windows 8+ (Media Foundation's media engine, WIC frames).
