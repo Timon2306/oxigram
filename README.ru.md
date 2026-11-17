@@ -1,39 +1,33 @@
 <div align="center">
 
-<img src="src-tauri/icons/icon.svg" width="120" alt="Логотип Oxigram">
+<img src="native/icons/icon.png" width="120" alt="Логотип Oxigram">
 
 # Oxigram
 
-**Клиент Telegram для компьютера, которому хватает 70 МБ памяти.**<br>
-Rust напрямую говорит по MTProto, окно рисует системный WebView. Без TDLib, Electron и Qt.
+**Нативный клиент Telegram для компьютера на Rust, которому хватает нескольких десятков МБ памяти.**<br>
+Rust сам говорит с серверами Telegram по MTProto и сам рисует окно. Без TDLib, Electron, WebView и Qt.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-2a8cf0?style=flat-square)](LICENSE) [![Rust](https://img.shields.io/badge/Rust-grammers-dea584?style=flat-square&logo=rust&logoColor=white)](https://codeberg.org/Lonami/grammers) [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app) [![Svelte 5](https://img.shields.io/badge/Svelte-5-ff3e00?style=flat-square&logo=svelte&logoColor=white)](https://svelte.dev) [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square)](#сборка-из-исходников)
+[![Лицензия: MIT](https://img.shields.io/badge/license-MIT-2a8cf0?style=flat-square)](LICENSE) [![Rust](https://img.shields.io/badge/Rust-grammers-dea584?style=flat-square&logo=rust&logoColor=white)](https://codeberg.org/Lonami/grammers) [![Slint](https://img.shields.io/badge/UI-Slint-2379f4?style=flat-square)](https://slint.dev) [![Платформы](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS-0078d4?style=flat-square)](#установка)
 
 [English](README.md) · **Русский**
-
-<br>
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/light.webp">
-  <img src="docs/screenshots/chat.webp" alt="Oxigram: список чатов, переписка и колонка профиля">
-</picture>
 
 </div>
 
 ## Зачем
 
-Официальные клиенты держат в памяти много всего: большой кэш медиа, целый
-набор UI-библиотек, иногда встроенный браузер. Oxigram держит только то, что
-на экране. Сеть и база данных живут в маленьком процессе на Rust, интерфейс —
-обычная страница на Svelte, которую рисует уже установленный в системе WebView.
-Закрываешь окно — WebView уничтожается, а Oxigram продолжает получать
-сообщения из трея примерно за 5 МБ.
+Официальные клиенты держат в памяти много: большой кэш медиа, целый набор
+интерфейсных библиотек, иногда встроенный браузер. Oxigram держит только то,
+что на экране. Сеть, база и окно — одна небольшая программа на Rust: интерфейс
+рисует программный рендерер [Slint](https://slint.dev), поэтому в памяти нет ни
+браузерного движка, ни драйвера видеокарты.
 
-<div align="center">
-  <img src="docs/memory.svg" width="680" alt="Память: 71 МБ с открытым окном, 55 МБ свёрнутым, 5 МБ в трее, 4 МБ при автозапуске">
-</div>
-
-Исполняемый файл весит около 7 МБ. Текущее потребление всегда видно в заголовке окна.
+- **Около 10–30 МБ ОЗУ** с открытым окном (больше, пока на весь экран открыто
+  фото или видео, и снова меньше, когда закрыто). Точная цифра всегда в
+  заголовке окна.
+- **Исполняемый файл ~15 МБ**, установщики около 7 МБ.
+- Картинки декодируются сразу в том размере, в каком нарисованы, и
+  выбрасываются, когда вы уходите из чата; в длинных чатах в памяти только
+  строки на экране.
 
 ## Возможности
 
@@ -43,20 +37,20 @@ Rust напрямую говорит по MTProto, окно рисует сис�
 
 **💬 Чаты**
 - Папки вкладками, архив, закреплённые чаты
-- Поиск по всем чатам и внутри чата (Ctrl+F)
+- Поиск по всем чатам и внутри одного (Ctrl+F)
 - Без звука, прочитано/непрочитано, архив, очистка, выход
-- Черновики для каждого чата, контакты
-- Список меняет ширину, вплоть до одних аватарок
+- Черновики по чатам, контакты, колонка профиля
+- «Печатает…» в шапке и в списке чатов
 
 </td>
 <td width="50%" valign="top">
 
 **✉️ Сообщения**
-- Форматирование: жирный, курсив, код, спойлеры, цитаты
-- Пиши `**жирный**`, `__курсив__`, `||спойлер||`
-- Ответы, правка, пересылка, удаление, закрепление
-- Реакции, галочки прочтения, «печатает…»
-- Выделение нескольких, разделитель «Непрочитанные»
+- Ответ, правка, пересылка, удаление, закрепление
+- Выбор нескольких сообщений, чтобы переслать или удалить
+- Реакции (и кастомные эмодзи), галочки прочтения
+- Цветные эмодзи без видеокарты
+- Быстрое форматирование: `**жирный**`, `__курсив__`, `||спойлер||`
 
 </td>
 </tr>
@@ -64,104 +58,142 @@ Rust напрямую говорит по MTProto, окно рисует сис�
 <td valign="top">
 
 **🖼️ Медиа**
-- Фото, альбомы, видео, голосовые и аудио
-- GIF и видеостикеры крутятся, пока видны
-- Отправка файлов кнопкой, Ctrl+V или перетаскиванием
-- Параллельная загрузка с кольцом прогресса
-- Кэш не больше 500 МБ, чистится в настройках
+- Фото и альбомы, просмотр на всё окно
+- Видео играет внутри программы (Windows 8+, macOS, Linux с GStreamer)
+- Голосовые с волной, музыка
+- Отправка файлов кнопкой, Ctrl+V или перетаскиванием; альбомы, прогресс, отмена
+- «Экономия памяти»: переключатели для аватарок, картинок, GIF, кастомных эмодзи
 
 </td>
 <td valign="top">
 
 **🖥️ Компьютер**
-- Уведомления с учётом заглушённых чатов
-- Работа из трея и автозапуск с системой
-- Колонка профиля на широком окне
+- Уведомления с учётом заглушённых чатов; «выключить все» в трее
+- Работа из трея, автозапуск с системой, только одна копия
+- Прокси SOCKS5, настраивается ещё до ввода ключей API
 - Светлая и тёмная темы, размер текста
-- Горячие клавиши: Ctrl+Tab, ↑ для правки, Esc
+- Клавиатура: Ctrl+Tab, ↑ для правки, Ctrl+F, Esc
 
 </td>
 </tr>
 </table>
 
-<div align="center">
-<table>
-<tr>
-<td><img src="docs/screenshots/context.webp" alt="Меню сообщения с реакциями"></td>
-<td><img src="docs/screenshots/typing.webp" alt="«Печатает…» в чате и в списке"></td>
-</tr>
-<tr>
-<td><img src="docs/screenshots/menu.webp" alt="Главное меню"></td>
-<td><img src="docs/screenshots/contacts.webp" alt="Контакты"></td>
-</tr>
-</table>
-</div>
+**Пока нет:** HTTP- и MTProto-прокси, анимированные (Lottie) стикеры, звонки,
+истории, несколько аккаунтов, запись голосовых, секретные чаты.
 
-**Пока нет:** анимированных стикеров (Lottie), звонков, историй, нескольких
-аккаунтов, записи голосовых, секретных чатов.
+## Установка
+
+Установщики лежат в [релизах](https://github.com/Timon2306/oxigram/releases):
+
+| Файл | Система |
+|---|---|
+| `oxigram-windows-x64-…-setup.exe` | Windows 10/11, 64 бита |
+| `oxigram-windows-x86-…-setup.exe` | Windows 10/11, 32 бита |
+| `oxigram-windows-arm64-…-setup.exe` | Windows 11 на ARM |
+| `oxigram-linux-x64-….deb` | Ubuntu 22.04+, Debian 12+, Mint |
+| `oxigram-linux-x64-….AppImage` | другие дистрибутивы (glibc 2.35+) |
+| `oxigram-macos-apple-silicon-….dmg` | Mac на M1/M2/M3/M4 |
+| `oxigram-macos-intel-….dmg` | Mac на Intel |
+
+Сборки без цифровой подписи. В Windows, если SmartScreen предупреждает:
+**Подробнее → Выполнить в любом случае**. В macOS при первом запуске: правый
+клик по Oxigram → **Открыть**.
 
 ## Как начать
 
-Oxigram поставляется **без** `api_id` / `api_hash`, нужны свои.
+Oxigram поставляется **без** `api_id` / `api_hash` — нужны свои.
 
-1. Войди на <https://my.telegram.org> → **API development tools**.
-2. Создай приложение (название любое) и скопируй `api_id` и `api_hash`.
-3. Запусти Oxigram, вставь их и войди по номеру телефона.
+1. Войдите на <https://my.telegram.org> → **API development tools**.
+2. Создайте приложение (название любое), скопируйте `api_id` и `api_hash`.
+3. Запустите Oxigram, вставьте их и войдите по номеру телефона.
 
-Ключи и сессия хранятся только на твоём компьютере и не уходят никуда, кроме
+Если Telegram у вас заблокирован, сначала настройте прокси SOCKS5: кнопка
+**Настроить прокси** на первом экране (ключи проверяются только подключением).
+
+Ключи и сессия хранятся только на вашем компьютере и не уходят никуда, кроме
 серверов Telegram.
 
 ## Сборка из исходников
 
-Нужны [Rust](https://rustup.rs), Node.js 22+ и
-[зависимости Tauri](https://tauri.app/start/prerequisites/) для твоей ОС.
+Нужен [Rust](https://rustup.rs) (stable).
 
 ```sh
 git clone https://github.com/Timon2306/oxigram
 cd oxigram
-npm install
-npm run tauri dev      # запуск с горячей перезагрузкой
-npm run tauri build    # релизная сборка
-```
-
-**Нативное окно (экспериментально, в разработке).** Тот же бэкенд, но окно
-на [Slint](https://slint.dev) вместо WebView: без Node.js и WebView2.
-
-```sh
 cargo run --release -p oxigram-native
 ```
 
+В Linux сначала поставьте пакеты разработки (названия для Debian/Ubuntu):
+
+```sh
+sudo apt install build-essential pkg-config libxkbcommon-dev libwayland-dev \
+  libfontconfig1-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev \
+  libdbus-1-dev libasound2-dev libssl-dev
+# видео внутри программы: ещё libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev,
+# и сборка с --features gstreamer
+```
+
+Установщики собираются через [cargo-packager](https://github.com/crabnebula-dev/cargo-packager)
+(`cargo install cargo-packager --locked`, затем `cargo packager --release` в
+папке `native/`). Workflow `.github/workflows/release.yml` собирает их все;
+он запускается только вручную.
+
 <details>
-<summary><b>Проверки, демо-режим и устройство проекта</b></summary>
+<summary><b>Тесты и устройство проекта</b></summary>
 
 <br>
 
 ```sh
-npm run check                            # Svelte / TypeScript
-cargo test                               # юнит-тесты (core + Tauri)
-cargo test -- --ignored                  # плюс тесты с серверами Telegram
+cargo test -p oxigram-core -p oxigram-native   # юнит-тесты
+cargo test -- --ignored                        # ещё и с обращением к серверам Telegram
 ```
 
-**Демо-режим** показывает настоящий интерфейс на выдуманных чатах — для
-скриншотов и записей без аккаунта: запусти `npm run dev` и открой
-<http://localhost:1420/demo/>. Параметр `?scene=chat|context|menu|light|contacts|typing|list`
-выбирает сцену. В сборку приложения демо не входит.
+```
+core/src/            бэкенд (без интерфейса)
+  tg.rs              подключение, вход, прокси
+  chats.rs           диалоги, история, профили, папки, загрузка медиа
+  actions.rs         закрепить, архив, реакции, правка, пересылка, удаление,
+                     отправка файлов, поиск, контакты
+  updates.rs         живые обновления, уведомления, поток событий
+  proxy.rs           настройки SOCKS5 и проверка соединения
+  markup.rs          **жирный** / __курсив__ → разметка сообщения
+  media.rs           что за вложение и какую миниатюру скачать
+  store/             локальная SQLite: сессия и кэш чатов
+  mem.rs             замер памяти процесса (заголовок окна)
+native/              программа: окно на Slint и его часть на Rust
+  ui/app.slint       весь интерфейс
+  src/main.rs        запуск, список чатов, история
+  src/pictures.rs    картинки, альбомы, просмотр
+  src/video/         видео для каждой системы (Media Foundation,
+                     AVFoundation, GStreamer)
+  src/audio.rs       голосовые и музыка
+  src/sending.rs     отправка файлов
+  src/…              реакции, поиск, папки, трей, уведомления, прокси…
+  vendor/            программный рендерер Slint с цветными эмодзи
+```
 
-Устройство проекта описано в [английском README](README.md#build-from-source).
+Прежняя версия на WebView (Tauri + Svelte) пока лежит в `src-tauri/` и `src/`
+и будет удалена.
 
 </details>
 
 ## Честная игра
 
-Oxigram — неофициальный клиент на Telegram API, не связанный с Telegram.
-Он соблюдает [условия использования API](https://core.telegram.org/api/terms):
-никакого «режима призрака», скрытого прочтения или статуса набора, никакого
-сохранения удалённых и самоуничтожающихся сообщений.
+Oxigram — неофициальный клиент на Telegram API, не связанный с Telegram. Он
+соблюдает [условия использования API](https://core.telegram.org/api/terms):
+никакого «режима призрака», скрытого прочтения или скрытого набора текста,
+никакого сохранения удалённых и самоуничтожающихся сообщений.
 
 ## Лицензия
 
 [MIT](LICENSE) © Timon2306
 
-Oxigram можно свободно использовать, менять и распространять, в том числе в своих
-проектах. Условие одно: в каждой копии и каждом проекте на основе этого кода нужно
-сохранить уведомление об авторских правах из [LICENSE](LICENSE) с указанием автора — Timon2306.
+Используйте, меняйте и распространяйте Oxigram свободно, в том числе в своих
+проектах. Одно условие: сохраняйте уведомление об авторских правах из
+[LICENSE](LICENSE) с указанием Timon2306 в каждой копии и в каждом проекте на
+основе этого кода.
+
+Интерфейс сделан на Slint по его бесплатной лицензии Royalty-free (программный
+рендерер Slint в `native/vendor/` под теми же лицензиями; см. файлы там).
+
+<a href="https://slint.dev"><img src="https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png" height="48" alt="Made with Slint"></a>
