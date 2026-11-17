@@ -1,8 +1,0 @@
-twemoji-country-flags.woff2
-
-Country flag glyphs from Twemoji (https://github.com/jdecked/twemoji),
-Copyright Twitter, Inc and other contributors, licensed under CC-BY 4.0:
-https://creativecommons.org/licenses/by/4.0/
-
-Font subset built by the country-flag-emoji-polyfill project
-(https://github.com/talkjs/country-flag-emoji-polyfill), MIT license.

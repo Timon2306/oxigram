@@ -1,10 +1,5 @@
-# Dependencies and build output
-node_modules
-/dist
 # Rust build output of the workspace
 /target
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
 
 # Secrets and local account data: never commit these
 .env
@@ -18,7 +13,5 @@ vite.config.ts.timestamp-*
 # OS
 .DS_Store
 
-# Demo screenshots are regenerated on demand
-demo/screens/
 # Worktree build output
 /target-wt

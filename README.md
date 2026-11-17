@@ -171,8 +171,7 @@ native/              the app: Slint window and its Rust side
   vendor/            Slint's software renderer with colour emoji
 ```
 
-The earlier WebView build (Tauri + Svelte) still lives in `src-tauri/` and
-`src/` and will be removed.
+Up to version 0.1 Oxigram drew its window with a WebView (Tauri + Svelte); since 0.2 it is fully native.
 
 </details>
 

@@ -77,7 +77,7 @@ pub enum UiEvent {
     },
 }
 
-/// Where events go: the Tauri IPC channel, or the native window's queue.
+/// Where events go: the window's queue.
 /// `send` returns `false` once the window is gone.
 pub trait EventSink: Send + Sync {
     fn send(&self, events: Vec<UiEvent>) -> bool;

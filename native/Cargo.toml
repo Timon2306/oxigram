@@ -43,7 +43,7 @@ symphonia = { version = "0.6", default-features = false, features = ["mp3", "aac
 opus-decoder = "0.1"
 cpal = "0.16"
 
-# System tray and notifications (the versions the Tauri build uses).
+# System tray and notifications.
 tray-icon = "0.25"
 notify-rust = "4.19"
 

@@ -21,7 +21,7 @@ use crate::{AppWindow, notify, settings, with_app};
 const POLL: Duration = Duration::from_millis(100);
 /// The unread count is looked up once per this many polls.
 const UNREAD_EVERY: u32 = 10;
-const ICON: &[u8] = include_bytes!("../../src-tauri/icons/32x32.png");
+const ICON: &[u8] = include_bytes!("../icons/32x32.png");
 
 /// Set once the icon is up; without it closing the window must quit.
 static AVAILABLE: AtomicBool = AtomicBool::new(false);
