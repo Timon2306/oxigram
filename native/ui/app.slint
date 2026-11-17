@@ -59,6 +59,13 @@ export struct DialogItem {
     draft: bool,
 }
 
+// One hit of the search inside a chat.
+export struct SearchHit {
+    who: string,
+    text: string,
+    date: string,
+}
+
 // A chat folder tab above the list.
 export struct FolderTab {
     title: string,
@@ -2649,6 +2656,88 @@ export component AppWindow inherits Window {
 
     callback close-chat();
 
+    // ---- Search inside the open chat (Ctrl+F)
+    in-out property <bool> search-open;
+    // The results list under the bar; hidden after a pick to show the chat.
+    in-out property <bool> search-list-open;
+    in property <[SearchHit]> search-hits;
+    // "Найдено: 12", "3 из 12", "…" or "Ничего не найдено"
+    in property <string> search-count;
+    // Query, true when Enter asked for it at once (else after a pause).
+    callback chat-search(string, bool);
+    callback search-pick(int);
+    // +1 goes to an older hit, -1 to a newer one.
+    callback search-step(int);
+    callback search-close();
+    // Messages after the loaded window are not loaded: the way back.
+    in property <bool> detached;
+    callback jump-latest();
+    public function open-search() {
+        root.search-open = true;
+        root.search-list-open = true;
+        search-field.focus();
+    }
+    public function close-search() {
+        root.search-open = false;
+        root.search-close();
+        if (root.chat-can-post) {
+            composer.focus();
+        } else {
+            keys.focus();
+        }
+    }
+    public function clear-search-field() {
+        search-field.text = "";
+    }
+
+    // ---- Jump to a message: the row index, and its ID for the highlight.
+    in-out property <int> jump-id: -1;
+    property <int> jump-row;
+    property <int> jump-frames;
+    property <bool> jump-seen;
+    property <int> jump-calm;
+    in-out property <int> highlight-id: -1;
+    public function jump-to(row: int, id: int) {
+        root.settle-frames = 0;
+        root.wheel-pending = 0px;
+        root.stick-bottom = false;
+        root.jump-row = row;
+        root.jump-id = id;
+        root.jump-seen = false;
+        root.jump-calm = 0;
+        root.jump-frames = 90;
+        root.highlight-id = id;
+    }
+    // Until the row exists, aim by the estimate; the row then centres itself.
+    Timer {
+        interval: 16ms;
+        running: root.jump-frames > 0 && !root.jump-seen;
+        triggered => {
+            let n = max(1, root.messages.length);
+            let lowest = min(0px, history.visible-height - history.content-height);
+            let wanted = -history.content-height * root.jump-row / n + history.visible-height / 2;
+            history.content-y = max(lowest, min(0px, wanted));
+            root.jump-frames -= 1;
+        }
+    }
+    Timer {
+        interval: 1800ms;
+        running: root.highlight-id >= 0 && root.jump-frames <= 0;
+        triggered => {
+            root.highlight-id = -1;
+        }
+    }
+
+    // ---- Global search in the chat list: chats by @username and messages
+    in property <[DialogItem]> found-chats;
+    in property <[DialogItem]> found-messages;
+    // "Поиск сообщений…" / "Ничего не найдено" under the results
+    in property <string> found-note;
+    callback global-search(string);
+    callback open-found-chat(int);
+    callback open-found-message(int);
+    callback want-found-avatar(int, bool);
+
     // Proxy window
     callback open-proxy();
     callback proxy-check();
@@ -2711,6 +2800,12 @@ export component AppWindow inherits Window {
             if ((event.text == "v" || event.text == "V" || event.text == "м" || event.text == "М" || event.text == "\u{16}") && (event.modifiers.control || event.modifiers.meta) && root.paste-files()) {
                 return accept;
             }
+            // Ctrl+F searches in the open chat ("а" in the Russian layout, or
+            // the control character U+0006 on some systems).
+            if ((event.text == "f" || event.text == "F" || event.text == "а" || event.text == "А" || event.text == "\u{6}") && (event.modifiers.control || event.modifiers.meta) && root.chat-open) {
+                root.open-search();
+                return accept;
+            }
             // Ctrl+Tab / Ctrl+Shift+Tab: next / previous chat, as in Telegram Desktop.
             if ((event.text == Key.Tab || event.text == Key.Backtab) && event.modifiers.control) {
                 root.next-chat(!(event.modifiers.shift || event.text == Key.Backtab));
@@ -2750,6 +2845,8 @@ export component AppWindow inherits Window {
                 root.select-cancel();
             } else if (root.bar-mode != "") {
                 root.bar-cancel();
+            } else if (root.search-open) {
+                root.close-search();
             } else if (root.info-open) {
                 root.info-open = false;
             } else if (root.chat-open) {
@@ -2865,6 +2962,7 @@ export component AppWindow inherits Window {
                                 selection-background-color: #4a7bb7;
                                 edited => {
                                     root.filter-dialogs(self.text);
+                                    root.global-search(self.text);
                                 }
                             }
                         }
@@ -2892,7 +2990,12 @@ export component AppWindow inherits Window {
                         root.toggle-archive();
                     }
                 }
+                Rectangle {
+                    vertical-stretch: 1;
                 dialog-list := ListView {
+                    visible: search.text == "";
+                    width: parent.width;
+                    height: parent.height;
                     for item[index] in root.dialogs: DialogRow {
                         item: item;
                         init => {
@@ -2912,6 +3015,84 @@ export component AppWindow inherits Window {
                             root.load-more-dialogs();
                         }
                     }
+                }
+                // While searching: chats by name, then by @username, then messages.
+                if search.text != "": Flickable {
+                    width: parent.width;
+                    height: parent.height;
+                    content-height: results.preferred-height;
+                    results := VerticalLayout {
+                        y: 0;
+                        width: parent.width;
+                        alignment: start;
+                    if search.text != "" && (root.dialogs.length > 0 || root.found-chats.length > 0): Rectangle {
+                        height: 28px;
+                        Text {
+                            x: 14px;
+                            text: "Чаты";
+                            color: Theme.accent;
+                            font-size: 13px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+                    for item[index] in root.dialogs: DialogRow {
+                        item: item;
+                        init => {
+                            if (!item.has-photo) {
+                                root.want-avatar(index);
+                            }
+                        }
+                        clicked => {
+                            root.open-chat(index);
+                        }
+                        context(x, y) => {
+                            root.dialog-menu(index, x, y);
+                        }
+                    }
+                    for item[index] in root.found-chats: DialogRow {
+                        item: item;
+                        init => {
+                            if (!item.has-photo) {
+                                root.want-found-avatar(index, true);
+                            }
+                        }
+                        clicked => {
+                            root.open-found-chat(index);
+                        }
+                    }
+                    if search.text != "" && root.found-messages.length > 0: Rectangle {
+                        height: 28px;
+                        Text {
+                            x: 14px;
+                            text: "Сообщения";
+                            color: Theme.accent;
+                            font-size: 13px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+                    for item[index] in root.found-messages: DialogRow {
+                        item: item;
+                        init => {
+                            if (!item.has-photo) {
+                                root.want-found-avatar(index, false);
+                            }
+                        }
+                        clicked => {
+                            root.open-found-message(index);
+                        }
+                    }
+                    if search.text != "" && root.found-note != "": Rectangle {
+                        height: 44px;
+                        Text {
+                            text: root.found-note;
+                            color: Theme.dim;
+                            font-size: 13px;
+                        }
+                    }
+                    }
+                }
                 }
             }
         }
@@ -2953,6 +3134,26 @@ export component AppWindow inherits Window {
                 Rectangle {
                     height: 52px;
                     background: Theme.raised;
+                    // The magnifier at the right edge searches the chat.
+                    Rectangle {
+                        x: parent.width - 48px;
+                        y: 8px;
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 18px;
+                        z: 5;
+                        background: mag-touch.has-hover ? Theme.hover : transparent;
+                        mag-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.open-search();
+                            }
+                        }
+                        StrokeIcon {
+                            stroke-width: 2px;
+                            commands: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4";
+                        }
+                    }
                     // The header opens the profile column.
                     header-touch := TouchArea {
                         mouse-cursor: pointer;
@@ -3048,6 +3249,162 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                // The search bar (Ctrl+F or the magnifier) and its results.
+                Rectangle {
+                    height: root.search-open ? 48px : 0px;
+                    clip: true;
+                    background: Theme.raised;
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 10px;
+                        padding-top: 7px;
+                        padding-bottom: 7px;
+                        spacing: 8px;
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            border-radius: 17px;
+                            background: Theme.input;
+                            border-width: 1px;
+                            border-color: search-field.has-focus ? Theme.accent : transparent;
+                            if search-field.text == "": Text {
+                                x: 14px;
+                                height: parent.height;
+                                text: "Поиск в чате";
+                                color: Theme.dim;
+                                vertical-alignment: center;
+                            }
+                            search-field := TextInput {
+                                x: 14px;
+                                width: parent.width - 28px;
+                                height: parent.height;
+                                vertical-alignment: center;
+                                single-line: true;
+                                color: Theme.text;
+                                selection-background-color: #4a7bb7;
+                                edited => {
+                                    root.search-list-open = true;
+                                    root.chat-search(self.text, false);
+                                }
+                                accepted => {
+                                    root.search-list-open = true;
+                                    root.chat-search(self.text, true);
+                                }
+                            }
+                        }
+                        Text {
+                            width: 130px;
+                            text: root.search-count;
+                            color: Theme.dim;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                            overflow: elide;
+                        }
+                        Rectangle {
+                            width: 32px;
+                            border-radius: 16px;
+                            background: up-touch.has-hover ? Theme.hover : transparent;
+                            up-touch := TouchArea {
+                                clicked => {
+                                    root.search-step(1);
+                                }
+                            }
+                            StrokeIcon {
+                                stroke-width: 2px;
+                                size: 18px;
+                                commands: "M6 15l6-6 6 6";
+                            }
+                        }
+                        Rectangle {
+                            width: 32px;
+                            border-radius: 16px;
+                            background: dn-touch.has-hover ? Theme.hover : transparent;
+                            dn-touch := TouchArea {
+                                clicked => {
+                                    root.search-step(-1);
+                                }
+                            }
+                            StrokeIcon {
+                                stroke-width: 2px;
+                                size: 18px;
+                                commands: "M6 9l6 6 6-6";
+                            }
+                        }
+                        Rectangle {
+                            width: 32px;
+                            border-radius: 16px;
+                            background: sx-touch.has-hover ? Theme.hover : transparent;
+                            sx-touch := TouchArea {
+                                clicked => {
+                                    root.close-search();
+                                }
+                            }
+                            StrokeIcon {
+                                stroke-width: 2px;
+                                size: 18px;
+                                commands: "M6 6l12 12M18 6L6 18";
+                            }
+                        }
+                    }
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                }
+                if root.search-open && root.search-list-open && root.search-hits.length > 0: Rectangle {
+                    height: min(root.search-hits.length, 4) * 56px;
+                    background: Theme.raised;
+                    ListView {
+                        for hit[index] in root.search-hits: Rectangle {
+                            height: 56px;
+                            background: hit-touch.has-hover ? Theme.hover : transparent;
+                            hit-touch := TouchArea {
+                                clicked => {
+                                    root.search-pick(index);
+                                }
+                            }
+                            // Fixed-height single lines: no wrapped text here.
+                            Text {
+                                x: 16px;
+                                y: 8px;
+                                width: parent.width - 100px;
+                                height: 18px;
+                                text: hit.who;
+                                color: Theme.accent;
+                                font-size: 13px;
+                                font-weight: 600;
+                                overflow: elide;
+                            }
+                            Text {
+                                x: parent.width - 84px;
+                                y: 8px;
+                                width: 70px;
+                                height: 18px;
+                                text: hit.date;
+                                color: Theme.dim;
+                                font-size: 12px;
+                                horizontal-alignment: right;
+                            }
+                            Text {
+                                x: 16px;
+                                y: 28px;
+                                width: parent.width - 32px;
+                                height: 20px;
+                                text: hit.text;
+                                color: Theme.text;
+                                font-size: 14px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                }
+
                 Rectangle {
                     vertical-stretch: 1;
                     // Virtualized: only the bubbles on screen (plus a margin)
@@ -3095,10 +3452,29 @@ export component AppWindow inherits Window {
                             root.reaction-width(self.bubble-max);
                         }
                         property <length> side: (self.visible-width - self.column-width) / 2 + 16px;
-                        for m[index] in root.messages: Rectangle {
+                        for m[index] in root.messages: rowbox := Rectangle {
                             height: row.preferred-height;
                             // A picked row is tinted across the whole width, as in Telegram.
-                            background: m.selected ? #2b527866 : transparent;
+                            background: m.selected ? #2b527866 : root.highlight-id == m.id ? #5ea5e84d : transparent;
+                            // The message jumped to: centre it once it exists
+                            // (the first aim is only an estimate).
+                            Timer {
+                                interval: 16ms;
+                                running: root.jump-id == m.id && root.jump-frames > 0;
+                                triggered => {
+                                    root.jump-seen = true;
+                                    let lowest = min(0px, history.visible-height - history.content-height);
+                                    let aim = rowbox.height >= history.visible-height ? 8px : (history.visible-height - rowbox.height) / 2;
+                                    let diff = history.absolute-position.y + aim - rowbox.absolute-position.y;
+                                    if (abs(diff) < 2px) {
+                                        root.jump-calm += 1;
+                                    } else {
+                                        root.jump-calm = 0;
+                                        history.content-y = max(lowest, min(0px, history.content-y + diff));
+                                    }
+                                    root.jump-frames = root.jump-calm >= 6 ? 0 : root.jump-frames - 1;
+                                }
+                            }
                             // The wheel over a row scrolls smoothly (see smooth-scroll).
                             TouchArea {
                                 clicked => {
@@ -3151,7 +3527,7 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    if !root.stick-bottom: Rectangle {
+                    if !root.stick-bottom || root.detached: Rectangle {
                         x: parent.width - 56px;
                         y: parent.height - 52px;
                         width: 40px;
@@ -3162,7 +3538,11 @@ export component AppWindow inherits Window {
                         drop-shadow-color: #00000060;
                         down-touch := TouchArea {
                             clicked => {
-                                root.scroll-to-bottom();
+                                if (root.detached) {
+                                    root.jump-latest();
+                                } else {
+                                    root.scroll-to-bottom();
+                                }
                             }
                         }
                         StrokeIcon {
