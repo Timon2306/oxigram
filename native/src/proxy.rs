@@ -73,8 +73,9 @@ pub fn wire(window: &AppWindow) {
 /// "Выключен" or "SOCKS5 · host:port" in the settings.
 pub fn show_summary(ui: &AppWindow) {
     let config = tg().proxy();
-    let text = if config.enabled && config.url().is_some() {
-        format!("SOCKS5 · {}:{}", config.host.trim(), config.port)
+    let text = if config.active() {
+        let kind = if config.kind == "http" { "HTTP" } else { "SOCKS5" };
+        format!("{kind} · {}:{}", config.host.trim(), config.port)
     } else {
         "Выключен".to_owned()
     };
@@ -94,7 +95,7 @@ fn from_ui(ui: &AppWindow) -> ProxyConfig {
 
 fn proxy_error(code: &str, fallback: &str) -> String {
     match code {
-        "PROXY_UNSUPPORTED" => "Пока работает только SOCKS5. HTTP и MTProto будут позже.".to_owned(),
+        "PROXY_UNSUPPORTED" => "MTProto-прокси пока не поддерживается: выберите SOCKS5 или HTTP.".to_owned(),
         "PROXY_HOST_INVALID" => "Проверьте адрес прокси.".to_owned(),
         "PROXY_PORT_INVALID" => "Порт — число от 1 до 65535.".to_owned(),
         "PROXY_TIMEOUT" => "Прокси не ответил за 10 секунд.".to_owned(),

@@ -345,7 +345,7 @@ impl Telegram {
                     threshold: Duration::from_secs(3),
                     io_errors_as_flood_of: Some(Duration::from_secs(1)),
                 }),
-                proxy_url: self.proxy.lock().ok().and_then(|p| p.url()),
+                proxy_url: self.proxy.lock().ok().and_then(|p| p.connection_url()),
                 ..Default::default()
             };
             let SenderPool {

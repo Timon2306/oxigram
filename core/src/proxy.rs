@@ -3,8 +3,9 @@
 //! and the API keys can only be checked by connecting, so the proxy screen
 //! comes before the keys.
 //!
-//! Only SOCKS5 works for now (grammers connects through it itself). HTTP
-//! CONNECT and MTProto proxies are recognised but refused until supported.
+//! SOCKS5 goes straight to grammers; HTTP CONNECT goes through a local
+//! SOCKS5 bridge (see `proxy_http`). MTProto proxies are recognised but
+//! refused until supported.
 
 use std::fmt;
 use std::fs;
@@ -25,7 +26,7 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 #[serde(rename_all = "camelCase")]
 pub struct ProxyConfig {
     pub enabled: bool,
-    /// "socks5" (works), "http" or "mtproto" (not yet).
+    /// "socks5", "http" (CONNECT) or "mtproto" (not yet).
     pub kind: String,
     pub host: String,
     pub port: u16,
@@ -55,8 +56,8 @@ impl ProxyConfig {
         if !self.enabled {
             return Ok(());
         }
-        if self.kind != "socks5" {
-            return Err(UiError::new("PROXY_UNSUPPORTED", "only SOCKS5 proxies are supported for now"));
+        if self.kind != "socks5" && self.kind != "http" {
+            return Err(UiError::new("PROXY_UNSUPPORTED", "MTProto proxies are not supported yet"));
         }
         let host = self.host.trim();
         if host.is_empty() || host.contains(char::is_whitespace) || host.contains('/') {
@@ -68,9 +69,27 @@ impl ProxyConfig {
         Ok(())
     }
 
-    /// The URL grammers connects through, when the proxy is on and usable.
+    /// Whether new connections go through this proxy.
+    pub fn active(&self) -> bool {
+        self.enabled && self.validate().is_ok()
+    }
+
+    /// The URL grammers connects through: the SOCKS5 proxy itself, or the
+    /// local bridge to an HTTP proxy (started on first use, so this must run
+    /// inside the Tokio runtime).
+    pub fn connection_url(&self) -> Option<String> {
+        if !self.active() {
+            return None;
+        }
+        if self.kind == "http" {
+            return crate::proxy_http::local_url(self);
+        }
+        self.url()
+    }
+
+    /// The SOCKS5 URL of the proxy itself (`None` for other kinds).
     pub fn url(&self) -> Option<String> {
-        if !self.enabled || self.validate().is_err() {
+        if !self.enabled || self.validate().is_err() || self.kind != "socks5" {
             return None;
         }
         let host = self.host.trim();
@@ -129,6 +148,26 @@ pub async fn check(config: &ProxyConfig) -> Result<Duration, UiError> {
         format!("{host}:{}", config.port)
     };
     let proxy = proxy.as_str();
+    if config.kind == "http" {
+        use crate::proxy_http::ConnectError;
+        return match tokio::time::timeout(PROBE_TIMEOUT, crate::proxy_http::connect(&config, PROBE.0, PROBE.1)).await {
+            Err(_) => Err(UiError::new("PROXY_TIMEOUT", "the proxy did not answer in time")),
+            Ok(Err(ConnectError::Auth)) => {
+                Err(UiError::new("PROXY_AUTH", "the proxy rejected the username or password"))
+            }
+            Ok(Err(ConnectError::Io(err))) if err.kind() == io::ErrorKind::ConnectionRefused => {
+                Err(UiError::new("PROXY_UNREACHABLE", "the proxy server is unreachable"))
+            }
+            Ok(Err(ConnectError::Io(err))) => Err(UiError::new("PROXY_FAILED", err.to_string())),
+            Ok(Err(ConnectError::Status(code))) => {
+                Err(UiError::new("PROXY_FAILED", format!("the proxy answered HTTP {code}")))
+            }
+            Ok(Err(ConnectError::Garbled)) => {
+                Err(UiError::new("PROXY_FAILED", "this is not an HTTP proxy"))
+            }
+            Ok(Ok(_)) => Ok(started.elapsed()),
+        };
+    }
     let attempt = async {
         if config.username.is_empty() {
             tokio_socks::tcp::Socks5Stream::connect(proxy, PROBE).await.map(drop)
@@ -185,6 +224,11 @@ mod tests {
         let mut mtproto = socks("host", 443);
         mtproto.kind = "mtproto".into();
         assert!(mtproto.validate().is_err());
+        let mut http = socks("host", 8080);
+        http.kind = "http".into();
+        assert!(http.validate().is_ok());
+        // Not a SOCKS5 URL: HTTP goes through the local bridge instead.
+        assert!(http.url().is_none());
     }
 
     #[test]

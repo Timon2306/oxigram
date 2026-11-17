@@ -11,6 +11,7 @@ pub mod markup;
 pub mod media;
 pub mod mem;
 pub mod proxy;
+mod proxy_http;
 pub mod service;
 pub mod store;
 pub mod tg;
