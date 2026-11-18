@@ -133,6 +133,20 @@ export struct ReactionRow {
     chips: [ReactionChip],
 }
 
+// A file attached to a message (a document), drawn as a card in the bubble.
+export struct FileItem {
+    // Message id of the file (an album of files has one per file)
+    id: int,
+    name: string,
+    // "PDF", "ZIP"…: shown in the circle once downloaded
+    ext: string,
+    // "1,2 МБ", or "0,4 МБ из 1,2 МБ" while downloading
+    size: string,
+    // 0 not downloaded, 1 downloading, 2 downloaded
+    state: int,
+    progress: float,
+}
+
 export struct MessageItem {
     id: int,
     text: string,
@@ -178,6 +192,8 @@ export struct MessageItem {
     track-total: string,
     // Waveform of a voice message as an SVG path in a 180x26 box
     wave: string,
+    // Files (documents) of the message or of its album
+    files: [FileItem],
 }
 
 // What plays now; the state lives in Rust (rows are recreated while scrolling).
@@ -1065,6 +1081,121 @@ component MediaBox inherits Rectangle {
 
 // Player row of a voice message or audio file: round button, waveform (or a
 // plain bar) that seeks on click and drag, and the time.
+// A file card: a round button (download / cancel / the extension once
+// downloaded), the name, and the size or the download progress.
+component FileRow inherits Rectangle {
+    in property <FileItem> f;
+    in property <bool> outgoing;
+    in property <bool> select-mode;
+    callback pick();
+    callback click(int);
+    callback context(length, length);
+    callback wheel(length);
+    height: 48px;
+    property <color> lit: root.outgoing ? #ffffff : Theme.accent;
+    property <color> dim: root.outgoing ? #ffffffb3 : Theme.dim;
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            if (root.select-mode) {
+                root.pick();
+            } else {
+                root.click(root.f.id);
+            }
+        }
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
+        scroll-event(event) => {
+            root.wheel(event.delta-y);
+            accept
+        }
+    }
+
+    Rectangle {
+        x: 0;
+        y: 2px;
+        width: 44px;
+        height: 44px;
+        border-radius: 22px;
+        background: root.lit;
+        // Not downloaded: an arrow down
+        if root.f.state == 0: Path {
+            x: 10px;
+            y: 10px;
+            width: 24px;
+            height: 24px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M12 5v11M7 11l5 5 5-5M6 19h12";
+            stroke: root.outgoing ? Theme.bubble-out : Theme.accent-text;
+            stroke-width: 2.2px;
+        }
+        // Downloading: a cross that cancels
+        if root.f.state == 1: Path {
+            x: 13px;
+            y: 13px;
+            width: 18px;
+            height: 18px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M6 6l12 12M18 6L6 18";
+            stroke: root.outgoing ? Theme.bubble-out : Theme.accent-text;
+            stroke-width: 2.6px;
+        }
+        // Downloaded: the extension; a click opens the file
+        if root.f.state == 2: Text {
+            width: parent.width;
+            height: parent.height;
+            text: root.f.ext;
+            color: root.outgoing ? Theme.bubble-out : Theme.accent-text;
+            font-size: (root.f.ext.character-count > 3 ? 10px : 12px) * Theme.scale;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    Text {
+        x: 54px;
+        y: 4px;
+        width: parent.width - 54px;
+        text: root.f.name;
+        color: Theme.text;
+        font-size: 15px * Theme.scale;
+        font-weight: 600;
+        overflow: elide;
+    }
+
+    if root.f.state == 1: Rectangle {
+        x: 54px;
+        y: 27px;
+        width: parent.width - 54px;
+        height: 3px;
+        border-radius: 1.5px;
+        background: root.outgoing ? #ffffff40 : #7f91a440;
+        Rectangle {
+            x: 0;
+            width: parent.width * max(0, min(1, root.f.progress));
+            height: parent.height;
+            border-radius: 1.5px;
+            background: root.lit;
+        }
+    }
+
+    Text {
+        x: 54px;
+        y: root.f.state == 1 ? 32px : 27px;
+        width: parent.width - 54px;
+        text: root.f.size;
+        color: root.dim;
+        font-size: 13px * Theme.scale;
+        overflow: elide;
+    }
+}
+
 component TrackRow inherits Rectangle {
     in property <MessageItem> m;
     in property <bool> select-mode;
@@ -1255,6 +1386,8 @@ component MessageView inherits VerticalLayout {
     callback stop-select();
     callback want-picture(int);
     callback open-picture(int);
+    // A click on a file card: download, cancel or open.
+    callback file-click(int);
     callback react(int, string);
     callback want-emoji(string);
     // Selection mode: a click on the bubble picks it instead of acting.
@@ -1299,7 +1432,7 @@ component MessageView inherits VerticalLayout {
             property <length> meta-w: meta-probe.preferred-width + 10px;
             // A short single line keeps the time on the same line, as Telegram does.
             property <bool> inline: !root.m.multiline && root.m.text != "" && measure.preferred-width + self.meta-w <= self.max-text;
-            property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width, react-probe.preferred-width, root.m.track > 0 ? 230px : 0px);
+            property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width, react-probe.preferred-width, root.m.track > 0 ? 230px : 0px, root.m.files.length > 0 ? 260px : 0px);
             width: self.has-media ? self.mw + 2 * self.mpad : self.wide ? root.max-bubble : min(root.max-bubble, self.content + 2 * self.pad-x + 1px);
             background: self.bare ? transparent : root.m.outgoing ? Theme.bubble-out : Theme.bubble-in;
             border-top-left-radius: 18px;
@@ -1411,6 +1544,23 @@ component MessageView inherits VerticalLayout {
                     select-mode: root.select-mode;
                     pick => {
                         root.pick(root.m.id);
+                    }
+                    context(x, y) => {
+                        root.context(x, y);
+                    }
+                    wheel(dy) => {
+                        root.wheel(dy);
+                    }
+                }
+                for f in root.m.files: FileRow {
+                    f: f;
+                    outgoing: root.m.outgoing;
+                    select-mode: root.select-mode;
+                    pick => {
+                        root.pick(root.m.id);
+                    }
+                    click(id) => {
+                        root.file-click(id);
                     }
                     context(x, y) => {
                         root.context(x, y);
@@ -2761,6 +2911,8 @@ export component AppWindow inherits Window {
     // Pictures and the full-window viewer
     callback want-picture(int);
     callback open-picture(int);
+    // File cards: download, cancel or open
+    callback file-click(int);
     callback viewer-close();
     callback viewer-save();
     callback viewer-menu(length, length);
@@ -3525,6 +3677,9 @@ export component AppWindow inherits Window {
                                     }
                                     open-picture(id) => {
                                         root.open-picture(id);
+                                    }
+                                    file-click(id) => {
+                                        root.file-click(id);
                                     }
                                     react(message, key) => {
                                         root.react(message, key);

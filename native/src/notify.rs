@@ -62,9 +62,10 @@ pub fn install(ui: &oxigram_core::updates::UiSink, mute_all: bool) {
 #[cfg(windows)]
 const APP_USER_MODEL_ID: &str = "app.oxigram.desktop";
 
-/// Windows shows a toast under the name registered for its AppUserModelID.
-/// The installer's Start-menu shortcut does it for installed copies; this also
-/// covers a portable exe.
+/// Windows shows a toast under the name and icon registered for its
+/// AppUserModelID (HKCU, Software/Classes/AppUserModelId/<id>: DisplayName
+/// and IconUri). Without IconUri the toast had a grey placeholder. IconUri
+/// must be a file path, so the icon is written next to the app's data.
 #[cfg(windows)]
 mod win_identity {
     use windows::Win32::System::Registry::{
@@ -73,6 +74,25 @@ mod win_identity {
     };
     use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
     use windows::core::{HSTRING, PCWSTR, w};
+
+    /// The app icon shown on toasts.
+    const ICON: &[u8] = include_bytes!("../icons/128x128.png");
+
+    /// A REG_SZ value: UTF-16LE with the closing zero.
+    fn wide(text: &str) -> Vec<u8> {
+        text.encode_utf16().chain(Some(0)).flat_map(|u| u.to_le_bytes()).collect()
+    }
+
+    /// LOCALAPPDATA/Oxigram/toast-icon.png, rewritten when it differs.
+    fn icon_file() -> Option<std::path::PathBuf> {
+        let dir = dirs::data_local_dir()?.join("Oxigram");
+        let path = dir.join("toast-icon.png");
+        if std::fs::read(&path).ok().as_deref() != Some(ICON) {
+            std::fs::create_dir_all(&dir).ok()?;
+            std::fs::write(&path, ICON).ok()?;
+        }
+        Some(path)
+    }
 
     pub fn register() {
         unsafe {
@@ -94,8 +114,10 @@ mod win_identity {
             {
                 return;
             }
-            let name: Vec<u8> = "Oxigram\0".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
-            let _ = RegSetValueExW(key, w!("DisplayName"), None, REG_SZ, Some(&name));
+            let _ = RegSetValueExW(key, w!("DisplayName"), None, REG_SZ, Some(&wide("Oxigram")));
+            if let Some(icon) = icon_file() {
+                let _ = RegSetValueExW(key, w!("IconUri"), None, REG_SZ, Some(&wide(&icon.to_string_lossy())));
+            }
             let _ = RegCloseKey(key);
         }
     }

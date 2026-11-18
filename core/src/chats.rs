@@ -447,14 +447,19 @@ async fn download_to(
     Ok(())
 }
 
-/// Copies the attachment of a message into `dir` under its own name (made
-/// unique) and returns the full path. Self-destructing media is refused, as
-/// official clients do.
+/// Downloads the attachment of a message into `dir` under its own name (made
+/// unique) and returns the full path, reporting the bytes received so far
+/// through `progress`. `name` overrides the file name ("Сохранить как…").
+/// Self-destructing media is refused, as official clients do. The file is
+/// written as `*.oxipart` and renamed when complete; when the download fails
+/// or its task is dropped (cancelled), the partial file is removed.
 pub async fn save_file(
     tg: &Telegram,
     peer_id: i64,
     message_id: i32,
     dir: PathBuf,
+    name: Option<String>,
+    progress: impl Fn(u64),
 ) -> Result<String, UiError> {
     let handles = tg.handles().await?;
     let peer = resolve_peer(&handles, peer_id).await?;
@@ -474,22 +479,38 @@ pub async fn save_file(
         ));
     }
     let info = media::describe(&message);
-    let name = file_name(&info.file_name, info.kind, info.file_ext, message_id);
+    // A name from the save dialog is used as is (the dialog already asked
+    // about replacing a file); the default one is made unique.
+    let chosen = name.is_some();
+    let name = file_name(name.as_deref().unwrap_or(&info.file_name), info.kind, info.file_ext, message_id);
 
     std::fs::create_dir_all(&dir)?;
-    let path = unique_path(&dir, &name);
+    let path = if chosen { dir.join(&name) } else { unique_path(&dir, &name) };
     let partial = path.with_extension(format!(
         "{}oxipart",
         path.extension()
             .map(|ext| format!("{}.", ext.to_string_lossy()))
             .unwrap_or_default()
     ));
-    if let Err(err) = download_to(&handles, &media, &partial, |_| {}).await {
-        let _ = std::fs::remove_file(&partial);
-        return Err(err);
+    let guard = RemoveOnDrop(Some(partial.clone()));
+    download_to(&handles, &media, &partial, progress).await?;
+    if path.exists() {
+        std::fs::remove_file(&path)?;
     }
     std::fs::rename(&partial, &path)?;
+    std::mem::forget(guard);
     Ok(path_string(path))
+}
+
+/// Removes a partial download when the download stops before the end.
+struct RemoveOnDrop(Option<PathBuf>);
+
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
 
 /// A safe file name: the sender's name with characters Windows refuses

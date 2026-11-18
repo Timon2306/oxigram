@@ -5,7 +5,7 @@ use slint::{ModelRc, VecModel};
 use crate::{AppWindow, MenuEntry, menus, messages, with_app};
 
 // 24x24 stroke icons, the same paths as the web client's context menu.
-const OPEN: &str = "M5 12h14M13 6l6 6-6 6";
+pub(crate) const OPEN: &str = "M5 12h14M13 6l6 6-6 6";
 const PIN: &str = "M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6zM12 15v5";
 const UNPIN: &str = "M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6zM12 15v5M4 4l16 16";
 const READ: &str = "M3 12.5l4 4 7-9M11 15l2 2 8-10";
@@ -127,6 +127,7 @@ pub fn wire(ui: &AppWindow) {
         if can_post {
             items.push(entry("pin", "Закрепить", PIN));
         }
+        items.extend(crate::files::menu_entries(&m));
         items.push(entry("forward", "Переслать", FORWARD));
         items.push(entry("choose", "Выбрать", CHOOSE));
         if can_post {
@@ -145,6 +146,7 @@ pub fn wire(ui: &AppWindow) {
             Some(MenuTarget::Dialog(peer)) => menus::dialog_action(peer, id.as_str()),
             Some(MenuTarget::Message(message)) if id == "copy-image" => crate::pictures::copy_message_image(message),
             Some(MenuTarget::Message(message)) if id == "choose" => crate::select::start(message),
+            Some(MenuTarget::Message(message)) if id.starts_with("file-") => crate::files::menu_action(message, id.as_str()),
             Some(MenuTarget::Message(message)) => messages::message_action(message, id),
             Some(MenuTarget::Viewer(message)) => crate::pictures::viewer_action(message, id.as_str()),
             None => {}

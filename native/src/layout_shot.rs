@@ -67,7 +67,7 @@ fn layout_shot() {
         ProfileLine { value: "@channel_name".into(), label: "Ссылка".into() },
     ];
     ui.set_info_lines(ModelRc::new(VecModel::from(lines)));
-    let messages: Vec<crate::MessageItem> = (0..8)
+    let messages: Vec<crate::MessageItem> = (0..4)
         .map(|i| crate::MessageItem {
             id: i,
             text: "Пост канала с довольно длинным текстом, чтобы он переносился на несколько строк и занимал ширину колонки целиком. https://example.com/very/long/link/without/spaces/at/all/that/goes/on/and/on".into(),
@@ -77,8 +77,24 @@ fn layout_shot() {
             multiline: true,
             tail: true,
             media: if i == 5 { "Фото".into() } else { "".into() },
-            media_w: 600.0,
-            media_h: 400.0,
+            media_w: if i == 5 { 600.0 } else { 0.0 },
+            media_h: if i == 5 { 400.0 } else { 0.0 },
+            files: if i >= 2 {
+                ModelRc::new(VecModel::from(
+                    (0..3)
+                        .map(|state| crate::FileItem {
+                            id: i,
+                            name: format!("Отчёт за квартал номер {state} с длинным именем.pdf").into(),
+                            ext: "PDF".into(),
+                            size: if state == 1 { "0,4 МБ из 1,2 МБ".into() } else { "1,2 МБ".into() },
+                            state,
+                            progress: 0.33,
+                        })
+                        .collect::<Vec<_>>(),
+                ))
+            } else {
+                Default::default()
+            },
             ..Default::default()
         })
         .collect();
