@@ -128,6 +128,18 @@ pub fn wire(ui: &AppWindow) {
             items.push(entry("pin", "Закрепить", PIN));
         }
         items.extend(crate::files::menu_entries(&m));
+        // One entry per link (up to three), with the address when several.
+        let message_links = crate::links::links(&m);
+        for (index, link) in message_links.iter().take(3).enumerate() {
+            let label = if message_links.len() == 1 {
+                "Копировать ссылку".to_owned()
+            } else {
+                let short: String = link.copy.chars().take(28).collect();
+                let more = if link.copy.chars().count() > 28 { "…" } else { "" };
+                format!("Копировать: {short}{more}")
+            };
+            items.push(entry(&format!("link-{index}"), &label, COPY));
+        }
         items.push(entry("forward", "Переслать", FORWARD));
         items.push(entry("choose", "Выбрать", CHOOSE));
         if can_post {
@@ -147,6 +159,7 @@ pub fn wire(ui: &AppWindow) {
             Some(MenuTarget::Message(message)) if id == "copy-image" => crate::pictures::copy_message_image(message),
             Some(MenuTarget::Message(message)) if id == "choose" => crate::select::start(message),
             Some(MenuTarget::Message(message)) if id.starts_with("file-") => crate::files::menu_action(message, id.as_str()),
+            Some(MenuTarget::Message(message)) if id.starts_with("link-") => crate::links::copy_link(message, id.as_str()),
             Some(MenuTarget::Message(message)) => messages::message_action(message, id),
             Some(MenuTarget::Viewer(message)) => crate::pictures::viewer_action(message, id.as_str()),
             None => {}

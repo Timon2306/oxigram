@@ -194,6 +194,9 @@ export struct MessageItem {
     wave: string,
     // Files (documents) of the message or of its album
     files: [FileItem],
+    // The text with clickable links (see links.rs); `linked` picks it
+    rich: styled-text,
+    linked: bool,
 }
 
 // What plays now; the state lives in Rust (rows are recreated while scrolling).
@@ -1388,6 +1391,8 @@ component MessageView inherits VerticalLayout {
     callback open-picture(int);
     // A click on a file card: download, cancel or open.
     callback file-click(int);
+    // A click on a link in the text (its target, see links.rs).
+    callback open-link(string);
     callback react(int, string);
     callback want-emoji(string);
     // Selection mode: a click on the bubble picks it instead of acting.
@@ -1589,10 +1594,21 @@ component MessageView inherits VerticalLayout {
                             self.focus();
                         }
                     }
-                    if !root.selecting: Text {
+                    if !root.selecting && !root.m.linked: Text {
                         text: root.m.text;
                         color: root.m.outgoing ? Theme.text-out : Theme.text;
                         font-size: 15.5px * Theme.scale;
+                    }
+                    if !root.selecting && root.m.linked: StyledText {
+                        text: root.m.rich;
+                        default-color: root.m.outgoing ? Theme.text-out : Theme.text;
+                        default-font-size: 15.5px * Theme.scale;
+                        link-color: root.m.outgoing ? #cfe7ff : Theme.accent;
+                        link-clicked(link) => {
+                            if (!root.select-mode) {
+                                root.open-link(link);
+                            }
+                        }
                     }
 
                     VerticalLayout {
@@ -1616,11 +1632,22 @@ component MessageView inherits VerticalLayout {
                         self.focus();
                     }
                 }
-                if !bubble.inline && root.m.text != "" && !root.selecting: Text {
+                if !bubble.inline && root.m.text != "" && !root.selecting && !root.m.linked: Text {
                     text: root.m.text;
                     wrap: word-wrap;
                     color: root.m.outgoing ? Theme.text-out : Theme.text;
                     font-size: 15.5px * Theme.scale;
+                }
+                if !bubble.inline && root.m.text != "" && !root.selecting && root.m.linked: StyledText {
+                    text: root.m.rich;
+                    default-color: root.m.outgoing ? Theme.text-out : Theme.text;
+                    default-font-size: 15.5px * Theme.scale;
+                    link-color: root.m.outgoing ? #cfe7ff : Theme.accent;
+                    link-clicked(link) => {
+                        if (!root.select-mode) {
+                            root.open-link(link);
+                        }
+                    }
                 }
                 if root.m.reactions.length > 0: Reactions {
                     rows: root.m.reactions;
@@ -2842,6 +2869,12 @@ export component AppWindow inherits Window {
     public function clear-search-field() {
         search-field.text = "";
     }
+    // A click on a #hashtag: search it in this chat.
+    public function search-in-chat(text: string) {
+        root.open-search();
+        search-field.text = text;
+        root.chat-search(text, true);
+    }
 
     // ---- Jump to a message: the row index, and its ID for the highlight.
     in-out property <int> jump-id: -1;
@@ -2913,6 +2946,8 @@ export component AppWindow inherits Window {
     callback open-picture(int);
     // File cards: download, cancel or open
     callback file-click(int);
+    // Links in message text
+    callback open-link(string);
     callback viewer-close();
     callback viewer-save();
     callback viewer-menu(length, length);
@@ -3680,6 +3715,9 @@ export component AppWindow inherits Window {
                                     }
                                     file-click(id) => {
                                         root.file-click(id);
+                                    }
+                                    open-link(link) => {
+                                        root.open-link(link);
                                     }
                                     react(message, key) => {
                                         root.react(message, key);

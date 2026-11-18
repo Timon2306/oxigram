@@ -403,6 +403,15 @@ fn global_search(text: SharedString) {
     );
 }
 
+/// Keeps a chat found by @username (a mention, a t.me link) so it opens like
+/// a chat of the list.
+pub(crate) fn remember_stranger(app: &mut App, chat: &FoundChat) {
+    if app.dialog(chat.id).is_none() {
+        let row = stranger_row(chat.id, &chat.kind, &chat.title, chat.photo_id.clone());
+        app.search.strangers.insert(chat.id, row);
+    }
+}
+
 fn stranger_row(id: i64, kind: &str, title: &str, photo_id: Option<String>) -> DialogRow {
     DialogRow {
         id,

@@ -16,3 +16,6 @@ strip = true
 # draws COLR/CBDT/sbix glyphs as RGBA. Drop this when upstream does it.
 [patch.crates-io]
 i-slint-renderer-software = { path = "native/vendor/i-slint-renderer-software-1.18.1" }
+# StyledText takes only clicks and hovers on its links (see the patch in
+# items/text.rs), so right clicks on message text still open the menu.
+i-slint-core = { path = "native/vendor/i-slint-core-1.18.1" }

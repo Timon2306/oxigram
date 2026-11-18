@@ -77,6 +77,24 @@ fn layout_shot() {
             multiline: true,
             tail: true,
             media: if i == 5 { "Фото".into() } else { "".into() },
+            linked: i == 1,
+            rich: if i == 1 {
+                let text = "Ссылки: example.com/page и скрытая ссылка, @durov, #новости 😀\n\n  Вторая строка (1. не список) *не жирный*";
+                let entities = [
+                    oxigram_core::store::chats::Entity { kind: "url".into(), offset: 8, length: 16, target: None },
+                    oxigram_core::store::chats::Entity {
+                        kind: "textUrl".into(),
+                        offset: 27,
+                        length: 14,
+                        target: Some("https://x.org".into()),
+                    },
+                    oxigram_core::store::chats::Entity { kind: "mention".into(), offset: 43, length: 6, target: None },
+                    oxigram_core::store::chats::Entity { kind: "hashtag".into(), offset: 51, length: 8, target: None },
+                ];
+                slint::StyledText::from_markdown(&crate::links::markdown(text, &entities).unwrap()).unwrap()
+            } else {
+                Default::default()
+            },
             media_w: if i == 5 { 600.0 } else { 0.0 },
             media_h: if i == 5 { 400.0 } else { 0.0 },
             files: if i >= 2 {

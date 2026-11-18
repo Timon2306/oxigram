@@ -17,6 +17,7 @@ mod drafts;
 mod files;
 mod folders;
 mod format;
+mod links;
 mod menus;
 mod messages;
 mod pictures;
@@ -302,6 +303,7 @@ fn main() {
     context_menu::wire(&ui);
     pictures::wire(&ui);
     files::wire(&ui);
+    links::wire(&ui);
     let weak = ui.as_weak();
     ui.on_latin_shortcut(move |text| {
         let Some(latin) = latin_shortcut(&text) else { return false };
@@ -1164,6 +1166,12 @@ impl App {
             .and_then(|p| format::kind_label(&p.kind))
             .unwrap_or_default();
         let reaction_rows = self.reaction_rows(&parts);
+        // Links only for a single message's text (an album caption keeps plain text).
+        let rich = if parts.len() == 1 {
+            links::markdown(&m.text, &m.entities).and_then(|md| slint::StyledText::from_markdown(&md).ok())
+        } else {
+            None
+        };
         let file_items: Vec<FileItem> = parts.iter().filter(|p| files::is_file(p)).map(|p| files::item(p)).collect();
         let track = audio::item(m);
         let has_reactions = parts.iter().any(|p| !p.reactions.is_empty());
@@ -1179,6 +1187,9 @@ impl App {
             track_total: track.total.into(),
             wave: track.wave.into(),
             files: ModelRc::new(VecModel::from(file_items)),
+            // Links: drawn through StyledText; plain Text otherwise.
+            rich: rich.clone().unwrap_or_default(),
+            linked: rich.is_some(),
             cells: media.as_ref().map(|l| self.media_cells(l)).unwrap_or_default(),
             media_w: media.as_ref().map_or(0.0, |l| l.w),
             media_h: media.as_ref().map_or(0.0, |l| l.h),
