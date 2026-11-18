@@ -272,7 +272,7 @@ fn pick(index: usize) {
 
 /// Brings a message of the open chat into view: loaded ones are scrolled to,
 /// others come with the history around them.
-fn goto_message(peer: i64, id: i32, generation: u64) {
+pub(crate) fn goto_message(peer: i64, id: i32, generation: u64) {
     let loaded = with_app(|app| {
         if app.chat != Some(peer) || app.generation != generation {
             return true;

@@ -214,11 +214,35 @@ pub async fn send_message(
         .fmt_entities(entities)
         .reply_to(reply_to);
     let sent = handles.client.send_message(peer, message).await?;
-    let row = message_row(&sent, peer_id);
+    let mut row = message_row(&sent, peer_id);
+    // The short update for a sent message carries no reply header.
+    if row.reply_to_id.is_none() {
+        row.reply_to_id = reply_to;
+    }
     with_db(&handles.db, |conn| {
         cache::save_messages(conn, std::slice::from_ref(&row))
     })?;
     Ok(row)
+}
+
+/// Messages of a chat by ID (for the quotes of replies to messages that
+/// are not loaded), each with its row or `None` when it no longer exists.
+pub async fn messages_by_id(
+    tg: &Telegram,
+    peer_id: i64,
+    ids: &[i32],
+) -> Result<Vec<(i32, Option<MessageRow>)>, UiError> {
+    let handles = tg.handles().await?;
+    let peer = resolve_peer(&handles, peer_id).await?;
+    let mut out = Vec::with_capacity(ids.len());
+    // Telegram takes up to 100 IDs per request.
+    for chunk in ids.chunks(100) {
+        let found = handles.client.get_messages_by_id(peer, chunk).await?;
+        for (id, message) in chunk.iter().zip(found) {
+            out.push((*id, message.map(|m| message_row(&m, peer_id))));
+        }
+    }
+    Ok(out)
 }
 
 /// Tells Telegram the chat was read, as official clients do when it is opened.

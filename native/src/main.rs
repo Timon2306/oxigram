@@ -21,6 +21,7 @@ mod links;
 mod menus;
 mod messages;
 mod pictures;
+mod replies;
 mod notify;
 mod profile;
 mod proxy;
@@ -140,6 +141,8 @@ struct App {
     selected: Vec<i32>,
     /// Search results and the jump window.
     search: search::State,
+    /// Quotes of replies to messages that are not loaded.
+    replies: replies::Replies,
 }
 
 thread_local! {
@@ -264,6 +267,7 @@ fn main() {
             reaction_width: 300.0,
             selected: Vec::new(),
             search: search::State::new(&ui),
+            replies: replies::Replies::default(),
         })
     });
     let bench = std::env::var_os("OXIGRAM_BENCH").is_some();
@@ -722,6 +726,7 @@ fn open_chat_at(peer: i64, target: Option<i32>) {
         app.messages.clear();
         app.message_model.clear();
         app.thumbs.clear();
+        app.replies.clear();
         app.selected.clear();
         if let Some(ui) = app.ui.upgrade() {
             ui.set_select_mode(false);
@@ -1175,6 +1180,7 @@ impl App {
         let file_items: Vec<FileItem> = parts.iter().filter(|p| files::is_file(p)).map(|p| files::item(p)).collect();
         let track = audio::item(m);
         let has_reactions = parts.iter().any(|p| !p.reactions.is_empty());
+        let quote = replies::quote(self, m);
         // Reactions go under the picture, with the time below them.
         let media_only = media.is_some() && text.is_empty() && label.is_empty() && file_items.is_empty() && !has_reactions;
         MessageItem {
@@ -1190,6 +1196,9 @@ impl App {
             // Links: drawn through StyledText; plain Text otherwise.
             rich: rich.clone().unwrap_or_default(),
             linked: rich.is_some(),
+            reply: quote.is_some(),
+            reply_who: quote.as_ref().map(|q| q.0.clone()).unwrap_or_default().into(),
+            reply_text: quote.map(|q| q.1).unwrap_or_default().into(),
             cells: media.as_ref().map(|l| self.media_cells(l)).unwrap_or_default(),
             media_w: media.as_ref().map_or(0.0, |l| l.w),
             media_h: media.as_ref().map_or(0.0, |l| l.h),

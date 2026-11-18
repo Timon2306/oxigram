@@ -20,6 +20,7 @@ pub struct Link {
 
 pub fn wire(ui: &crate::AppWindow) {
     ui.on_open_link(|target| open(target.as_str()));
+    ui.on_open_reply(crate::replies::open);
 }
 
 /// The kinds of entities drawn as links.

@@ -197,6 +197,10 @@ export struct MessageItem {
     // The text with clickable links (see links.rs); `linked` picks it
     rich: styled-text,
     linked: bool,
+    // A reply: who wrote the answered message and a line of it
+    reply: bool,
+    reply-who: string,
+    reply-text: string,
 }
 
 // What plays now; the state lives in Rust (rows are recreated while scrolling).
@@ -1393,6 +1397,8 @@ component MessageView inherits VerticalLayout {
     callback file-click(int);
     // A click on a link in the text (its target, see links.rs).
     callback open-link(string);
+    // A click on the quote of a reply: the answered message.
+    callback open-reply(int);
     callback react(int, string);
     callback want-emoji(string);
     // Selection mode: a click on the bubble picks it instead of acting.
@@ -1437,7 +1443,7 @@ component MessageView inherits VerticalLayout {
             property <length> meta-w: meta-probe.preferred-width + 10px;
             // A short single line keeps the time on the same line, as Telegram does.
             property <bool> inline: !root.m.multiline && root.m.text != "" && measure.preferred-width + self.meta-w <= self.max-text;
-            property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width, react-probe.preferred-width, root.m.track > 0 ? 230px : 0px, root.m.files.length > 0 ? 260px : 0px);
+            property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width, react-probe.preferred-width, root.m.track > 0 ? 230px : 0px, root.m.files.length > 0 ? 260px : 0px, root.m.reply ? min(260px, max(reply-who-probe.preferred-width, reply-text-probe.preferred-width) + 14px) : 0px);
             width: self.has-media ? self.mw + 2 * self.mpad : self.wide ? root.max-bubble : min(root.max-bubble, self.content + 2 * self.pad-x + 1px);
             background: self.bare ? transparent : root.m.outgoing ? Theme.bubble-out : Theme.bubble-in;
             border-top-left-radius: 18px;
@@ -1471,6 +1477,19 @@ component MessageView inherits VerticalLayout {
 
             react-probe := Reactions {
                 rows: root.m.reactions;
+                visible: false;
+            }
+
+            reply-who-probe := Text {
+                text: root.m.reply-who;
+                font-size: 13px * Theme.scale;
+                font-weight: 600;
+                visible: false;
+            }
+
+            reply-text-probe := Text {
+                text: root.m.reply-text;
+                font-size: 13px * Theme.scale;
                 visible: false;
             }
 
@@ -1555,6 +1574,57 @@ component MessageView inherits VerticalLayout {
                     }
                     wheel(dy) => {
                         root.wheel(dy);
+                    }
+                }
+                // The quote of the answered message; a click jumps to it.
+                if root.m.reply: Rectangle {
+                    height: 40px * Theme.scale;
+                    border-radius: 4px;
+                    background: root.m.outgoing ? #ffffff1f : #6ab3f31a;
+                    clip: true;
+                    Rectangle {
+                        x: 0;
+                        width: 3px;
+                        height: parent.height;
+                        background: root.m.outgoing ? #ffffff : Theme.accent;
+                    }
+                    Text {
+                        x: 10px;
+                        y: 3px * Theme.scale;
+                        width: parent.width - 16px;
+                        text: root.m.reply-who;
+                        color: root.m.outgoing ? #ffffff : Theme.accent;
+                        font-size: 13px * Theme.scale;
+                        font-weight: 600;
+                        overflow: elide;
+                    }
+                    Text {
+                        x: 10px;
+                        y: 21px * Theme.scale;
+                        width: parent.width - 16px;
+                        text: root.m.reply-text;
+                        color: root.m.outgoing ? Theme.text-out : Theme.text;
+                        font-size: 13px * Theme.scale;
+                        overflow: elide;
+                    }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            if (root.select-mode) {
+                                root.pick(root.m.id);
+                            } else {
+                                root.open-reply(root.m.id);
+                            }
+                        }
+                        pointer-event(event) => {
+                            if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                                root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                            }
+                        }
+                        scroll-event(event) => {
+                            root.wheel(event.delta-y);
+                            accept
+                        }
                     }
                 }
                 for f in root.m.files: FileRow {
@@ -2948,6 +3018,8 @@ export component AppWindow inherits Window {
     callback file-click(int);
     // Links in message text
     callback open-link(string);
+    // The quote of a reply: jump to the answered message
+    callback open-reply(int);
     callback viewer-close();
     callback viewer-save();
     callback viewer-menu(length, length);
@@ -3718,6 +3790,9 @@ export component AppWindow inherits Window {
                                     }
                                     open-link(link) => {
                                         root.open-link(link);
+                                    }
+                                    open-reply(id) => {
+                                        root.open-reply(id);
                                     }
                                     react(message, key) => {
                                         root.react(message, key);

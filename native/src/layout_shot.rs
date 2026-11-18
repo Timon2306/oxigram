@@ -78,6 +78,9 @@ fn layout_shot() {
             tail: true,
             media: if i == 5 { "Фото".into() } else { "".into() },
             linked: i == 1,
+            reply: i >= 2,
+            reply_who: if i == 3 { "Вы".into() } else { "Иван Петров".into() },
+            reply_text: "Текст сообщения, на которое ответили, длинный, чтобы обрезаться в одну строку".into(),
             rich: if i == 1 {
                 let text = "Ссылки: example.com/page и скрытая ссылка, @durov, #новости 😀\n\n  Вторая строка (1. не список) *не жирный*";
                 let entities = [
