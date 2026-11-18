@@ -20,6 +20,7 @@ use tokio::task::JoinHandle;
 use crate::config::{self, ApiKeys};
 use crate::proxy::{self, ProxyConfig};
 use crate::error::UiError;
+use crate::vault;
 use crate::store::{self, Db, session::SqliteSession};
 use crate::updates::{self, UiSink};
 
@@ -44,6 +45,9 @@ pub struct Me {
 #[derive(Clone, Serialize)]
 #[serde(tag = "stage", rename_all = "camelCase")]
 pub enum UiState {
+    /// A passcode is set and not entered yet: nothing is decrypted, nothing
+    /// connects.
+    Locked,
     NeedKeys,
     NeedPhone,
     NeedCode { phone: String },
@@ -67,6 +71,8 @@ struct Connection {
     updates: Option<mpsc::Receiver<UpdatesLike>>,
     update_task: Option<JoinHandle<()>>,
     me: Option<Me>,
+    /// With a passcode: seals the in-memory database to disk now and then.
+    flusher: Option<JoinHandle<()>>,
 }
 
 struct Inner {
@@ -107,13 +113,48 @@ pub struct Telegram {
     instance_lock: std::sync::Mutex<Option<std::fs::File>>,
     /// The proxy new connections go through.
     proxy: std::sync::Mutex<ProxyConfig>,
+    /// The passcode's key while unlocked (`None` without a passcode, or locked).
+    key: std::sync::Mutex<Option<Arc<vault::Key>>>,
+    locked: std::sync::atomic::AtomicBool,
+    /// Wrong passcodes in a row, and when the last one was entered.
+    failures: std::sync::Mutex<(u32, Option<std::time::Instant>)>,
+}
+
+const KEYS_SEALED: &str = "keys.enc";
+const DB_SEALED: &str = "oxigram.db.enc";
+/// How often the in-memory database is sealed to disk while it changes.
+const FLUSH_EVERY: Duration = Duration::from_secs(30);
+
+/// Seals the in-memory database into `path` (skipped when nothing changed
+/// since `last`).
+fn seal_db(db: &Db, key: &vault::Key, path: &std::path::Path, last: Option<&std::sync::atomic::AtomicU64>) {
+    let Ok(mut conn) = db.lock() else { return };
+    let changes = conn.total_changes();
+    if let Some(last) = last
+        && last.swap(changes, std::sync::atomic::Ordering::Relaxed) == changes
+    {
+        return;
+    }
+    if let Ok(image) = store::image(&mut conn) {
+        drop(conn);
+        let _ = vault::write_sealed(path, key, &image);
+    }
 }
 
 impl Telegram {
     pub fn new(config_dir: PathBuf, data_dir: PathBuf, cache_dir: PathBuf) -> Self {
-        let keys = config::load_keys(&config_dir);
+        let passcode = vault::load(&config_dir).is_some();
+        // With a passcode the keys are sealed and read only after unlocking.
+        let keys = if passcode { None } else { config::load_keys(&config_dir) };
+        if passcode {
+            // Media left by a crash would be readable: it goes before anything.
+            let _ = std::fs::remove_dir_all(&cache_dir);
+        }
         let proxy = proxy::load(&config_dir).unwrap_or_default();
         Self {
+            key: std::sync::Mutex::new(None),
+            locked: std::sync::atomic::AtomicBool::new(passcode),
+            failures: std::sync::Mutex::new((0, None)),
             config_dir,
             data_dir,
             inner: Mutex::new(Inner {
@@ -180,7 +221,7 @@ impl Telegram {
         self.forget_account(&mut inner).await?;
         // Telegram only validates the keys when a login code is requested
         // (API_ID_INVALID), so nothing more can be checked at this point.
-        config::save_keys(&self.config_dir, &keys)?;
+        self.store_keys(&keys)?;
         inner.keys = Some(keys);
         self.current(&mut inner).await
     }
@@ -189,6 +230,7 @@ impl Telegram {
         let mut inner = self.inner.lock().await;
         self.forget_account(&mut inner).await?;
         config::clear_keys(&self.config_dir)?;
+        vault::shred(&self.config_dir.join(KEYS_SEALED));
         inner.keys = None;
         Ok(UiState::NeedKeys)
     }
@@ -280,6 +322,9 @@ impl Telegram {
     /// Resolves the screen to show, connecting and asking Telegram whether
     /// the stored session is still authorized when needed.
     async fn current(&self, inner: &mut Inner) -> Result<UiState, UiError> {
+        if self.is_locked() {
+            return Ok(UiState::Locked);
+        }
         if inner.keys.is_none() {
             return Ok(UiState::NeedKeys);
         }
@@ -313,6 +358,10 @@ impl Telegram {
             photo_id: user.photo().map(|photo| photo.photo_id.to_string()),
         };
         connection.me = Some(me.clone());
+        // A new sign-in: its authorization key goes to disk at once.
+        if let Some(key) = self.key() {
+            seal_db(&connection.db, &key, &self.data_dir.join(DB_SEALED), None);
+        }
         if let Some(receiver) = connection.updates.take() {
             connection.update_task = Some(tokio::spawn(updates::run(
                 connection.client.clone(),
@@ -327,6 +376,10 @@ impl Telegram {
     /// Returns the live connection, creating it on first use. Sockets are
     /// opened lazily by the pool, so this does not touch the network.
     fn connect<'a>(&self, inner: &'a mut Inner) -> Result<&'a mut Connection, UiError> {
+        // Locked: nothing is opened (and no readable database is created).
+        if self.is_locked() {
+            return Err(UiError::new("LOCKED", "enter the passcode first"));
+        }
         let keys = inner
             .keys
             .as_ref()
@@ -365,6 +418,7 @@ impl Telegram {
                 updates,
             } = SenderPool::with_configuration(Arc::clone(&session), keys.api_id, params);
 
+            let flusher = self.start_flusher(&db);
             inner.connection = Some(Connection {
                 client: Client::new(handle),
                 session,
@@ -373,6 +427,7 @@ impl Telegram {
                 updates: Some(updates),
                 update_task: None,
                 me: None,
+                flusher,
             });
         }
         inner
@@ -384,7 +439,14 @@ impl Telegram {
     fn open_session(&self) -> Result<(Db, SqliteSession), UiError> {
         std::fs::create_dir_all(&self.data_dir)?;
         self.lock_instance()?;
-        let db = store::open(self.data_dir.join(DB_FILE))?;
+        let db = match self.key() {
+            // A passcode: the database lives in memory, sealed on disk.
+            Some(key) => {
+                let image = vault::read_sealed(&self.data_dir.join(DB_SEALED), &key).map_err(vault_error)?;
+                store::open_memory(image)?
+            }
+            None => store::open(self.data_dir.join(DB_FILE))?,
+        };
         let session = SqliteSession::load(Arc::clone(&db)).map_err(UiError::internal)?;
         Ok((db, session))
     }
@@ -425,10 +487,16 @@ impl Telegram {
             task.abort();
             let _ = task.await;
         }
+        if let Some(task) = connection.flusher {
+            task.abort();
+        }
         connection.client.disconnect();
         connection.pool_task.abort();
         // Wait until the runner has really stopped using the session.
         let _ = connection.pool_task.await;
+        if let Some(key) = self.key() {
+            seal_db(&connection.db, &key, &self.data_dir.join(DB_SEALED), None);
+        }
         Some(connection.session)
     }
 
@@ -444,6 +512,260 @@ impl Telegram {
             Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(err.into()),
             _ => Ok(()),
         }
+    }
+}
+
+// ---- The local passcode ------------------------------------------------------
+
+fn vault_error(err: vault::VaultError) -> UiError {
+    match err {
+        vault::VaultError::WrongPasscode => UiError::new("PASSCODE_WRONG", "wrong passcode"),
+        vault::VaultError::Damaged => UiError::new("PASSCODE_DAMAGED", "the encrypted data cannot be read"),
+        vault::VaultError::Io(message) => UiError::new("STORAGE", message),
+    }
+}
+
+/// Seconds to wait after `failures` wrong passcodes in a row: none for the
+/// first three, then 1, 2, 4… up to 60.
+pub fn passcode_delay(failures: u32) -> u64 {
+    if failures < 3 { 0 } else { (1u64 << (failures - 3).min(6)).min(60) }
+}
+
+impl Telegram {
+    pub fn passcode_on(&self) -> bool {
+        vault::path(&self.config_dir).is_file()
+    }
+
+    pub fn is_locked(&self) -> bool {
+        self.locked.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn key(&self) -> Option<Arc<vault::Key>> {
+        self.key.lock().ok().and_then(|k| k.clone())
+    }
+
+    fn set_key(&self, key: Option<vault::Key>) {
+        if let Ok(mut slot) = self.key.lock() {
+            *slot = key.map(Arc::new);
+        }
+    }
+
+    /// The API keys: sealed with a passcode, plain without.
+    fn store_keys(&self, keys: &ApiKeys) -> Result<(), UiError> {
+        match self.key() {
+            Some(key) => {
+                std::fs::create_dir_all(&self.config_dir)?;
+                let raw = serde_json::to_vec(keys).map_err(UiError::internal)?;
+                vault::write_sealed(&self.config_dir.join(KEYS_SEALED), &key, &raw)?;
+            }
+            None => config::save_keys(&self.config_dir, keys)?,
+        }
+        Ok(())
+    }
+
+    fn sealed_keys(&self, key: &vault::Key) -> Result<Option<ApiKeys>, UiError> {
+        let raw = vault::read_sealed(&self.config_dir.join(KEYS_SEALED), key).map_err(vault_error)?;
+        Ok(raw.and_then(|raw| serde_json::from_slice(&raw).ok()))
+    }
+
+    /// Seals the in-memory database now (at exit, and by the app's timer).
+    pub async fn flush(&self) {
+        let Some(key) = self.key() else { return };
+        let inner = self.inner.lock().await;
+        if let Some(connection) = &inner.connection {
+            seal_db(&connection.db, &key, &self.data_dir.join(DB_SEALED), None);
+        }
+    }
+
+    /// Starts the background sealing of a passcode-protected database.
+    fn start_flusher(&self, db: &Db) -> Option<JoinHandle<()>> {
+        let key = self.key()?;
+        let db = Arc::clone(db);
+        let path = self.data_dir.join(DB_SEALED);
+        Some(tokio::spawn(async move {
+            let last = std::sync::atomic::AtomicU64::new(u64::MAX);
+            loop {
+                tokio::time::sleep(FLUSH_EVERY).await;
+                seal_db(&db, &key, &path, Some(&last));
+            }
+        }))
+    }
+
+    /// Enters the passcode. Wrong ones in a row make the next try wait.
+    /// Then `state` connects.
+    pub async fn unlock(&self, passcode: &str) -> Result<(), UiError> {
+        let Some(file) = vault::load(&self.config_dir) else {
+            self.locked.store(false, std::sync::atomic::Ordering::SeqCst);
+            return Ok(());
+        };
+        if let Ok(failures) = self.failures.lock()
+            && let (count, Some(at)) = *failures
+        {
+            let wait = passcode_delay(count);
+            let passed = at.elapsed().as_secs();
+            if passed < wait {
+                let mut err = UiError::new("PASSCODE_WAIT", "too many wrong passcodes");
+                err.wait_seconds = Some((wait - passed) as u32);
+                return Err(err);
+            }
+        }
+        let passcode = passcode.to_owned();
+        let result = tokio::task::spawn_blocking(move || vault::unlock(&file, &passcode))
+            .await
+            .map_err(UiError::internal)?;
+        let key = match result {
+            Ok(key) => key,
+            Err(err) => {
+                if err == vault::VaultError::WrongPasscode
+                    && let Ok(mut failures) = self.failures.lock()
+                {
+                    *failures = (failures.0 + 1, Some(std::time::Instant::now()));
+                }
+                return Err(vault_error(err));
+            }
+        };
+        if let Ok(mut failures) = self.failures.lock() {
+            *failures = (0, None);
+        }
+        let keys = self.sealed_keys(&key)?;
+        self.set_key(Some(key));
+        self.locked.store(false, std::sync::atomic::Ordering::SeqCst);
+        let mut inner = self.inner.lock().await;
+        inner.keys = keys;
+        Ok(())
+    }
+
+    /// Locks: seals the database, drops the connection, the keys and the
+    /// key, and removes downloaded media.
+    pub async fn lock(&self) -> Result<UiState, UiError> {
+        if !self.passcode_on() {
+            return self.state().await;
+        }
+        let mut inner = self.inner.lock().await;
+        self.disconnect(&mut inner).await;
+        inner.keys = None;
+        self.set_key(None);
+        self.locked.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.clear_cache();
+        Ok(UiState::Locked)
+    }
+
+    /// Turns the passcode on: seals the database and the API keys, then
+    /// removes their readable files and the downloaded media.
+    pub async fn enable_passcode(&self, passcode: &str) -> Result<(), UiError> {
+        if self.passcode_on() {
+            return Err(UiError::new("PASSCODE_SET", "a passcode is already set"));
+        }
+        if !vault::valid_passcode(passcode) {
+            return Err(UiError::new("PASSCODE_SHORT", "at least 4 characters"));
+        }
+        let passcode = passcode.to_owned();
+        let (file, key) = tokio::task::spawn_blocking(move || vault::create(&passcode))
+            .await
+            .map_err(UiError::internal)?
+            .map_err(vault_error)?;
+        let mut inner = self.inner.lock().await;
+        self.disconnect(&mut inner).await;
+        let plain_db = self.data_dir.join(DB_FILE);
+        let image = store::image_of_file(&plain_db)?;
+        std::fs::create_dir_all(&self.data_dir)?;
+        if let Some(image) = image {
+            vault::write_sealed(&self.data_dir.join(DB_SEALED), &key, &image)?;
+        }
+        if let Some(keys) = &inner.keys {
+            let raw = serde_json::to_vec(keys).map_err(UiError::internal)?;
+            vault::write_sealed(&self.config_dir.join(KEYS_SEALED), &key, &raw)?;
+        }
+        // The vault last: until it exists, the plain files still rule.
+        vault::save(&self.config_dir, &file)?;
+        for name in [DB_FILE, "oxigram.db-wal", "oxigram.db-shm"] {
+            vault::shred(&self.data_dir.join(name));
+        }
+        vault::shred(&self.config_dir.join("config.json"));
+        self.clear_cache();
+        self.set_key(Some(key));
+        Ok(())
+    }
+
+    /// Checks a passcode without changing anything.
+    async fn verify(&self, passcode: &str) -> Result<vault::Key, UiError> {
+        let file = vault::load(&self.config_dir).ok_or_else(|| UiError::new("PASSCODE_NONE", "no passcode is set"))?;
+        let passcode = passcode.to_owned();
+        tokio::task::spawn_blocking(move || vault::unlock(&file, &passcode))
+            .await
+            .map_err(UiError::internal)?
+            .map_err(vault_error)
+    }
+
+    /// Turns the passcode off: the database and the keys become plain files again.
+    pub async fn disable_passcode(&self, passcode: &str) -> Result<(), UiError> {
+        let key = self.verify(passcode).await?;
+        let mut inner = self.inner.lock().await;
+        self.disconnect(&mut inner).await;
+        if let Some(image) = vault::read_sealed(&self.data_dir.join(DB_SEALED), &key).map_err(vault_error)? {
+            store::write_file(image, &self.data_dir.join(DB_FILE))?;
+        }
+        if let Some(keys) = self.sealed_keys(&key)? {
+            config::save_keys(&self.config_dir, &keys)?;
+        }
+        vault::shred(&vault::path(&self.config_dir));
+        vault::shred(&self.data_dir.join(DB_SEALED));
+        vault::shred(&self.config_dir.join(KEYS_SEALED));
+        self.set_key(None);
+        Ok(())
+    }
+
+    /// A new passcode: everything is sealed again with the new key.
+    pub async fn change_passcode(&self, old: &str, new: &str) -> Result<(), UiError> {
+        if !vault::valid_passcode(new) {
+            return Err(UiError::new("PASSCODE_SHORT", "at least 4 characters"));
+        }
+        let old_key = self.verify(old).await?;
+        let new_passcode = new.to_owned();
+        let (file, key) = tokio::task::spawn_blocking(move || vault::create(&new_passcode))
+            .await
+            .map_err(UiError::internal)?
+            .map_err(vault_error)?;
+        let mut inner = self.inner.lock().await;
+        self.disconnect(&mut inner).await;
+        let db_path = self.data_dir.join(DB_SEALED);
+        let keys_path = self.config_dir.join(KEYS_SEALED);
+        let image = vault::read_sealed(&db_path, &old_key).map_err(vault_error)?;
+        let keys = vault::read_sealed(&keys_path, &old_key).map_err(vault_error)?;
+        if let Some(image) = image {
+            vault::write_sealed(&db_path, &key, &image)?;
+        }
+        if let Some(keys) = keys {
+            vault::write_sealed(&keys_path, &key, &keys)?;
+        }
+        vault::save(&self.config_dir, &file)?;
+        self.set_key(Some(key));
+        Ok(())
+    }
+
+    /// "Забыли код?": the encrypted data cannot be opened, so it is deleted
+    /// (the account is signed out locally; its session stays listed in
+    /// Telegram's active sessions until ended from another device).
+    pub async fn forget_passcode(&self) -> Result<UiState, UiError> {
+        let mut inner = self.inner.lock().await;
+        self.set_key(None);
+        self.disconnect(&mut inner).await;
+        inner.keys = None;
+        for path in [
+            vault::path(&self.config_dir),
+            self.config_dir.join(KEYS_SEALED),
+            self.data_dir.join(DB_SEALED),
+            self.data_dir.join(DB_FILE),
+            self.config_dir.join("config.json"),
+        ] {
+            vault::shred(&path);
+        }
+        self.clear_cache();
+        if let Ok(mut failures) = self.failures.lock() {
+            *failures = (0, None);
+        }
+        self.locked.store(false, std::sync::atomic::Ordering::SeqCst);
+        Ok(UiState::NeedKeys)
     }
 }
 
@@ -494,6 +816,69 @@ fn wrong_stage() -> UiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The passcode moves the data between plain and sealed files.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn passcode_seals_and_restores_the_data() {
+        let dir = std::env::temp_dir().join(format!("oxigram-pin-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (config_dir, data_dir, cache_dir) = (dir.join("config"), dir.join("data"), dir.join("cache"));
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(cache_dir.join("avatars")).unwrap();
+        std::fs::write(cache_dir.join("avatars").join("a.jpg"), b"picture").unwrap();
+        let keys = ApiKeys::parse(1, "0123456789abcdef0123456789abcdef").unwrap();
+        config::save_keys(&config_dir, &keys).unwrap();
+        {
+            let db = store::open(data_dir.join(DB_FILE)).unwrap();
+            let conn = db.lock().unwrap();
+            conn.execute_batch("CREATE TABLE marker (v TEXT); INSERT INTO marker VALUES ('very-secret-text');").unwrap();
+        }
+
+        // On: readable files go, sealed ones come, media is removed.
+        let telegram = Telegram::new(config_dir.clone(), data_dir.clone(), cache_dir.clone());
+        telegram.enable_passcode("1234").await.unwrap();
+        assert!(!data_dir.join(DB_FILE).exists());
+        assert!(!config_dir.join("config.json").exists());
+        assert!(!cache_dir.join("avatars").join("a.jpg").exists());
+        let sealed = std::fs::read(data_dir.join(DB_SEALED)).unwrap();
+        assert!(!sealed.windows(16).any(|w| w == b"very-secret-text"));
+        let sealed_keys = std::fs::read(config_dir.join(KEYS_SEALED)).unwrap();
+        assert!(!sealed_keys.windows(32).any(|w| w == b"0123456789abcdef0123456789abcdef"));
+        drop(telegram);
+
+        // A new start is locked; a wrong passcode is refused, the right one opens.
+        let telegram = Telegram::new(config_dir.clone(), data_dir.clone(), cache_dir.clone());
+        assert!(telegram.is_locked());
+        assert!(matches!(telegram.state().await, Ok(UiState::Locked)));
+        assert_eq!(telegram.unlock("0000").await.err().map(|e| e.code).as_deref(), Some("PASSCODE_WRONG"));
+        telegram.unlock("1234").await.unwrap();
+        assert!(!telegram.is_locked());
+        assert!(telegram.inner.lock().await.keys.as_ref() == Some(&keys));
+
+        // A new passcode; the old one no longer opens.
+        telegram.change_passcode("1234", "abcd").await.unwrap();
+        assert!(telegram.verify("1234").await.is_err());
+
+        // Off: the plain files are back with their contents.
+        telegram.disable_passcode("abcd").await.unwrap();
+        assert!(!vault::path(&config_dir).exists());
+        assert!(!data_dir.join(DB_SEALED).exists());
+        assert!(config::load_keys(&config_dir) == Some(keys));
+        let db = store::open(data_dir.join(DB_FILE)).unwrap();
+        let value: String = db.lock().unwrap().query_row("SELECT v FROM marker", [], |r| r.get(0)).unwrap();
+        assert_eq!(value, "very-secret-text");
+        drop(db);
+        drop(telegram);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wrong_passcodes_wait_longer() {
+        assert_eq!(passcode_delay(2), 0);
+        assert_eq!(passcode_delay(3), 1);
+        assert_eq!(passcode_delay(5), 4);
+        assert_eq!(passcode_delay(20), 60);
+    }
 
     /// Talks to Telegram's production servers, so it only runs on request:
     /// `cargo test -- --ignored`.

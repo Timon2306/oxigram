@@ -59,9 +59,10 @@ impl Tray {
         let label = notify::mute_all();
         let open = MenuItem::with_id("open", "Открыть Oxigram", true, None);
         let mute = MenuItem::with_id("mute", mute_label(label), true, None);
+        let lock = MenuItem::with_id("lock", "Заблокировать", true, None);
         let quit = MenuItem::with_id("quit", "Выход", true, None);
         let menu = Menu::new();
-        menu.append_items(&[&open, &mute, &PredefinedMenuItem::separator(), &quit]).ok()?;
+        menu.append_items(&[&open, &mute, &lock, &PredefinedMenuItem::separator(), &quit]).ok()?;
         let icon = TrayIconBuilder::new()
             .with_icon(icon)
             .with_tooltip("Oxigram")
@@ -204,6 +205,11 @@ pub fn init(ui: &AppWindow) -> slint::Timer {
             winit::event::WindowEvent::DroppedFile(path) => crate::sending::dropped(path.clone()),
             winit::event::WindowEvent::HoveredFile(_) => crate::sending::hover(true),
             winit::event::WindowEvent::HoveredFileCancelled => crate::sending::hover(false),
+            // Activity for the passcode's auto-lock.
+            winit::event::WindowEvent::KeyboardInput { .. }
+            | winit::event::WindowEvent::MouseInput { .. }
+            | winit::event::WindowEvent::MouseWheel { .. }
+            | winit::event::WindowEvent::CursorMoved { .. } => crate::passcode::touch(),
             _ => {}
         }
         slint::winit_030::EventResult::Propagate
@@ -218,6 +224,10 @@ pub fn init(ui: &AppWindow) -> slint::Timer {
             match event.id.as_ref() {
                 "open" => show_window(&ui),
                 "mute" => toggle_mute(),
+                "lock" => {
+                    show_window(&ui);
+                    crate::passcode::lock_now();
+                }
                 "quit" => {
                     let _ = slint::quit_event_loop();
                 }

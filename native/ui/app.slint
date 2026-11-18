@@ -1759,6 +1759,9 @@ component MessageView inherits VerticalLayout {
 
 component LoginCard inherits Rectangle {
     in property <string> stage;
+    // The lock screen ("locked")
+    callback unlock(string);
+    callback forgot-passcode();
     in property <string> phone;
     in property <string> hint;
     in property <string> error;
@@ -1788,7 +1791,7 @@ component LoginCard inherits Rectangle {
                     padding: 24px;
                     spacing: 14px;
                     Text {
-                        text: root.stage == "keys" ? "Ключи Telegram API" : root.stage == "phone" ? "Вход в Telegram" : root.stage == "code" ? "Код подтверждения" : root.stage == "password" ? "Облачный пароль" : "Oxigram";
+                        text: root.stage == "keys" ? "Ключи Telegram API" : root.stage == "phone" ? "Вход в Telegram" : root.stage == "code" ? "Код подтверждения" : root.stage == "password" ? "Облачный пароль" : root.stage == "locked" ? "Oxigram заблокирован" : "Oxigram";
                         color: Theme.text;
                         font-size: 18px;
                         font-weight: 600;
@@ -1958,6 +1961,46 @@ component LoginCard inherits Rectangle {
                             enabled: !root.busy;
                             clicked => {
                                 root.back-to-phone();
+                            }
+                        }
+                    }
+
+                    if root.stage == "locked": VerticalLayout {
+                        spacing: 14px;
+                        Text {
+                            text: "Введите код-пароль";
+                            color: Theme.dim;
+                            font-size: 14px;
+                        }
+
+                        passcode-field := Field {
+                            password: true;
+                            placeholder: "Код-пароль";
+                            enabled: !root.busy;
+                            init => {
+                                self.grab-focus();
+                            }
+                            accepted => {
+                                root.unlock(self.text);
+                                self.text = "";
+                            }
+                        }
+
+                        Button {
+                            text: root.busy ? "Проверка…" : "Разблокировать";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.unlock(passcode-field.text);
+                                passcode-field.text = "";
+                            }
+                        }
+
+                        Button {
+                            kind: "link";
+                            text: "Забыли код?";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.forgot-passcode();
                             }
                         }
                     }
@@ -2306,6 +2349,16 @@ component SettingsCard inherits Rectangle {
 
 component SettingsPanel inherits Rectangle {
     in-out property <string> page: "main";
+    // "Код-пароль"
+    in property <bool> passcode-on;
+    in property <string> passcode-status;
+    in property <bool> passcode-busy;
+    in property <string> auto-lock-text;
+    callback passcode-enable(string, string);
+    callback passcode-change(string, string, string);
+    callback passcode-disable(string);
+    callback cycle-auto-lock();
+    callback lock-now();
     // Updates, in "О программе"
     in property <string> update-version;
     in property <string> update-status;
@@ -2383,7 +2436,7 @@ component SettingsPanel inherits Rectangle {
             }
 
             Text {
-                text: root.page == "notifications" ? "Уведомления" : root.page == "data" ? "Данные и память" : root.page == "general" ? "Общие" : root.page == "about" ? "О программе" : "Настройки";
+                text: root.page == "notifications" ? "Уведомления" : root.page == "data" ? "Данные и память" : root.page == "general" ? "Общие" : root.page == "about" ? "О программе" : root.page == "passcode" ? "Код-пароль" : "Настройки";
                 color: Theme.text;
                 font-size: 18px;
                 font-weight: 600;
@@ -2509,6 +2562,157 @@ component SettingsPanel inherits Rectangle {
                     icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5";
                     clicked => {
                         root.page = "about";
+                    }
+                }
+            }
+
+            if root.page == "main": SettingsCard {
+                SettingsRow {
+                    label: "Код-пароль";
+                    value: root.passcode-on ? "Вкл." : "Выкл.";
+                    tint: #3fb27f;
+                    icon: "M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5zM12 15v2";
+                    clicked => {
+                        root.page = "passcode";
+                    }
+                }
+            }
+
+            // ---- Код-пароль
+            if root.page == "passcode": SettingsCard {
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 10px;
+                    Text {
+                        text: root.passcode-on
+                            ? "Данные Oxigram на этом компьютере зашифрованы. Без кода их не прочитать; при блокировке Oxigram отключается от Telegram."
+                            : "Код-пароль шифрует сессию, ключи API и кэш чатов на этом компьютере (Argon2id и ChaCha20-Poly1305). Код хранится только у вас: забытый код не восстановить.";
+                        color: Theme.dim;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                        height: 72px;
+                    }
+
+                    if !root.passcode-on: VerticalLayout {
+                        spacing: 8px;
+                        pc-new := Field {
+                            password: true;
+                            placeholder: "Новый код (от 4 символов)";
+                            enabled: !root.passcode-busy;
+                        }
+
+                        pc-repeat := Field {
+                            password: true;
+                            placeholder: "Повторите код";
+                            enabled: !root.passcode-busy;
+                            accepted => {
+                                root.passcode-enable(pc-new.text, pc-repeat.text);
+                            }
+                        }
+
+                        Button {
+                            text: "Включить код-пароль";
+                            enabled: !root.passcode-busy;
+                            clicked => {
+                                root.passcode-enable(pc-new.text, pc-repeat.text);
+                            }
+                        }
+                    }
+
+                    if root.passcode-on: VerticalLayout {
+                        spacing: 8px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            height: 36px;
+                            Button {
+                                kind: "ghost";
+                                text: "Автоблокировка: " + root.auto-lock-text;
+                                clicked => {
+                                    root.cycle-auto-lock();
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: "Заблокировать сейчас (Ctrl+L)";
+                            enabled: !root.passcode-busy;
+                            clicked => {
+                                root.lock-now();
+                            }
+                        }
+
+                        Text {
+                            text: "Сменить код";
+                            color: Theme.accent;
+                            font-size: 13px;
+                            font-weight: 600;
+                            height: 22px;
+                            vertical-alignment: bottom;
+                        }
+
+                        pc-old := Field {
+                            password: true;
+                            placeholder: "Текущий код";
+                            enabled: !root.passcode-busy;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            pc-new2 := Field {
+                                password: true;
+                                placeholder: "Новый код";
+                                enabled: !root.passcode-busy;
+                            }
+
+                            pc-repeat2 := Field {
+                                password: true;
+                                placeholder: "Повторите";
+                                enabled: !root.passcode-busy;
+                            }
+                        }
+
+                        Button {
+                            kind: "ghost";
+                            text: "Сменить";
+                            enabled: !root.passcode-busy;
+                            clicked => {
+                                root.passcode-change(pc-old.text, pc-new2.text, pc-repeat2.text);
+                                pc-new2.text = "";
+                                pc-repeat2.text = "";
+                            }
+                        }
+
+                        Text {
+                            text: "Выключить";
+                            color: Theme.danger;
+                            font-size: 13px;
+                            font-weight: 600;
+                            height: 22px;
+                            vertical-alignment: bottom;
+                        }
+
+                        pc-off := Field {
+                            password: true;
+                            placeholder: "Текущий код";
+                            enabled: !root.passcode-busy;
+                        }
+
+                        Button {
+                            kind: "ghost";
+                            text: "Выключить код-пароль";
+                            enabled: !root.passcode-busy;
+                            clicked => {
+                                root.passcode-disable(pc-off.text);
+                            }
+                        }
+                    }
+
+                    if root.passcode-status != "": Text {
+                        text: root.passcode-status;
+                        color: Theme.accent;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                        height: 36px;
                     }
                 }
             }
@@ -2694,6 +2898,18 @@ component SettingsPanel inherits Rectangle {
 
 export component AppWindow inherits Window {
     in property <string> window-title: "Oxigram";
+    // The local passcode
+    in property <bool> passcode-on;
+    in property <string> passcode-status;
+    in property <bool> passcode-busy;
+    in property <string> auto-lock-text;
+    callback unlock(string);
+    callback forgot-passcode();
+    callback passcode-enable(string, string);
+    callback passcode-change(string, string, string);
+    callback passcode-disable(string);
+    callback cycle-auto-lock();
+    callback lock-now();
     // A newer release ("0.3.1"), the check's state, the download's progress
     in property <string> update-version;
     in property <string> update-status;
@@ -3174,6 +3390,12 @@ export component AppWindow inherits Window {
             if ((event.modifiers.control || event.modifiers.meta) && !event.modifiers.alt && root.latin-shortcut(event.text)) {
                 return accept;
             }
+            // Ctrl+L locks with the passcode ("д" in the Russian layout, or
+            // the control character U+000C).
+            if ((event.text == "l" || event.text == "L" || event.text == "д" || event.text == "Д" || event.text == "\u{c}") && (event.modifiers.control || event.modifiers.meta) && root.stage == "ready") {
+                root.lock-now();
+                return accept;
+            }
             // Ctrl+V of pictures or files from the clipboard (text pastes as usual).
             if ((event.text == "v" || event.text == "V") && (event.modifiers.control || event.modifiers.meta) && root.paste-files()) {
                 return accept;
@@ -3256,6 +3478,12 @@ export component AppWindow inherits Window {
         }
         back-to-phone => {
             root.back-to-phone();
+        }
+        unlock(passcode) => {
+            root.unlock(passcode);
+        }
+        forgot-passcode => {
+            root.forgot-passcode();
         }
         change-keys => {
             root.change-keys();
@@ -4601,6 +4829,25 @@ export component AppWindow inherits Window {
         }
         open-proxy => {
             root.open-proxy();
+        }
+        passcode-on: root.passcode-on;
+        passcode-status: root.passcode-status;
+        passcode-busy: root.passcode-busy;
+        auto-lock-text: root.auto-lock-text;
+        passcode-enable(a, b) => {
+            root.passcode-enable(a, b);
+        }
+        passcode-change(a, b, c) => {
+            root.passcode-change(a, b, c);
+        }
+        passcode-disable(a) => {
+            root.passcode-disable(a);
+        }
+        cycle-auto-lock => {
+            root.cycle-auto-lock();
+        }
+        lock-now => {
+            root.lock-now();
         }
     }
 

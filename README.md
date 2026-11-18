@@ -69,6 +69,7 @@ is no browser engine and no GPU driver in memory.
 **🖥️ Desktop**
 - Notifications that respect muted chats; "mute all" in the tray
 - Tray mode, start with the system, one running copy
+- Local passcode: data on disk encrypted (Argon2id, ChaCha20-Poly1305), auto-lock, Ctrl+L
 - SOCKS5 and HTTP proxies, or the built-in WebSocket bypass (through
   Telegram Web's addresses, no server needed), set up before the API keys
 - Light and dark themes, text size

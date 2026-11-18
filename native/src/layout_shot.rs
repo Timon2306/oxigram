@@ -149,4 +149,16 @@ fn layout_shot() {
     ui.set_settings_page("about".into());
     ui.set_settings_open(true);
     save(&window, 1100, 800, &dir.join("shot-update-about.png"));
+    // "Код-пароль", off and on.
+    ui.set_settings_page("passcode".into());
+    ui.set_auto_lock_text("через 1 ч".into());
+    for on in [false, true] {
+        ui.set_passcode_on(on);
+        save(&window, 1100, 800, &dir.join(format!("shot-passcode-{on}.png")));
+    }
+    // The lock screen.
+    ui.set_settings_open(false);
+    ui.set_stage("locked".into());
+    ui.set_error("Неверный код-пароль".into());
+    save(&window, 1100, 800, &dir.join("shot-locked.png"));
 }

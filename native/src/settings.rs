@@ -61,6 +61,9 @@ pub struct Settings {
     /// When the last check ran (Unix seconds).
     #[serde(rename = "updateChecked")]
     pub update_checked: i64,
+    /// Minutes of idle time before the passcode locks the app (0 = never).
+    #[serde(rename = "autoLock")]
+    pub auto_lock: u32,
 }
 
 impl Default for Settings {
@@ -78,6 +81,7 @@ impl Default for Settings {
             text_size: "normal".to_owned(),
             auto_update: true,
             update_checked: 0,
+            auto_lock: 60,
         }
     }
 }

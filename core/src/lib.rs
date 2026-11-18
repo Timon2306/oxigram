@@ -18,3 +18,4 @@ pub mod store;
 pub mod tg;
 pub mod update;
 pub mod updates;
+pub mod vault;

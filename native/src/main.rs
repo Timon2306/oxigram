@@ -23,6 +23,7 @@ mod messages;
 mod pictures;
 mod replies;
 mod notify;
+mod passcode;
 mod profile;
 mod proxy;
 mod reactions;
@@ -303,6 +304,7 @@ fn main() {
     menus::wire(&ui);
     settings::wire(&ui);
     update::wire(&ui);
+    passcode::wire(&ui);
     messages::wire(&ui);
     search::wire(&ui);
     sending::wire(&ui);
@@ -404,6 +406,43 @@ fn main() {
         }
     }
     slint::run_event_loop_until_quit().expect("event loop");
+    // With a passcode the database lives in memory: seal it before leaving.
+    if let Some(runtime) = RUNTIME.get() {
+        runtime.block_on(tg().flush());
+    }
+}
+
+/// Forgets what the window shows of the account (on lock): chats, messages,
+/// pictures, drafts, open panels.
+fn forget_view() {
+    pictures::close_viewer();
+    drafts::forget_all();
+    with_app(|app| {
+        app.chat = None;
+        app.generation += 1;
+        app.dialogs.clear();
+        app.shown.clear();
+        app.dialog_model.set_vec(Vec::new());
+        app.messages.clear();
+        app.message_model.set_vec(Vec::new());
+        app.thumbs.clear();
+        app.avatars.clear();
+        app.avatar_order.clear();
+        app.avatar_pending.clear();
+        app.replies.clear();
+        app.selected.clear();
+        app.compose = messages::Compose::None;
+        app.dialogs_done = false;
+        app.dialogs_loading = false;
+        if let Some(ui) = app.ui.upgrade() {
+            app.search.reset(&ui);
+            ui.set_chat_open(false);
+            ui.set_settings_open(false);
+            ui.set_drawer_open(false);
+            ui.set_info_open(false);
+            ui.invoke_set_composer(SharedString::new());
+        }
+    });
 }
 
 fn ui() -> Option<AppWindow> {
@@ -470,6 +509,10 @@ fn show_state(result: Result<UiState, UiError>) {
         }
     };
     let stage = match state {
+        UiState::Locked => {
+            passcode::refresh(&ui);
+            "locked"
+        }
         UiState::NeedKeys => "keys",
         UiState::NeedPhone => "phone",
         UiState::NeedCode { phone } => {

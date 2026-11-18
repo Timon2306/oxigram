@@ -91,8 +91,29 @@ fn save_soon() {
     }
 }
 
+/// A passcode was set: the readable drafts file goes; drafts stay in memory
+/// until the app locks or quits.
+pub fn forget_file() {
+    if let Some(dir) = crate::settings::dir() {
+        oxigram_core::vault::shred(&dir.join(FILE));
+    }
+}
+
+/// The passcode was turned off: drafts are kept on disk again.
+pub fn save_now() {
+    write_now();
+}
+
+/// On lock: drafts are decrypted data too.
+pub fn forget_all() {
+    DRAFTS.with(|drafts| drafts.borrow_mut().by_peer.clear());
+}
+
 fn write_now() {
     let Some(dir) = crate::settings::dir() else { return };
+    if crate::tg().passcode_on() {
+        return;
+    }
     let text = DRAFTS.with(|drafts| {
         let mut drafts = drafts.borrow_mut();
         drafts.save_pending = false;

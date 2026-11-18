@@ -36,6 +36,45 @@ pub fn open(path: impl AsRef<Path>) -> rusqlite::Result<Db> {
     Ok(Arc::new(Mutex::new(conn)))
 }
 
+/// The database in memory, from a decrypted image (or empty): used while a
+/// passcode is set, so nothing readable is written to disk.
+pub fn open_memory(image: Option<Vec<u8>>) -> rusqlite::Result<Db> {
+    let mut conn = Connection::open_in_memory()?;
+    if let Some(image) = image {
+        let len = image.len();
+        conn.deserialize_read_exact(rusqlite::MAIN_DB, std::io::Cursor::new(image), len, false)?;
+    }
+    migrate(&mut conn)?;
+    Ok(Arc::new(Mutex::new(conn)))
+}
+
+/// The whole database as bytes (for sealing it to disk).
+pub fn image(conn: &mut Connection) -> rusqlite::Result<Vec<u8>> {
+    Ok(conn.serialize(rusqlite::MAIN_DB)?.to_vec())
+}
+
+/// Reads a database file on disk (WAL included) into bytes.
+pub fn image_of_file(path: &Path) -> rusqlite::Result<Option<Vec<u8>>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let mut conn = Connection::open(path)?;
+    // Folds the WAL into the image.
+    let _ = conn.pragma_update(None, "wal_checkpoint", "TRUNCATE");
+    image(&mut conn).map(Some)
+}
+
+/// Writes a database image back to a file on disk (passcode turned off):
+/// a serialized image is the database file itself.
+pub fn write_file(image: Vec<u8>, path: &Path) -> std::io::Result<()> {
+    for stale in ["-wal", "-shm"] {
+        let mut name = path.as_os_str().to_owned();
+        name.push(stale);
+        let _ = std::fs::remove_file(std::path::PathBuf::from(name));
+    }
+    std::fs::write(path, image)
+}
+
 fn connect(path: &Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open(path)?;
     // WAL keeps readers and the writer from blocking each other; NORMAL is
