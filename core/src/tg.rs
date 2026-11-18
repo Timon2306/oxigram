@@ -71,8 +71,6 @@ struct Connection {
     updates: Option<mpsc::Receiver<UpdatesLike>>,
     update_task: Option<JoinHandle<()>>,
     me: Option<Me>,
-    /// With a passcode: seals the in-memory database to disk now and then.
-    flusher: Option<JoinHandle<()>>,
 }
 
 struct Inner {
@@ -121,25 +119,9 @@ pub struct Telegram {
 }
 
 const KEYS_SEALED: &str = "keys.enc";
+/// The 0.3.1 development format sealed the whole database; read once and
+/// converted to sealed fields.
 const DB_SEALED: &str = "oxigram.db.enc";
-/// How often the in-memory database is sealed to disk while it changes.
-const FLUSH_EVERY: Duration = Duration::from_secs(30);
-
-/// Seals the in-memory database into `path` (skipped when nothing changed
-/// since `last`).
-fn seal_db(db: &Db, key: &vault::Key, path: &std::path::Path, last: Option<&std::sync::atomic::AtomicU64>) {
-    let Ok(mut conn) = db.lock() else { return };
-    let changes = conn.total_changes();
-    if let Some(last) = last
-        && last.swap(changes, std::sync::atomic::Ordering::Relaxed) == changes
-    {
-        return;
-    }
-    if let Ok(image) = store::image(&mut conn) {
-        drop(conn);
-        let _ = vault::write_sealed(path, key, &image);
-    }
-}
 
 impl Telegram {
     pub fn new(config_dir: PathBuf, data_dir: PathBuf, cache_dir: PathBuf) -> Self {
@@ -358,10 +340,6 @@ impl Telegram {
             photo_id: user.photo().map(|photo| photo.photo_id.to_string()),
         };
         connection.me = Some(me.clone());
-        // A new sign-in: its authorization key goes to disk at once.
-        if let Some(key) = self.key() {
-            seal_db(&connection.db, &key, &self.data_dir.join(DB_SEALED), None);
-        }
         if let Some(receiver) = connection.updates.take() {
             connection.update_task = Some(tokio::spawn(updates::run(
                 connection.client.clone(),
@@ -418,7 +396,6 @@ impl Telegram {
                 updates,
             } = SenderPool::with_configuration(Arc::clone(&session), keys.api_id, params);
 
-            let flusher = self.start_flusher(&db);
             inner.connection = Some(Connection {
                 client: Client::new(handle),
                 session,
@@ -427,7 +404,6 @@ impl Telegram {
                 updates: Some(updates),
                 update_task: None,
                 me: None,
-                flusher,
             });
         }
         inner
@@ -439,14 +415,12 @@ impl Telegram {
     fn open_session(&self) -> Result<(Db, SqliteSession), UiError> {
         std::fs::create_dir_all(&self.data_dir)?;
         self.lock_instance()?;
-        let db = match self.key() {
-            // A passcode: the database lives in memory, sealed on disk.
-            Some(key) => {
-                let image = vault::read_sealed(&self.data_dir.join(DB_SEALED), &key).map_err(vault_error)?;
-                store::open_memory(image)?
-            }
-            None => store::open(self.data_dir.join(DB_FILE))?,
-        };
+        let db = store::open(self.data_dir.join(DB_FILE))?;
+        if let Some(key) = self.key() {
+            // A passcode: sensitive fields are sealed one by one.
+            let conn = db.lock().map_err(|_| UiError::internal("database lock"))?;
+            store::crypt::use_key(&conn, Some(key))?;
+        }
         let session = SqliteSession::load(Arc::clone(&db)).map_err(UiError::internal)?;
         Ok((db, session))
     }
@@ -487,16 +461,10 @@ impl Telegram {
             task.abort();
             let _ = task.await;
         }
-        if let Some(task) = connection.flusher {
-            task.abort();
-        }
         connection.client.disconnect();
         connection.pool_task.abort();
         // Wait until the runner has really stopped using the session.
         let _ = connection.pool_task.await;
-        if let Some(key) = self.key() {
-            seal_db(&connection.db, &key, &self.data_dir.join(DB_SEALED), None);
-        }
         Some(connection.session)
     }
 
@@ -568,27 +536,23 @@ impl Telegram {
         Ok(raw.and_then(|raw| serde_json::from_slice(&raw).ok()))
     }
 
-    /// Seals the in-memory database now (at exit, and by the app's timer).
-    pub async fn flush(&self) {
-        let Some(key) = self.key() else { return };
-        let inner = self.inner.lock().await;
-        if let Some(connection) = &inner.connection {
-            seal_db(&connection.db, &key, &self.data_dir.join(DB_SEALED), None);
+    /// Opens the database file with `key` installed for enc() / dec().
+    fn open_with(&self, key: Option<Arc<vault::Key>>) -> Result<Db, UiError> {
+        std::fs::create_dir_all(&self.data_dir)?;
+        let db = store::open(self.data_dir.join(DB_FILE))?;
+        {
+            let conn = db.lock().map_err(|_| UiError::internal("database lock"))?;
+            store::crypt::use_key(&conn, key)?;
         }
+        Ok(db)
     }
 
-    /// Starts the background sealing of a passcode-protected database.
-    fn start_flusher(&self, db: &Db) -> Option<JoinHandle<()>> {
-        let key = self.key()?;
-        let db = Arc::clone(db);
-        let path = self.data_dir.join(DB_SEALED);
-        Some(tokio::spawn(async move {
-            let last = std::sync::atomic::AtomicU64::new(u64::MAX);
-            loop {
-                tokio::time::sleep(FLUSH_EVERY).await;
-                seal_db(&db, &key, &path, Some(&last));
-            }
-        }))
+    /// Seals (`true`) or opens (`false`) the sensitive fields of the file.
+    fn convert_db(&self, key: Arc<vault::Key>, seal: bool) -> Result<(), UiError> {
+        let db = self.open_with(Some(key))?;
+        let mut conn = db.lock().map_err(|_| UiError::internal("database lock"))?;
+        store::crypt::convert(&mut conn, seal)?;
+        Ok(())
     }
 
     /// Enters the passcode. Wrong ones in a row make the next try wait.
@@ -628,7 +592,18 @@ impl Telegram {
             *failures = (0, None);
         }
         let keys = self.sealed_keys(&key)?;
-        self.set_key(Some(key));
+        let key = Arc::new(key);
+        // A database sealed whole (0.3.1 development builds): back to a file
+        // with sealed fields.
+        let whole = self.data_dir.join(DB_SEALED);
+        if let Some(image) = vault::read_sealed(&whole, &key).map_err(vault_error)? {
+            store::write_file(image, &self.data_dir.join(DB_FILE))?;
+            vault::shred(&whole);
+            self.convert_db(Arc::clone(&key), true)?;
+        }
+        if let Ok(mut slot) = self.key.lock() {
+            *slot = Some(key);
+        }
         self.locked.store(false, std::sync::atomic::Ordering::SeqCst);
         let mut inner = self.inner.lock().await;
         inner.keys = keys;
@@ -666,24 +641,23 @@ impl Telegram {
             .map_err(vault_error)?;
         let mut inner = self.inner.lock().await;
         self.disconnect(&mut inner).await;
-        let plain_db = self.data_dir.join(DB_FILE);
-        let image = store::image_of_file(&plain_db)?;
-        std::fs::create_dir_all(&self.data_dir)?;
-        if let Some(image) = image {
-            vault::write_sealed(&self.data_dir.join(DB_SEALED), &key, &image)?;
-        }
+        let key = Arc::new(key);
         if let Some(keys) = &inner.keys {
             let raw = serde_json::to_vec(keys).map_err(UiError::internal)?;
             vault::write_sealed(&self.config_dir.join(KEYS_SEALED), &key, &raw)?;
         }
-        // The vault last: until it exists, the plain files still rule.
+        // Sealing the fields, then the vault: a crash between leaves fields
+        // sealed with a key that a retry would not have; so the vault first,
+        // and dec() still reads any field left plain.
         vault::save(&self.config_dir, &file)?;
-        for name in [DB_FILE, "oxigram.db-wal", "oxigram.db-shm"] {
-            vault::shred(&self.data_dir.join(name));
+        if self.data_dir.join(DB_FILE).exists() {
+            self.convert_db(Arc::clone(&key), true)?;
         }
         vault::shred(&self.config_dir.join("config.json"));
         self.clear_cache();
-        self.set_key(Some(key));
+        if let Ok(mut slot) = self.key.lock() {
+            *slot = Some(key);
+        }
         Ok(())
     }
 
@@ -702,8 +676,11 @@ impl Telegram {
         let key = self.verify(passcode).await?;
         let mut inner = self.inner.lock().await;
         self.disconnect(&mut inner).await;
+        let key = Arc::new(key);
         if let Some(image) = vault::read_sealed(&self.data_dir.join(DB_SEALED), &key).map_err(vault_error)? {
             store::write_file(image, &self.data_dir.join(DB_FILE))?;
+        } else if self.data_dir.join(DB_FILE).exists() {
+            self.convert_db(Arc::clone(&key), false)?;
         }
         if let Some(keys) = self.sealed_keys(&key)? {
             config::save_keys(&self.config_dir, &keys)?;
@@ -728,18 +705,31 @@ impl Telegram {
             .map_err(vault_error)?;
         let mut inner = self.inner.lock().await;
         self.disconnect(&mut inner).await;
-        let db_path = self.data_dir.join(DB_SEALED);
         let keys_path = self.config_dir.join(KEYS_SEALED);
-        let image = vault::read_sealed(&db_path, &old_key).map_err(vault_error)?;
         let keys = vault::read_sealed(&keys_path, &old_key).map_err(vault_error)?;
-        if let Some(image) = image {
-            vault::write_sealed(&db_path, &key, &image)?;
+        let (old_key, key) = (Arc::new(old_key), Arc::new(key));
+        if self.data_dir.join(DB_FILE).exists() {
+            // Opened with the old key, sealed with the new one, in one go.
+            let db = self.open_with(Some(old_key))?;
+            let mut conn = db.lock().map_err(|_| UiError::internal("database lock"))?;
+            let tx = conn.transaction()?;
+            for (table, column) in store::crypt::SEALED {
+                tx.execute(&format!("UPDATE {table} SET {column} = dec({column})"), [])?;
+            }
+            store::crypt::use_key(&tx, Some(Arc::clone(&key)))?;
+            for (table, column) in store::crypt::SEALED {
+                tx.execute(&format!("UPDATE {table} SET {column} = enc({column})"), [])?;
+            }
+            tx.commit()?;
+            store::crypt::vacuum(&conn)?;
         }
         if let Some(keys) = keys {
             vault::write_sealed(&keys_path, &key, &keys)?;
         }
         vault::save(&self.config_dir, &file)?;
-        self.set_key(Some(key));
+        if let Ok(mut slot) = self.key.lock() {
+            *slot = Some(key);
+        }
         Ok(())
     }
 
@@ -756,6 +746,8 @@ impl Telegram {
             self.config_dir.join(KEYS_SEALED),
             self.data_dir.join(DB_SEALED),
             self.data_dir.join(DB_FILE),
+            self.data_dir.join("oxigram.db-wal"),
+            self.data_dir.join("oxigram.db-shm"),
             self.config_dir.join("config.json"),
         ] {
             vault::shred(&path);
@@ -817,7 +809,36 @@ fn wrong_stage() -> UiError {
 mod tests {
     use super::*;
 
-    /// The passcode moves the data between plain and sealed files.
+    fn dialog(title: &str) -> store::chats::DialogRow {
+        store::chats::DialogRow {
+            id: 42,
+            kind: "user".into(),
+            title: title.into(),
+            last_text: "last words".into(),
+            last_date: 0,
+            last_outgoing: false,
+            last_id: 0,
+            unread: 0,
+            pinned: false,
+            archived: false,
+            photo_id: None,
+            read_outbox: 0,
+            unread_reactions: 0,
+            muted: false,
+            contact: false,
+            bot: false,
+            presence: None,
+            can_post: true,
+        }
+    }
+
+    fn file_has(dir: &std::path::Path, needle: &[u8]) -> bool {
+        ["oxigram.db", "oxigram.db-wal"].iter().any(|name| {
+            std::fs::read(dir.join(name)).is_ok_and(|bytes| bytes.windows(needle.len()).any(|w| w == needle))
+        })
+    }
+
+    /// The passcode seals and opens fields in the database file in place.
     #[tokio::test(flavor = "multi_thread")]
     async fn passcode_seals_and_restores_the_data() {
         let dir = std::env::temp_dir().join(format!("oxigram-pin-test-{}", std::process::id()));
@@ -830,18 +851,18 @@ mod tests {
         config::save_keys(&config_dir, &keys).unwrap();
         {
             let db = store::open(data_dir.join(DB_FILE)).unwrap();
-            let conn = db.lock().unwrap();
-            conn.execute_batch("CREATE TABLE marker (v TEXT); INSERT INTO marker VALUES ('very-secret-text');").unwrap();
+            let mut conn = db.lock().unwrap();
+            store::chats::save_dialogs(&mut conn, 0, &[dialog("very-secret-title")]).unwrap();
         }
+        assert!(file_has(&data_dir, b"very-secret-title"));
 
-        // On: readable files go, sealed ones come, media is removed.
+        // On: the fields are sealed in the file, media is removed.
         let telegram = Telegram::new(config_dir.clone(), data_dir.clone(), cache_dir.clone());
         telegram.enable_passcode("1234").await.unwrap();
-        assert!(!data_dir.join(DB_FILE).exists());
+        assert!(data_dir.join(DB_FILE).exists());
+        assert!(!file_has(&data_dir, b"very-secret-title"));
         assert!(!config_dir.join("config.json").exists());
         assert!(!cache_dir.join("avatars").join("a.jpg").exists());
-        let sealed = std::fs::read(data_dir.join(DB_SEALED)).unwrap();
-        assert!(!sealed.windows(16).any(|w| w == b"very-secret-text"));
         let sealed_keys = std::fs::read(config_dir.join(KEYS_SEALED)).unwrap();
         assert!(!sealed_keys.windows(32).any(|w| w == b"0123456789abcdef0123456789abcdef"));
         drop(telegram);
@@ -854,19 +875,30 @@ mod tests {
         telegram.unlock("1234").await.unwrap();
         assert!(!telegram.is_locked());
         assert!(telegram.inner.lock().await.keys.as_ref() == Some(&keys));
+        {
+            let (db, _) = telegram.open_session().unwrap();
+            let rows = store::chats::load_dialogs(&db.lock().unwrap()).unwrap();
+            assert_eq!(rows[0].title, "very-secret-title");
+            assert_eq!(rows[0].last_text, "last words");
+        }
 
-        // A new passcode; the old one no longer opens.
+        // A new passcode; the old one no longer opens, the data still reads.
         telegram.change_passcode("1234", "abcd").await.unwrap();
         assert!(telegram.verify("1234").await.is_err());
+        assert!(!file_has(&data_dir, b"very-secret-title"));
+        {
+            let (db, _) = telegram.open_session().unwrap();
+            let rows = store::chats::load_dialogs(&db.lock().unwrap()).unwrap();
+            assert_eq!(rows[0].title, "very-secret-title");
+        }
 
-        // Off: the plain files are back with their contents.
+        // Off: the fields are plain again.
         telegram.disable_passcode("abcd").await.unwrap();
         assert!(!vault::path(&config_dir).exists());
-        assert!(!data_dir.join(DB_SEALED).exists());
         assert!(config::load_keys(&config_dir) == Some(keys));
         let db = store::open(data_dir.join(DB_FILE)).unwrap();
-        let value: String = db.lock().unwrap().query_row("SELECT v FROM marker", [], |r| r.get(0)).unwrap();
-        assert_eq!(value, "very-secret-text");
+        let rows = store::chats::load_dialogs(&db.lock().unwrap()).unwrap();
+        assert_eq!(rows[0].title, "very-secret-title");
         drop(db);
         drop(telegram);
         let _ = std::fs::remove_dir_all(&dir);

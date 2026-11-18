@@ -406,10 +406,6 @@ fn main() {
         }
     }
     slint::run_event_loop_until_quit().expect("event loop");
-    // With a passcode the database lives in memory: seal it before leaving.
-    if let Some(runtime) = RUNTIME.get() {
-        runtime.block_on(tg().flush());
-    }
 }
 
 /// Forgets what the window shows of the account (on lock): chats, messages,

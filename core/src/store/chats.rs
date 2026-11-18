@@ -189,7 +189,7 @@ pub fn save_dialogs(conn: &mut Connection, start: usize, rows: &[DialogRow]) -> 
     }
     {
         let mut stmt = tx.prepare(
-            "INSERT OR REPLACE INTO dialogs VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            "INSERT OR REPLACE INTO dialogs VALUES (?1, ?2, ?3, enc(?4), enc(?5), ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         )?;
         for (offset, row) in rows.iter().enumerate() {
             // A dialog that moved between pages must not linger at its old position.
@@ -271,7 +271,7 @@ pub fn is_muted(conn: &Connection, peer_id: i64) -> Option<bool> {
 
 /// The chat's name as the list shows it, when the chat is in the list.
 pub fn dialog_title(conn: &Connection, peer_id: i64) -> Option<String> {
-    conn.query_row("SELECT title FROM dialogs WHERE peer_id = ?1", [peer_id], |row| row.get(0))
+    conn.query_row("SELECT dec(title) FROM dialogs WHERE peer_id = ?1", [peer_id], |row| row.get(0))
         .ok()
         .filter(|title: &String| !title.is_empty())
 }
@@ -300,7 +300,7 @@ pub fn set_read_outbox(conn: &Connection, peer_id: i64, max_id: i32) -> rusqlite
 
 pub fn load_dialogs(conn: &Connection) -> rusqlite::Result<Vec<DialogRow>> {
     let mut stmt = conn.prepare(
-        "SELECT peer_id, kind, title, last_text, last_date, last_outgoing, unread, pinned, archived, photo_id,
+        "SELECT peer_id, kind, dec(title), dec(last_text), last_date, last_outgoing, unread, pinned, archived, photo_id,
                 read_outbox, unread_reactions, last_id, muted, contact, bot
          FROM dialogs ORDER BY position",
     )?;
@@ -363,7 +363,7 @@ pub fn save_messages(conn: &mut Connection, rows: &[MessageRow]) -> rusqlite::Re
     {
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO messages
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+             VALUES (?1, ?2, ?3, enc(?4), ?5, enc(?6), ?7, ?8, ?9, ?10, ?11, enc(?12), ?13, ?14, ?15, ?16, ?17, enc(?18), enc(?19), ?20)",
         )?;
         for row in rows {
             stmt.execute(params![
@@ -455,8 +455,8 @@ pub fn load_messages(
     limit: usize,
 ) -> rusqlite::Result<Vec<MessageRow>> {
     let mut stmt = conn.prepare(
-        "SELECT id, peer_id, sender_id, sender_name, date, text, kind, outgoing, edited,
-                image_w, image_h, file_name, file_size, playable, grouped_id, reactions, reply_to_id, entities, web, duration
+        "SELECT id, peer_id, sender_id, dec(sender_name), date, dec(text), kind, outgoing, edited,
+                image_w, image_h, dec(file_name), file_size, playable, grouped_id, reactions, reply_to_id, dec(entities), dec(web), duration
          FROM messages WHERE peer_id = ?1 AND id < ?2 ORDER BY id DESC LIMIT ?3",
     )?;
     stmt.query_map(

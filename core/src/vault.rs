@@ -20,10 +20,10 @@ use serde::{Deserialize, Serialize};
 pub const FILE_NAME: &str = "lock.json";
 /// What the check block holds.
 const CHECK: &[u8] = b"oxigram passcode check v1";
-/// Argon2id: about 0.2 s on a fast desktop and 0.4-0.6 s on a weak laptop;
-/// 48 MiB while deriving, freed right after.
-const MEMORY_KIB: u32 = 48 * 1024;
-const PASSES: u32 = 3;
+/// Argon2id: about 0.1 s on a fast desktop and 0.3-0.5 s on a weak laptop;
+/// 19 MiB while deriving (OWASP's figure), freed right after.
+const MEMORY_KIB: u32 = 19 * 1024;
+const PASSES: u32 = 4;
 const LANES: u32 = 1;
 
 /// The 32-byte key; wiped from memory when dropped.

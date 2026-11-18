@@ -152,7 +152,7 @@ impl SqliteSession {
             .dc_options
             .insert(dc_option.id, dc_option.clone());
         self.conn()?.execute(
-            "INSERT OR REPLACE INTO dc_option VALUES (?1, ?2, ?3, ?4)",
+            "INSERT OR REPLACE INTO dc_option VALUES (?1, ?2, ?3, enc(?4))",
             params![
                 dc_option.id,
                 dc_option.ipv4.to_string(),
@@ -263,7 +263,7 @@ fn read_cache(conn: &Connection) -> Result<Cache> {
         .optional()?
         .unwrap_or(DEFAULT_DC);
 
-    let mut stmt = conn.prepare("SELECT dc_id, ipv4, ipv6, auth_key FROM dc_option")?;
+    let mut stmt = conn.prepare("SELECT dc_id, ipv4, ipv6, dec(auth_key) FROM dc_option")?;
     let rows = stmt.query_map([], |row| {
         Ok((
             row.get::<_, i32>(0)?,

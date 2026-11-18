@@ -31,6 +31,16 @@ pub const SEALED: [(&str, &str); 8] = [
     ("dc_option", "auth_key"),
 ];
 
+fn owned(value: ValueRef<'_>) -> Value {
+    match value {
+        ValueRef::Null => Value::Null,
+        ValueRef::Integer(i) => Value::Integer(i),
+        ValueRef::Real(r) => Value::Real(r),
+        ValueRef::Text(t) => Value::Text(String::from_utf8_lossy(t).into_owned()),
+        ValueRef::Blob(b) => Value::Blob(b.to_vec()),
+    }
+}
+
 fn is_sealed(value: &ValueRef<'_>) -> bool {
     matches!(value, ValueRef::Blob(b) if b.len() > 5 && &b[..4] == MAGIC)
 }
@@ -52,7 +62,7 @@ fn seal_value(key: &Key, value: ValueRef<'_>) -> Value {
 }
 
 fn open_value(key: Option<&Key>, value: ValueRef<'_>) -> Value {
-    let ValueRef::Blob(blob) = value else { return value.into() };
+    let ValueRef::Blob(blob) = value else { return owned(value) };
     if !is_sealed(&value) {
         return Value::Blob(blob.to_vec());
     }
@@ -72,19 +82,20 @@ fn open_value(key: Option<&Key>, value: ValueRef<'_>) -> Value {
 /// Installs `enc` and `dec` on a connection for `key` (`None`: no passcode).
 pub fn use_key(conn: &Connection, key: Option<Arc<Key>>) -> rusqlite::Result<()> {
     let flags = FunctionFlags::SQLITE_UTF8;
+    let sealing = key.is_some();
     let for_enc = key.clone();
     conn.create_scalar_function("enc", 1, flags, move |ctx| {
         let value = ctx.get_raw(0);
         Ok(match &for_enc {
             Some(key) => seal_value(key, value),
-            None => value.into(),
+            None => owned(value),
         })
     })?;
     conn.create_scalar_function("dec", 1, flags | FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
         Ok(open_value(key.as_deref(), ctx.get_raw(0)))
     })?;
     // Freed pages are zeroed, so removed plain values do not linger in the file.
-    conn.pragma_update(None, "secure_delete", key.is_some())?;
+    conn.pragma_update(None, "secure_delete", sealing)?;
     Ok(())
 }
 
