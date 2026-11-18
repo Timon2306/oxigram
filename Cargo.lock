@@ -4662,6 +4662,7 @@ dependencies = [
  "slint-build",
  "symphonia",
  "tauri-winres",
+ "tauri-winrt-notification",
  "tokio",
  "tray-icon",
  "windows 0.62.2",

@@ -83,7 +83,7 @@ impl LayoutWithoutLineBreaksBuilder {
         }
 
         if let Some(ref font_request) = self.font_request {
-            let mut fallback_family_iter = sharedfontique::FALLBACK_FAMILIES
+            let fallback_family_iter = sharedfontique::FALLBACK_FAMILIES
                 .into_iter()
                 .map(parley::style::FontFamilyName::Generic);
 

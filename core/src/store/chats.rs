@@ -276,6 +276,14 @@ pub fn dialog_title(conn: &Connection, peer_id: i64) -> Option<String> {
         .filter(|title: &String| !title.is_empty())
 }
 
+/// The profile photo ID of a listed chat.
+pub fn dialog_photo(conn: &Connection, peer_id: i64) -> Option<String> {
+    conn.query_row("SELECT photo_id FROM dialogs WHERE peer_id = ?1", [peer_id], |row| row.get::<_, Option<String>>(0))
+        .ok()
+        .flatten()
+        .filter(|photo| !photo.is_empty())
+}
+
 pub fn set_muted(conn: &Connection, peer_id: i64, muted: bool) -> rusqlite::Result<()> {
     conn.execute("UPDATE dialogs SET muted = ?2 WHERE peer_id = ?1", params![peer_id, muted])?;
     Ok(())

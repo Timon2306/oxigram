@@ -97,7 +97,8 @@ pub trait EventSink: Send + Sync {
 pub trait Notifier: Send + Sync {
     /// The main window is focused and not minimized.
     fn looking(&self) -> bool;
-    fn show(&self, title: String, body: String);
+    /// `avatar`: the chat's peer ID and profile photo ID, when it has one.
+    fn show(&self, title: String, body: String, avatar: Option<(i64, String)>);
 }
 
 /// The window's end of the event stream. It is replaced whenever the window
@@ -135,12 +136,13 @@ impl UiSink {
         if active == message.peer_id && notifier.looking() {
             return;
         }
-        let (muted, listed_title) = match db.lock() {
+        let (muted, listed_title, listed_photo) = match db.lock() {
             Ok(conn) => (
                 cache::is_muted(&conn, message.peer_id),
                 cache::dialog_title(&conn, message.peer_id),
+                cache::dialog_photo(&conn, message.peer_id),
             ),
-            Err(_) => (None, None),
+            Err(_) => (None, None, None),
         };
         // A chat missing from the list: private chats ring, others stay quiet.
         if muted.unwrap_or(message.peer_id < 0) {
@@ -166,7 +168,9 @@ impl UiSink {
         } else {
             text
         };
-        notifier.show(title, body);
+        // The chat's picture (a group's own, as in Telegram Desktop).
+        let photo = peer.photo_id.clone().or(listed_photo);
+        notifier.show(title, body, photo.map(|photo| (message.peer_id, photo)));
     }
 
     pub fn attach(&self, sink: Box<dyn EventSink>) {

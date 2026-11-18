@@ -51,6 +51,9 @@ notify-rust = "4.19"
 
 # In-app video on Windows 8+ (Media Foundation's media engine, WIC frames).
 [target.'cfg(windows)'.dependencies]
+# Toasts with the chat's picture in a circle (appLogoOverride); notify-rust
+# already uses this crate but offers no cropped app logo.
+tauri-winrt-notification = "0.8"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Imaging",

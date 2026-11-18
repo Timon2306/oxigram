@@ -37,15 +37,57 @@ impl Notifier for SystemNotifier {
         SHOWN.load(Ordering::Relaxed) && FOCUSED.load(Ordering::Relaxed)
     }
 
-    fn show(&self, title: String, body: String) {
+    fn show(&self, title: String, body: String, avatar: Option<(i64, String)>) {
         if mute_all() {
             return;
         }
-        // Errors (no notification service, Windows 7) are not worth a crash.
+        let Some((peer, photo)) = avatar else {
+            present(&title, &body, None);
+            return;
+        };
+        // The avatar from the app's cache (downloaded in the small size only
+        // when missing), waiting at most a moment before showing without it.
+        let Some(runtime) = crate::RUNTIME.get() else {
+            present(&title, &body, None);
+            return;
+        };
+        runtime.spawn(async move {
+            let fetch = oxigram_core::chats::avatar(crate::tg(), peer, &photo);
+            let path = match tokio::time::timeout(AVATAR_WAIT, fetch).await {
+                Ok(Ok(path)) => Some(std::path::PathBuf::from(path)),
+                _ => None,
+            };
+            // Showing a toast blocks briefly (COM / D-Bus): not on the runtime.
+            std::thread::spawn(move || present(&title, &body, path.as_deref()));
+        });
+    }
+}
+
+/// How long a toast waits for the chat's picture.
+const AVATAR_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Shows the toast. Errors (no notification service) are not worth a crash.
+fn present(title: &str, body: &str, avatar: Option<&std::path::Path>) {
+    #[cfg(windows)]
+    {
+        use tauri_winrt_notification::{IconCrop, Toast};
+        let mut toast = Toast::new(APP_USER_MODEL_ID).title(title).text1(body);
+        if let Some(path) = avatar {
+            toast = toast.icon(path, IconCrop::Circular, "");
+        }
+        let _ = toast.show();
+    }
+    #[cfg(not(windows))]
+    {
         let mut n = notify_rust::Notification::new();
-        n.appname("Oxigram").summary(&title).body(&body);
-        #[cfg(windows)]
-        n.app_id(APP_USER_MODEL_ID);
+        n.appname("Oxigram").summary(title).body(body);
+        // Linux shows a file path as the notification's icon.
+        #[cfg(all(unix, not(target_os = "macos")))]
+        if let Some(path) = avatar {
+            n.icon(&path.to_string_lossy());
+        }
+        #[cfg(target_os = "macos")]
+        let _ = avatar;
         let _ = n.show();
     }
 }
