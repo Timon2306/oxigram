@@ -48,6 +48,16 @@ pub enum UiEvent {
         peer_id: i64,
         max_id: i32,
     },
+    /// The chat was read (on another device too): `unread` messages are left.
+    ReadInbox {
+        peer_id: i64,
+        unread: i32,
+    },
+    /// "Отметить как (не)прочитанное", on any device.
+    UnreadMark {
+        peer_id: i64,
+        unread: bool,
+    },
     /// The reactions under a message changed.
     Reactions {
         peer_id: i64,
@@ -313,6 +323,21 @@ fn raw_event(db: &Db, update: tl::enums::Update) -> Option<UiEvent> {
             let peer_id = chats::dialog_id(PeerId::channel(read.channel_id)?);
             read_outbox(db, peer_id, read.max_id)
         }
+        // Threads of forums keep their own counters.
+        U::ReadHistoryInbox(read) if read.top_msg_id.is_none() => {
+            let peer_id = chats::dialog_id(PeerId::from(read.peer));
+            read_inbox(db, peer_id, read.still_unread_count)
+        }
+        U::ReadChannelInbox(read) => {
+            let peer_id = chats::dialog_id(PeerId::channel(read.channel_id)?);
+            read_inbox(db, peer_id, read.still_unread_count)
+        }
+        U::DialogUnreadMark(mark) if mark.saved_peer_id.is_none() => {
+            let tl::enums::DialogPeer::Peer(dialog) = mark.peer else { return None };
+            let peer_id = chats::dialog_id(PeerId::from(dialog.peer));
+            store(db, |conn| cache::set_unread_mark(conn, peer_id, mark.unread));
+            Some(UiEvent::UnreadMark { peer_id, unread: mark.unread })
+        }
         U::MessageReactions(update) => {
             // Threads of forums and Saved Messages tags are not shown.
             if update.top_msg_id.is_some() || update.saved_peer_id.is_some() {
@@ -373,6 +398,12 @@ fn typing_action(action: &tl::enums::SendMessageAction) -> &'static str {
         A::SendMessageChooseStickerAction => "sticker",
         _ => "typing",
     }
+}
+
+fn read_inbox(db: &Db, peer_id: i64, unread: i32) -> Option<UiEvent> {
+    let unread = unread.max(0);
+    store(db, |conn| cache::set_unread(conn, peer_id, unread));
+    Some(UiEvent::ReadInbox { peer_id, unread })
 }
 
 fn read_outbox(db: &Db, peer_id: i64, max_id: i32) -> Option<UiEvent> {

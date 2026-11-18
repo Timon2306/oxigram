@@ -327,6 +327,24 @@ pub fn load_dialogs(conn: &Connection) -> rusqlite::Result<Vec<DialogRow>> {
     .collect()
 }
 
+/// The number of unread messages after a read on any device.
+pub fn set_unread(conn: &Connection, peer_id: i64, unread: i32) -> rusqlite::Result<()> {
+    conn.execute("UPDATE dialogs SET unread = ?2 WHERE peer_id = ?1", params![peer_id, unread])?;
+    Ok(())
+}
+
+/// A manual "unread" mark shows as a count of at least 1; taking it off
+/// clears only that mark (a real count stays).
+pub fn set_unread_mark(conn: &Connection, peer_id: i64, unread: bool) -> rusqlite::Result<()> {
+    let sql = if unread {
+        "UPDATE dialogs SET unread = MAX(unread, 1) WHERE peer_id = ?1"
+    } else {
+        "UPDATE dialogs SET unread = 0 WHERE peer_id = ?1 AND unread = 1"
+    };
+    conn.execute(sql, [peer_id])?;
+    Ok(())
+}
+
 pub fn clear_unread(conn: &Connection, peer_id: i64) -> rusqlite::Result<()> {
     conn.execute("UPDATE dialogs SET unread = 0 WHERE peer_id = ?1", [peer_id])?;
     Ok(())

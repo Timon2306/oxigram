@@ -1410,6 +1410,20 @@ impl App {
                         }
                     }
                 }
+                UiEvent::ReadInbox { peer_id, unread } => {
+                    if let Some(dialog) = self.dialogs.iter_mut().find(|d| d.id == peer_id) {
+                        dialog.unread = unread;
+                    }
+                }
+                UiEvent::UnreadMark { peer_id, unread } => {
+                    if let Some(dialog) = self.dialogs.iter_mut().find(|d| d.id == peer_id) {
+                        if unread {
+                            dialog.unread = dialog.unread.max(1);
+                        } else if dialog.unread == 1 {
+                            dialog.unread = 0;
+                        }
+                    }
+                }
                 UiEvent::Reactions { peer_id, id, reactions } => {
                     if self.chat == Some(peer_id) {
                         self.set_reactions(id, reactions);
