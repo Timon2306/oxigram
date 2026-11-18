@@ -165,7 +165,8 @@ pub async fn fetch(client: &Client, source: &ImageSource, path: &Path) -> Result
         std::fs::create_dir_all(dir)?;
     }
     let partial = path.with_extension("part");
-    std::fs::write(&partial, &bytes)?;
+    // Sealed while a passcode is set (see vault::read_media).
+    std::fs::write(&partial, crate::vault::seal_media(bytes))?;
     std::fs::rename(&partial, path)?;
     Ok(())
 }

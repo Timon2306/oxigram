@@ -103,7 +103,7 @@ fn load_photo(peer: i64, photo_id: String, generation: u64) {
         async move {
             let path = chats::avatar(tg(), peer, &photo_id).await.ok()?;
             tokio::task::spawn_blocking(move || {
-                let picture = image::open(path).ok()?;
+                let picture = crate::pictures::open_image(path).ok()?;
                 let big = picture.resize_to_fill(px, px, image::imageops::FilterType::Triangle);
                 Some(crate::circle(big.to_rgba8()))
             })

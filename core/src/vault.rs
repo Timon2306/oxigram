@@ -185,6 +185,44 @@ pub fn read_sealed(path: &Path, key: &Key) -> Result<Option<Vec<u8>>, VaultError
     }
 }
 
+// ---- Media files ------------------------------------------------------------
+
+/// The key for pictures in the media cache while unlocked.
+static MEDIA_KEY: std::sync::RwLock<Option<std::sync::Arc<Key>>> = std::sync::RwLock::new(None);
+const MEDIA_MAGIC: &[u8; 4] = b"OXM1";
+/// Tests that set the media key take turns.
+#[cfg(test)]
+pub(crate) static MEDIA_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+pub fn set_media_key(key: Option<std::sync::Arc<Key>>) {
+    if let Ok(mut slot) = MEDIA_KEY.write() {
+        *slot = key;
+    }
+}
+
+/// A picture as it goes to the media cache: sealed while a passcode is set.
+pub fn seal_media(bytes: Vec<u8>) -> Vec<u8> {
+    match MEDIA_KEY.read().ok().and_then(|k| k.clone()) {
+        Some(key) => {
+            let mut out = MEDIA_MAGIC.to_vec();
+            out.extend_from_slice(&seal(&key, &bytes));
+            out
+        }
+        None => bytes,
+    }
+}
+
+/// Reads a cached picture, opening it when it is sealed.
+pub fn read_media(path: &Path) -> io::Result<Vec<u8>> {
+    let bytes = fs::read(path)?;
+    if bytes.len() < MEDIA_MAGIC.len() || &bytes[..MEDIA_MAGIC.len()] != MEDIA_MAGIC {
+        return Ok(bytes);
+    }
+    let key = MEDIA_KEY.read().ok().and_then(|k| k.clone());
+    key.and_then(|key| open(&key, &bytes[MEDIA_MAGIC.len()..]))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "sealed with another key"))
+}
+
 /// Overwrites a file with zeros before removing it (best effort: SSDs and
 /// copy-on-write file systems may keep old blocks).
 pub fn shred(path: &Path) {
@@ -239,6 +277,24 @@ mod tests {
         assert_eq!(read_sealed(&dir.join("missing"), &key).unwrap(), None);
         shred(&path);
         assert!(!path.exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn media_files() {
+        let _turn = MEDIA_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("oxigram-media-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.jpg");
+        let (_, key) = create("1234").unwrap();
+        set_media_key(Some(std::sync::Arc::new(key)));
+        fs::write(&path, seal_media(b"jpeg bytes".to_vec())).unwrap();
+        assert!(!fs::read(&path).unwrap().windows(10).any(|w| w == b"jpeg bytes"));
+        assert_eq!(read_media(&path).unwrap(), b"jpeg bytes");
+        set_media_key(None);
+        assert!(read_media(&path).is_err());
+        fs::write(&path, seal_media(b"plain".to_vec())).unwrap();
+        assert_eq!(read_media(&path).unwrap(), b"plain");
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -711,7 +711,7 @@ fn request_avatar(peer: i64) {
         async move {
             let path = chats::avatar(tg(), peer, &photo_id).await.ok()?;
             tokio::task::spawn_blocking(move || {
-                let picture = image::open(path).ok()?;
+                let picture = crate::pictures::open_image(path).ok()?;
                 let small = picture.resize_to_fill(px, px, image::imageops::FilterType::Triangle);
                 Some(circle(small.to_rgba8()))
             })

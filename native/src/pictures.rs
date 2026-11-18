@@ -394,7 +394,7 @@ pub fn copy_image(file: PathBuf) {
     run(
         async move {
             tokio::task::spawn_blocking(move || {
-                let picture = image::open(&file).ok()?.to_rgba8();
+                let picture = crate::pictures::open_image(&file).ok()?.to_rgba8();
                 let mut clipboard = arboard::Clipboard::new().ok()?;
                 clipboard
                     .set_image(arboard::ImageData {
@@ -515,7 +515,7 @@ fn request(id: i32) {
 /// rounded corners into the alpha channel (the software renderer does not
 /// clip images to rounded rectangles).
 fn shape(path: &Path, job: &Job) -> Option<image::RgbaImage> {
-    let picture = image::open(path).ok()?;
+    let picture = crate::pictures::open_image(path).ok()?;
     let filter = image::imageops::FilterType::Triangle;
     if job.sticker {
         // Keep the whole sticker, centred in its box.
@@ -672,7 +672,7 @@ fn show(id: i32, peer: i64, size: i64, shown: Shown) {
             let (w, h) = (max_w, max_h);
             let decode = path.clone();
             let pixels = tokio::task::spawn_blocking(move || {
-                let picture = image::open(&decode).ok()?;
+                let picture = crate::pictures::open_image(&decode).ok()?;
                 // Never larger than the window: a 4K original costs 30 MB.
                 let picture = if picture.width() > w || picture.height() > h {
                     picture.resize(w, h, image::imageops::FilterType::Triangle)
@@ -871,6 +871,12 @@ fn save() {
 }
 
 /// `dir/stem.ext`, or `dir/stem (2).ext` and so on when taken.
+/// A picture from the media cache (opened first when the passcode sealed it).
+pub fn open_image(path: impl AsRef<Path>) -> image::ImageResult<image::DynamicImage> {
+    let bytes = oxigram_core::vault::read_media(path.as_ref()).map_err(image::ImageError::IoError)?;
+    image::load_from_memory(&bytes)
+}
+
 fn free_name(dir: &Path, stem: &str, ext: &str) -> PathBuf {
     let first = dir.join(format!("{stem}.{ext}"));
     if !first.exists() {

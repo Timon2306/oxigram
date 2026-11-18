@@ -136,7 +136,7 @@ fn load_me_photo(id: i64, photo_id: String, window: &AppWindow) {
         async move {
             let path = chats::avatar(tg(), id, &photo_id).await.ok()?;
             tokio::task::spawn_blocking(move || {
-                let picture = image::open(path).ok()?;
+                let picture = crate::pictures::open_image(path).ok()?;
                 let small = picture.resize_to_fill(px, px, image::imageops::FilterType::Triangle);
                 Some(crate::circle(small.to_rgba8()))
             })

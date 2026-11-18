@@ -129,8 +129,9 @@ impl Telegram {
         // With a passcode the keys are sealed and read only after unlocking.
         let keys = if passcode { None } else { config::load_keys(&config_dir) };
         if passcode {
-            // Media left by a crash would be readable: it goes before anything.
-            let _ = std::fs::remove_dir_all(&cache_dir);
+            // Full files (videos, originals) are kept readable for the
+            // players: left by a crash, they go before anything.
+            let _ = std::fs::remove_dir_all(cache_dir.join("files"));
         }
         let proxy = proxy::load(&config_dir).unwrap_or_default();
         Self {
@@ -513,8 +514,10 @@ impl Telegram {
     }
 
     fn set_key(&self, key: Option<vault::Key>) {
+        let key = key.map(Arc::new);
+        vault::set_media_key(key.clone());
         if let Ok(mut slot) = self.key.lock() {
-            *slot = key.map(Arc::new);
+            *slot = key;
         }
     }
 
@@ -601,6 +604,7 @@ impl Telegram {
             vault::shred(&whole);
             self.convert_db(Arc::clone(&key), true)?;
         }
+        vault::set_media_key(Some(Arc::clone(&key)));
         if let Ok(mut slot) = self.key.lock() {
             *slot = Some(key);
         }
@@ -621,7 +625,8 @@ impl Telegram {
         inner.keys = None;
         self.set_key(None);
         self.locked.store(true, std::sync::atomic::Ordering::SeqCst);
-        self.clear_cache();
+        // Pictures are sealed and stay; full files are readable and go.
+        let _ = std::fs::remove_dir_all(self.cache_dir.join("files"));
         Ok(UiState::Locked)
     }
 
@@ -655,6 +660,7 @@ impl Telegram {
         }
         vault::shred(&self.config_dir.join("config.json"));
         self.clear_cache();
+        vault::set_media_key(Some(Arc::clone(&key)));
         if let Ok(mut slot) = self.key.lock() {
             *slot = Some(key);
         }
@@ -689,6 +695,8 @@ impl Telegram {
         vault::shred(&self.data_dir.join(DB_SEALED));
         vault::shred(&self.config_dir.join(KEYS_SEALED));
         self.set_key(None);
+        // Sealed pictures would no longer open.
+        self.clear_cache();
         Ok(())
     }
 
@@ -727,6 +735,9 @@ impl Telegram {
             vault::write_sealed(&keys_path, &key, &keys)?;
         }
         vault::save(&self.config_dir, &file)?;
+        // Pictures sealed with the old key would no longer open.
+        self.clear_cache();
+        vault::set_media_key(Some(Arc::clone(&key)));
         if let Ok(mut slot) = self.key.lock() {
             *slot = Some(key);
         }
@@ -739,6 +750,7 @@ impl Telegram {
     pub async fn forget_passcode(&self) -> Result<UiState, UiError> {
         let mut inner = self.inner.lock().await;
         self.set_key(None);
+        vault::set_media_key(None);
         self.disconnect(&mut inner).await;
         inner.keys = None;
         for path in [
@@ -841,6 +853,7 @@ mod tests {
     /// The passcode seals and opens fields in the database file in place.
     #[tokio::test(flavor = "multi_thread")]
     async fn passcode_seals_and_restores_the_data() {
+        let _turn = vault::MEDIA_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("oxigram-pin-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (config_dir, data_dir, cache_dir) = (dir.join("config"), dir.join("data"), dir.join("cache"));

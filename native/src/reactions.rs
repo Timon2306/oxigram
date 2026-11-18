@@ -292,7 +292,7 @@ fn request_emoji(id: String) {
         async move {
             let path = chats::custom_emoji(tg(), &key).await.ok()?;
             tokio::task::spawn_blocking(move || {
-                let picture = image::open(path).ok()?;
+                let picture = crate::pictures::open_image(path).ok()?;
                 Some(picture.resize(px, px, image::imageops::FilterType::Triangle).to_rgba8())
             })
             .await

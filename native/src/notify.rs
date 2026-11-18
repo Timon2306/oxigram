@@ -41,6 +41,9 @@ impl Notifier for SystemNotifier {
         if mute_all() {
             return;
         }
+        // With a passcode cached pictures are sealed; the system's
+        // notification could not read them (and must not get a plain copy).
+        let avatar = avatar.filter(|_| !crate::tg().passcode_on());
         let Some((peer, photo)) = avatar else {
             present(&title, &body, None);
             return;
