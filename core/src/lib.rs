@@ -12,6 +12,7 @@ pub mod media;
 pub mod mem;
 pub mod proxy;
 mod proxy_http;
+mod proxy_ws;
 pub mod service;
 pub mod store;
 pub mod tg;

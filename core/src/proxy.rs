@@ -4,8 +4,9 @@
 //! comes before the keys.
 //!
 //! SOCKS5 goes straight to grammers; HTTP CONNECT goes through a local
-//! SOCKS5 bridge (see `proxy_http`). MTProto proxies are recognised but
-//! refused until supported.
+//! SOCKS5 bridge (see `proxy_http`); "websocket" needs no server of one's
+//! own and goes through Telegram Web's WebSocket endpoints (see `proxy_ws`).
+//! MTProto proxies are recognised but refused until supported.
 
 use std::fmt;
 use std::fs;
@@ -26,7 +27,8 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 #[serde(rename_all = "camelCase")]
 pub struct ProxyConfig {
     pub enabled: bool,
-    /// "socks5", "http" (CONNECT) or "mtproto" (not yet).
+    /// "socks5", "http" (CONNECT), "websocket" (no host or port), or
+    /// "mtproto" (not yet).
     pub kind: String,
     pub host: String,
     pub port: u16,
@@ -53,7 +55,7 @@ impl fmt::Debug for ProxyConfig {
 impl ProxyConfig {
     /// Checks the fields before anything is saved or tried.
     pub fn validate(&self) -> Result<(), UiError> {
-        if !self.enabled {
+        if !self.enabled || self.is_websocket() {
             return Ok(());
         }
         if self.kind != "socks5" && self.kind != "http" {
@@ -67,6 +69,11 @@ impl ProxyConfig {
             return Err(UiError::new("PROXY_PORT_INVALID", "the proxy port is not valid"));
         }
         Ok(())
+    }
+
+    /// Telegram Web's WebSocket endpoints instead of a proxy server.
+    pub fn is_websocket(&self) -> bool {
+        self.kind == "websocket"
     }
 
     /// Whether new connections go through this proxy.
@@ -83,6 +90,9 @@ impl ProxyConfig {
         }
         if self.kind == "http" {
             return crate::proxy_http::local_url(self);
+        }
+        if self.is_websocket() {
+            return crate::proxy_ws::local_url();
         }
         self.url()
     }
@@ -141,6 +151,13 @@ pub async fn check(config: &ProxyConfig) -> Result<Duration, UiError> {
     config.enabled = true;
     config.validate()?;
     let started = Instant::now();
+    if config.is_websocket() {
+        return match tokio::time::timeout(PROBE_TIMEOUT, crate::proxy_ws::probe()).await {
+            Err(_) => Err(UiError::new("PROXY_TIMEOUT", "Telegram's WebSocket did not answer in time")),
+            Ok(Err(err)) => Err(UiError::new("PROXY_FAILED", err.to_string())),
+            Ok(Ok(())) => Ok(started.elapsed()),
+        };
+    }
     let host = config.host.trim();
     let proxy = if host.contains(':') && !host.starts_with('[') {
         format!("[{host}]:{}", config.port)

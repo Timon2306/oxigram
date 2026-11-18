@@ -69,7 +69,8 @@ is no browser engine and no GPU driver in memory.
 **🖥️ Desktop**
 - Notifications that respect muted chats; "mute all" in the tray
 - Tray mode, start with the system, one running copy
-- SOCKS5 proxy, set up before the API keys
+- SOCKS5 and HTTP proxies, or the built-in WebSocket bypass (through
+  Telegram Web's addresses, no server needed), set up before the API keys
 - Light and dark themes, text size
 - Keyboard first: Ctrl+Tab, ↑ to edit, Ctrl+F, Esc
 
@@ -77,7 +78,7 @@ is no browser engine and no GPU driver in memory.
 </tr>
 </table>
 
-**Not yet:** HTTP and MTProto proxies, animated (Lottie) stickers, calls,
+**Not yet:** MTProto proxies, animated (Lottie) stickers, calls,
 stories, several accounts, recording voice messages, secret chats.
 
 ## Install
@@ -106,8 +107,9 @@ Oxigram ships **without** an `api_id` / `api_hash`; you bring your own.
 2. Create an application (any name) and copy `api_id` and `api_hash`.
 3. Start Oxigram, paste them, sign in with your phone number.
 
-Where Telegram is blocked, set up a SOCKS5 proxy first: **Set up proxy** on the
-first screen (the keys can only be checked by connecting).
+Where Telegram is blocked, first open **Set up proxy** on the first screen
+(the keys can only be checked by connecting): turn on **Обход блокировок
+(WebSocket)**, which needs no server, or enter a SOCKS5 or HTTP proxy.
 
 The keys and the session are stored only on your computer and are sent nowhere
 except Telegram's servers.
@@ -154,7 +156,9 @@ core/src/            the backend (no UI inside)
   actions.rs         pin, archive, react, edit, forward, delete, send files,
                      search, contacts
   updates.rs         live updates, notifications, the event stream
-  proxy.rs           SOCKS5 settings and the connection check
+  proxy.rs           proxy settings and the connection check
+  proxy_http.rs      HTTP CONNECT through a local SOCKS5 bridge
+  proxy_ws.rs        WebSocket bypass (Telegram Web's wss addresses)
   markup.rs          **bold** / __italic__ shortcuts to message entities
   media.rs           what an attachment is and which thumbnail to fetch
   store/             local SQLite: the session and the chat cache

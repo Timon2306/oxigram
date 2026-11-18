@@ -73,7 +73,9 @@ pub fn wire(window: &AppWindow) {
 /// "Выключен" or "SOCKS5 · host:port" in the settings.
 pub fn show_summary(ui: &AppWindow) {
     let config = tg().proxy();
-    let text = if config.active() {
+    let text = if config.active() && config.is_websocket() {
+        "Обход блокировок (WebSocket)".to_owned()
+    } else if config.active() {
         let kind = if config.kind == "http" { "HTTP" } else { "SOCKS5" };
         format!("{kind} · {}:{}", config.host.trim(), config.port)
     } else {
@@ -99,6 +101,9 @@ fn proxy_error(code: &str, fallback: &str) -> String {
         "PROXY_HOST_INVALID" => "Проверьте адрес прокси.".to_owned(),
         "PROXY_PORT_INVALID" => "Порт — число от 1 до 65535.".to_owned(),
         "PROXY_TIMEOUT" => "Прокси не ответил за 10 секунд.".to_owned(),
+        "PROXY_FAILED" if fallback.contains("WebSocket") || fallback.contains("kws") => {
+            format!("Веб-адреса Telegram недоступны: {fallback}")
+        }
         "PROXY_UNREACHABLE" => "Прокси недоступен: проверьте адрес и порт.".to_owned(),
         "PROXY_AUTH" => "Прокси не принял логин или пароль.".to_owned(),
         "PROXY_FAILED" => format!("Не удалось подключиться через прокси: {fallback}"),

@@ -108,4 +108,13 @@ fn layout_shot() {
             save(&window, width, height, &dir.join(format!("shot-{width}-{}.png", if open { "info" } else { "plain" })));
         }
     }
+    // The proxy window, with a server and with the WebSocket bypass.
+    window.set_size(slint::PhysicalSize::new(1100, 800));
+    ui.set_info_open(false);
+    ui.set_proxy_open(true);
+    ui.set_proxy_enabled(true);
+    for kind in ["socks5", "websocket"] {
+        ui.set_proxy_kind(kind.into());
+        save(&window, 1100, 800, &dir.join(format!("shot-proxy-{kind}.png")));
+    }
 }

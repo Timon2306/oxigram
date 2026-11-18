@@ -346,6 +346,17 @@ impl Telegram {
                     io_errors_as_flood_of: Some(Duration::from_secs(1)),
                 }),
                 proxy_url: self.proxy.lock().ok().and_then(|p| p.connection_url()),
+                // Telegram's WebSocket endpoints take only the obfuscated
+                // transport, as Telegram Web sends it.
+                transport: if self.proxy.lock().ok().is_some_and(|p| p.active() && p.is_websocket()) {
+                    Box::new(|| {
+                        Box::new(grammers_mtproto::transport::Obfuscated::new(
+                            grammers_mtproto::transport::Intermediate::new(),
+                        ))
+                    })
+                } else {
+                    Box::new(|| Box::new(grammers_mtproto::transport::Full::new()))
+                },
                 ..Default::default()
             };
             let SenderPool {
