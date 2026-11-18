@@ -87,20 +87,29 @@ impl LayoutWithoutLineBreaksBuilder {
                 .into_iter()
                 .map(parley::style::FontFamilyName::Generic);
 
+            // OXIGRAM patch: "Oxigram Flags" (Twemoji country flags, bundled
+            // by the app) comes right after the requested family, so pairs of
+            // regional indicators and the England / Scotland / Wales tag
+            // sequences draw as colour flags. Segoe UI Emoji has no flags and
+            // drew them as letters ("RU"). The font covers nothing else, so all
+            // other text still falls back as before.
+            let flags = parley::style::FontFamilyName::named("Oxigram Flags");
             let font_families: &[parley::style::FontFamilyName] = if let Some(family) =
                 &font_request.family
             {
                 let mut iter =
                     core::iter::once(parley::style::FontFamilyName::named(family.as_str()))
+                        .chain(core::iter::once(flags))
                         .chain(fallback_family_iter);
                 &core::array::from_fn::<
                     _,
-                    { sharedfontique::FALLBACK_FAMILIES.as_slice().len() + 1 },
+                    { sharedfontique::FALLBACK_FAMILIES.as_slice().len() + 2 },
                     _,
                 >(|_| iter.next().unwrap())
             } else {
-                &core::array::from_fn::<_, { sharedfontique::FALLBACK_FAMILIES.as_slice().len() }, _>(
-                    |_| fallback_family_iter.next().unwrap(),
+                let mut iter = core::iter::once(flags).chain(fallback_family_iter);
+                &core::array::from_fn::<_, { sharedfontique::FALLBACK_FAMILIES.as_slice().len() + 1 }, _>(
+                    |_| iter.next().unwrap(),
                 )
             };
 

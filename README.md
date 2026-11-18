@@ -196,7 +196,13 @@ condition: keep the copyright notice from [LICENSE](LICENSE), crediting
 Timon2306, in every copy and every project based on this code.
 
 The interface is built with Slint under its Royalty-free license (Slint's
-software renderer in `native/vendor/` carries the same licenses; see the files
-there).
+software renderer and core in `native/vendor/` carry the same licenses; see the
+files there).
+
+Colour country flags come from the "Twemoji Country Flags" font
+([country-flag-emoji-polyfill](https://github.com/talkjs/country-flag-emoji-polyfill),
+MIT) with art from [Twemoji](https://github.com/twitter/twemoji) under
+[CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/); see
+`native/fonts/OxigramFlags-LICENSE.md`. Open Sans is under the SIL OFL.
 
 <a href="https://slint.dev"><img src="https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png" height="48" alt="Made with Slint"></a>

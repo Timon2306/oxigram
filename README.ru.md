@@ -198,6 +198,12 @@ Oxigram — неофициальный клиент на Telegram API, не св
 основе этого кода.
 
 Интерфейс сделан на Slint по его бесплатной лицензии Royalty-free (программный
-рендерер Slint в `native/vendor/` под теми же лицензиями; см. файлы там).
+рендерер и ядро Slint в `native/vendor/` под теми же лицензиями; см. файлы там).
+
+Цветные флаги стран взяты из шрифта «Twemoji Country Flags»
+([country-flag-emoji-polyfill](https://github.com/talkjs/country-flag-emoji-polyfill),
+MIT), рисунки [Twemoji](https://github.com/twitter/twemoji) по лицензии
+[CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/); см.
+`native/fonts/OxigramFlags-LICENSE.md`. Шрифт Open Sans под SIL OFL.
 
 <a href="https://slint.dev"><img src="https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png" height="48" alt="Made with Slint"></a>

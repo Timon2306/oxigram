@@ -46,7 +46,7 @@ fn layout_shot() {
     ui.set_stage("ready".into());
     let dialogs: Vec<DialogItem> = (0..14)
         .map(|i| DialogItem {
-            title: format!("Чат номер {i} с длинным названием").into(),
+            title: format!("Чат {i} 🇩🇪🇫🇷 с длинным названием").into(),
             initial: "Ч".into(),
             preview: "Последнее сообщение в этом чате, довольно длинное, чтобы обрезаться".into(),
             time: "12:34".into(),
@@ -58,7 +58,7 @@ fn layout_shot() {
         .collect();
     ui.set_dialogs(ModelRc::new(VecModel::from(dialogs)));
     ui.set_chat_open(true);
-    ui.set_chat_title("Канал с очень длинным названием, которое не помещается в шапку".into());
+    ui.set_chat_title("Канал 🇷🇺🇺🇦🇰🇿🏴󠁧󠁢󠁥󠁮󠁧󠁿 с длинным названием 😀".into());
     let lines = vec![
         ProfileLine {
             value: "Описание канала: https://example.com/a/very/long/link/without/any/spaces/that/goes/on/and/on/and/on/forever".into(),
