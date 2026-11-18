@@ -2449,7 +2449,8 @@ export component AppWindow inherits Window {
     callback open-info();
     // Wide windows keep the column beside the chat; narrow ones draw it over the chat
     property <length> info-width: min(340px, root.width);
-    property <bool> info-docked: root.width >= 1060px;
+    // (docked only while the chat beside it keeps 480 px: list 341 + chat + 340)
+    property <bool> info-docked: root.width >= 1161px;
 
     // Context menus
     callback dialog-menu(int, length, length);
@@ -2544,6 +2545,8 @@ export component AppWindow inherits Window {
     callback send-abort();
     // True when the clipboard held pictures or files, which are now staged.
     callback paste-files() -> bool;
+    // Sends a Ctrl shortcut of another layout again as its Latin letter; false if none.
+    callback latin-shortcut(string) -> bool;
     in-out property <bool> send-open;
     in property <[SendItem]> send-items;
     // "2 файла" and whether the single file is a picture, for the title
@@ -2794,10 +2797,15 @@ export component AppWindow inherits Window {
                 root.viewer-toggle-play();
                 return accept;
             }
+            // Ctrl+C / X / V / A / Z in another layout ("м" for "v" in the Russian
+            // one) or as a control character (U+0016 on some systems): Slint's
+            // text fields know only the Latin letters, so the key is sent again
+            // as its Latin letter.
+            if ((event.modifiers.control || event.modifiers.meta) && !event.modifiers.alt && root.latin-shortcut(event.text)) {
+                return accept;
+            }
             // Ctrl+V of pictures or files from the clipboard (text pastes as usual).
-            // The key comes as "м" in the Russian layout, or as the control
-            // character U+0016 on some systems.
-            if ((event.text == "v" || event.text == "V" || event.text == "м" || event.text == "М" || event.text == "\u{16}") && (event.modifiers.control || event.modifiers.meta) && root.paste-files()) {
+            if ((event.text == "v" || event.text == "V") && (event.modifiers.control || event.modifiers.meta) && root.paste-files()) {
                 return accept;
             }
             // Ctrl+F searches in the open chat ("а" in the Russian layout, or
@@ -3105,6 +3113,9 @@ export component AppWindow inherits Window {
         // ---- Right pane: the open chat
         Rectangle {
             horizontal-stretch: 1;
+            // Whatever the chat holds, it never pushes the window wider than
+            // it is (that shoved the chat list off the left edge).
+            min-width: 0px;
             background: @linear-gradient(180deg, Theme.chat-top 0%, Theme.chat-bottom 100%);
             clip: true;
             // No radial glows as in the WebView's --chat-bg: the software
@@ -3130,6 +3141,9 @@ export component AppWindow inherits Window {
             }
             VerticalLayout {
                 visible: root.chat-open;
+                // Pinned to the left edge: with a width of its own and no x,
+                // Slint would centre it in the pane.
+                x: 0;
                 width: parent.width - (root.info-open && root.info-docked ? root.info-width : 0px);
                 Rectangle {
                     height: 52px;

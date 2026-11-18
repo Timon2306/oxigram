@@ -44,7 +44,9 @@ opus-decoder = "0.1"
 cpal = "0.16"
 
 # System tray and notifications.
-tray-icon = "0.24"
+# No libxdo: the tray menu has no predefined copy/paste items that need it,
+# and one shared library less keeps the Linux build starting on more systems.
+tray-icon = { version = "0.24", default-features = false, features = ["gtk"] }
 notify-rust = "4.19"
 
 # In-app video on Windows 8+ (Media Foundation's media engine, WIC frames).

@@ -89,8 +89,8 @@ Installers are attached to the [releases](https://github.com/Timon2306/oxigram/r
 | `oxigram-windows-x64-…-setup.exe` | Windows 10/11, 64-bit |
 | `oxigram-windows-x86-…-setup.exe` | Windows 10/11, 32-bit |
 | `oxigram-windows-arm64-…-setup.exe` | Windows 11 on ARM |
-| `oxigram-linux-x64-….deb` | Ubuntu 22.04+, Debian 12+, Mint |
-| `oxigram-linux-x64-….AppImage` | other distributions (glibc 2.35+) |
+| `oxigram-linux-x64-….deb` | Ubuntu 20.04+, Debian 11+, Mint |
+| `oxigram-linux-x64-….AppImage` | other distributions (glibc 2.31+: ALT p10, Fedora 33 and newer) |
 | `oxigram-macos-apple-silicon-….dmg` | Mac with M1/M2/M3/M4 |
 | `oxigram-macos-intel-….dmg` | Mac with Intel |
 
@@ -126,7 +126,7 @@ On Linux install the development packages first (Debian/Ubuntu names):
 
 ```sh
 sudo apt install build-essential pkg-config libxkbcommon-dev libwayland-dev \
-  libfontconfig1-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev \
+  libfontconfig1-dev libgtk-3-dev libayatana-appindicator3-dev \
   libdbus-1-dev libasound2-dev libssl-dev
 # video inside the app: also libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev,
 # then build with --features gstreamer

@@ -90,8 +90,8 @@ Rust сам говорит с серверами Telegram по MTProto и сам
 | `oxigram-windows-x64-…-setup.exe` | Windows 10/11, 64 бита |
 | `oxigram-windows-x86-…-setup.exe` | Windows 10/11, 32 бита |
 | `oxigram-windows-arm64-…-setup.exe` | Windows 11 на ARM |
-| `oxigram-linux-x64-….deb` | Ubuntu 22.04+, Debian 12+, Mint |
-| `oxigram-linux-x64-….AppImage` | другие дистрибутивы (glibc 2.35+) |
+| `oxigram-linux-x64-….deb` | Ubuntu 20.04+, Debian 11+, Mint |
+| `oxigram-linux-x64-….AppImage` | другие дистрибутивы (glibc 2.31+: ALT p10, Fedora 33 и новее) |
 | `oxigram-macos-apple-silicon-….dmg` | Mac на M1/M2/M3/M4 |
 | `oxigram-macos-intel-….dmg` | Mac на Intel |
 
@@ -127,7 +127,7 @@ cargo run --release -p oxigram-native
 
 ```sh
 sudo apt install build-essential pkg-config libxkbcommon-dev libwayland-dev \
-  libfontconfig1-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev \
+  libfontconfig1-dev libgtk-3-dev libayatana-appindicator3-dev \
   libdbus-1-dev libasound2-dev libssl-dev
 # видео внутри программы: ещё libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev,
 # и сборка с --features gstreamer

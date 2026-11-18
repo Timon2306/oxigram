@@ -30,6 +30,8 @@ mod settings;
 mod single;
 mod tray;
 mod typing;
+#[cfg(test)]
+mod layout_shot;
 mod video;
 
 use std::cell::RefCell;
@@ -298,6 +300,20 @@ fn main() {
     sending::wire(&ui);
     context_menu::wire(&ui);
     pictures::wire(&ui);
+    let weak = ui.as_weak();
+    ui.on_latin_shortcut(move |text| {
+        let Some(latin) = latin_shortcut(&text) else { return false };
+        let weak = weak.clone();
+        // After this key event is done, so the field gets it as a fresh one
+        // (Ctrl is still held, so it arrives as Ctrl+letter).
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let text = SharedString::from(latin);
+            ui.window().dispatch_event(slint::platform::WindowEvent::KeyPressed { text: text.clone() });
+            ui.window().dispatch_event(slint::platform::WindowEvent::KeyReleased { text });
+        });
+        true
+    });
     // Ctrl+Tab: the next (or previous) chat of the list on screen.
     ui.on_next_chat(|forward| {
         let next = with_app(|app| {
@@ -1399,5 +1415,35 @@ impl App {
         if let Some(peer) = read_now {
             mark_read(peer);
         }
+    }
+}
+
+/// The Latin letter of a Ctrl shortcut typed in the Russian layout or sent as
+/// a control character (Ctrl+V as U+0016), for copy, cut, paste, select all
+/// and undo. None for the Latin letter itself and for other keys.
+fn latin_shortcut(text: &str) -> Option<&'static str> {
+    Some(match text {
+        "с" | "С" | "\u{3}" => "c",
+        "ч" | "Ч" | "\u{18}" => "x",
+        "м" | "М" | "\u{16}" => "v",
+        "ф" | "Ф" | "\u{1}" => "a",
+        "я" | "\u{1a}" => "z",
+        "Я" => "Z",
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+mod latin_shortcut_tests {
+    use super::latin_shortcut;
+
+    #[test]
+    fn maps_russian_layout_and_control_characters() {
+        assert_eq!(latin_shortcut("м"), Some("v"));
+        assert_eq!(latin_shortcut("\u{16}"), Some("v"));
+        assert_eq!(latin_shortcut("с"), Some("c"));
+        assert_eq!(latin_shortcut("Я"), Some("Z"));
+        assert_eq!(latin_shortcut("v"), None);
+        assert_eq!(latin_shortcut("б"), None);
     }
 }

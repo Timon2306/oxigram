@@ -42,14 +42,6 @@ jobs:
             features: ""
             formats: nsis
             glob: "*.exe"
-          # Ubuntu 22.04 base: runs on glibc 2.35+ (Ubuntu 22.04, Debian 12,
-          # Fedora 36 and newer).
-          - os: ubuntu-22.04
-            name: linux-x64
-            target: x86_64-unknown-linux-gnu
-            features: "--features gstreamer"
-            formats: deb,appimage
-            glob: "*.{deb,AppImage}"
           - os: macos-latest
             name: macos-apple-silicon
             target: aarch64-apple-darwin
@@ -65,22 +57,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          # The runner image ships libunwind-14-dev, which blocks GStreamer's
-          # libunwind-dev dependency ("held broken packages").
-          sudo apt-get remove -y libunwind-14-dev || true
-          sudo apt-get install -y libunwind-dev
-          sudo apt-get install -y build-essential pkg-config file wget \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev \
-            libfontconfig1-dev libfreetype6-dev libgl1-mesa-dev libegl1-mesa-dev \
-            libgtk-3-dev libayatana-appindicator3-dev libxdo-dev \
-            libdbus-1-dev libasound2-dev libssl-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            libfuse2
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -118,8 +94,69 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  # Linux is built inside Debian 11, so the binary needs only glibc 2.31:
+  # it starts on Ubuntu 20.04+, Debian 11+, ALT p10+, Fedora 33+ and the like
+  # (built on the Ubuntu 22.04 runner it needed glibc 2.35).
+  build-linux:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    container: debian:bullseye
+    env:
+      # No FUSE inside the container: AppImage tools unpack themselves instead.
+      APPIMAGE_EXTRACT_AND_RUN: 1
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git \
+            build-essential pkg-config file wget xz-utils \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev \
+            libfontconfig1-dev libfreetype6-dev libgl1-mesa-dev libegl1-mesa-dev \
+            libgtk-3-dev libayatana-appindicator3-dev \
+            libdbus-1-dev libasound2-dev libssl-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+          key: x86_64-unknown-linux-gnu-bullseye
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build
+        run: cargo build --release --locked -p oxigram-native --target x86_64-unknown-linux-gnu --features gstreamer
+
+      # Packages the binary built above; cargo packager takes no --features.
+      - name: Package
+        working-directory: native
+        shell: bash
+        run: cargo packager --release --target x86_64-unknown-linux-gnu --formats deb,appimage
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          shopt -s extglob nullglob
+          mkdir -p out
+          cd target/packager
+          for f in *.{deb,AppImage}; do cp "$f" "../../out/oxigram-linux-x64-$f"; done
+          ls -l ../../out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oxigram-linux-x64
+          path: out/*
+          if-no-files-found: error
+
   release:
-    needs: build
+    needs: [build, build-linux]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -155,8 +192,8 @@ jobs:
             - `oxigram-windows-x64-…-setup.exe` — Windows 10/11, 64 бита (обычный ПК)
             - `oxigram-windows-x86-…-setup.exe` — Windows 10/11, 32 бита
             - `oxigram-windows-arm64-…-setup.exe` — Windows 11 на ARM (Snapdragon, Surface Pro X)
-            - `oxigram-linux-x64-….deb` — Ubuntu, Debian, Mint (22.04 / Debian 12 и новее)
-            - `oxigram-linux-x64-….AppImage` — другие дистрибутивы (`chmod +x`, затем запустить); нужен glibc 2.35+
+            - `oxigram-linux-x64-….deb` — Ubuntu, Debian, Mint (Ubuntu 20.04 / Debian 11 и новее)
+            - `oxigram-linux-x64-….AppImage` — другие дистрибутивы (`chmod +x`, затем запустить); нужен glibc 2.31+ (ALT p10, Fedora 33 и новее)
             - `oxigram-macos-apple-silicon-….dmg` — Mac на M1/M2/M3/M4
             - `oxigram-macos-intel-….dmg` — Mac на Intel
 
