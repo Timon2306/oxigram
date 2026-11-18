@@ -1,7 +1,7 @@
 name: Release
 
 # Manual only: builds installers of the native app for Windows, Linux and
-# macOS and attaches them to a DRAFT pre-release, which is published by hand
+# macOS and attaches them to a DRAFT release, which is published by hand
 # after a check. Uses only the built-in GITHUB_TOKEN; no other secrets.
 on:
   workflow_dispatch:
@@ -56,7 +56,7 @@ jobs:
             glob: "*.dmg"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -88,7 +88,7 @@ jobs:
           for f in ${{ matrix.glob }}; do cp "$f" "../../out/oxigram-${{ matrix.name }}-$f"; done
           ls -l ../../out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: oxigram-${{ matrix.name }}
           path: out/*
@@ -124,7 +124,7 @@ jobs:
             libdbus-1-dev libasound2-dev libssl-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -156,7 +156,7 @@ jobs:
           for f in *.{deb,AppImage}; do cp "$f" "../../out/oxigram-linux-x64-$f"; done
           ls -l ../../out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: oxigram-linux-x64
           path: out/*
@@ -168,7 +168,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           sparse-checkout: native/Cargo.toml
           sparse-checkout-cone-mode: false
@@ -179,7 +179,7 @@ jobs:
         shell: bash
         run: echo "value=$(grep -m1 '^version' native/Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: out
           merge-multiple: true
@@ -189,13 +189,13 @@ jobs:
         shell: bash
         run: cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
 
-      - name: Draft pre-release
-        uses: softprops/action-gh-release@v2
+      - name: Draft release
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.version.outputs.value }}
           name: Oxigram v${{ steps.version.outputs.value }}
           draft: true
-          prerelease: true
+          prerelease: false
           target_commitish: ${{ github.sha }}
           files: out/*
           generate_release_notes: true
