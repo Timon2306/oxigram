@@ -33,6 +33,7 @@ mod settings;
 mod single;
 mod tray;
 mod typing;
+mod update;
 #[cfg(test)]
 mod layout_shot;
 mod video;
@@ -301,6 +302,7 @@ fn main() {
     wire_main(&ui);
     menus::wire(&ui);
     settings::wire(&ui);
+    update::wire(&ui);
     messages::wire(&ui);
     search::wire(&ui);
     sending::wire(&ui);
@@ -480,6 +482,7 @@ fn show_state(result: Result<UiState, UiError>) {
         }
         UiState::Ready { me } => {
             menus::show_me(&me);
+            update::at_start();
             if ui.get_stage() != "ready" {
                 tg().ui.attach(Box::new(WindowSink));
                 load_dialogs();

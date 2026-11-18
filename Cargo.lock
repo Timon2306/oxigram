@@ -4615,13 +4615,14 @@ dependencies = [
 
 [[package]]
 name = "oxigram-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-util",
  "grammers-client",
  "grammers-crypto",
  "grammers-mtproto",
  "grammers-session",
+ "ring",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4635,7 +4636,7 @@ dependencies = [
 
 [[package]]
 name = "oxigram-native"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arboard",
  "chrono",

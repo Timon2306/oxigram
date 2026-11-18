@@ -2306,6 +2306,14 @@ component SettingsCard inherits Rectangle {
 
 component SettingsPanel inherits Rectangle {
     in-out property <string> page: "main";
+    // Updates, in "О программе"
+    in property <string> update-version;
+    in property <string> update-status;
+    in property <bool> update-busy;
+    in property <float> update-progress;
+    callback update-check();
+    callback update-install();
+    callback update-notes();
     // "О программе": GitHub, slint.dev
     callback open-url(string);
     in property <string> name;
@@ -2606,6 +2614,59 @@ component SettingsPanel inherits Rectangle {
                         }
                     }
 
+
+                    // Updates: the check, then "Обновить" and "Что нового".
+                    Rectangle {
+                        height: 8px;
+                    }
+
+                    Text {
+                        text: root.update-status != "" ? root.update-status : "Обновления";
+                        color: root.update-version != "" ? Theme.accent : Theme.dim;
+                        font-size: 14px;
+                        height: 20px;
+                        overflow: elide;
+                    }
+
+                    if root.update-busy && root.update-progress > 0: Rectangle {
+                        height: 4px;
+                        border-radius: 2px;
+                        background: Theme.input;
+                        Rectangle {
+                            x: 0;
+                            width: parent.width * max(0, min(1, root.update-progress));
+                            border-radius: 2px;
+                            background: Theme.accent;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        height: 36px;
+                        if root.update-version == "": Button {
+                            kind: "ghost";
+                            text: "Проверить обновления";
+                            enabled: !root.update-busy;
+                            clicked => {
+                                root.update-check();
+                            }
+                        }
+                        if root.update-version != "": Button {
+                            text: "Обновить";
+                            enabled: !root.update-busy;
+                            clicked => {
+                                root.update-install();
+                            }
+                        }
+                        if root.update-version != "": Button {
+                            kind: "ghost";
+                            text: "Что нового";
+                            clicked => {
+                                root.update-notes();
+                            }
+                        }
+                    }
+
                     Text {
                         text: "Лицензия MIT © Timon2306";
                         color: Theme.dim;
@@ -2633,6 +2694,16 @@ component SettingsPanel inherits Rectangle {
 
 export component AppWindow inherits Window {
     in property <string> window-title: "Oxigram";
+    // A newer release ("0.3.1"), the check's state, the download's progress
+    in property <string> update-version;
+    in property <string> update-status;
+    in-out property <bool> update-busy;
+    in property <float> update-progress;
+    callback update-check();
+    callback update-install();
+    callback update-notes();
+    // The badge: "О программе" in the settings
+    callback open-update();
     title: root.window-title;
     icon: @image-url("../icons/32x32.png");
     preferred-width: 960px;
@@ -3220,6 +3291,39 @@ export component AppWindow inherits Window {
                             StrokeIcon {
                                 stroke-width: 2px;
                                 commands: "M4 7h16M4 12h16M4 17h16";
+                            }
+                            // A newer version is out: a quiet dot.
+                            if root.update-version != "": Rectangle {
+                                x: parent.width - 11px;
+                                y: 6px;
+                                width: 7px;
+                                height: 7px;
+                                border-radius: 3.5px;
+                                background: Theme.accent;
+                            }
+                        }
+                    }
+                    // "↑ 0.3.1": opens "О программе" with the update.
+                    if !root.show-archive && root.update-version != "": VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: update-label.preferred-width + 14px;
+                            height: 22px;
+                            border-radius: 11px;
+                            background: update-touch.has-hover ? #2b5278 : #2b527888;
+                            update-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.open-update();
+                                }
+                            }
+                            update-label := Text {
+                                text: "↑ " + root.update-version;
+                                color: Theme.accent;
+                                font-size: 12px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
                             }
                         }
                     }
@@ -4428,6 +4532,19 @@ export component AppWindow inherits Window {
         options: root.saver-options;
         cache-text: root.cache-text;
         version: root.version;
+        update-version: root.update-version;
+        update-status: root.update-status;
+        update-busy: root.update-busy;
+        update-progress: root.update-progress;
+        update-check => {
+            root.update-check();
+        }
+        update-install => {
+            root.update-install();
+        }
+        update-notes => {
+            root.update-notes();
+        }
         proxy-summary: root.proxy-summary;
         text-size: root.text-size-label;
         cycle-text-size => {

@@ -188,7 +188,7 @@ async fn open(dc: i16) -> io::Result<Ws> {
 }
 
 /// rustls with the ring provider and the Mozilla root certificates.
-fn tls_config() -> Arc<rustls::ClientConfig> {
+pub(crate) fn tls_config() -> Arc<rustls::ClientConfig> {
     static CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
     CONFIG
         .get_or_init(|| {

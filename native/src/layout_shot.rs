@@ -138,4 +138,15 @@ fn layout_shot() {
         ui.set_proxy_kind(kind.into());
         save(&window, 1100, 800, &dir.join(format!("shot-proxy-{kind}.png")));
     }
+    // A newer version: the badge, then "О программе" while downloading.
+    ui.set_proxy_open(false);
+    ui.set_update_version("0.3.1".into());
+    save(&window, 1100, 800, &dir.join("shot-update-badge.png"));
+    ui.set_version("0.3.0".into());
+    ui.set_update_busy(true);
+    ui.set_update_progress(0.4);
+    ui.set_update_status("Скачивание… 2,8 МБ из 7,1 МБ".into());
+    ui.set_settings_page("about".into());
+    ui.set_settings_open(true);
+    save(&window, 1100, 800, &dir.join("shot-update-about.png"));
 }

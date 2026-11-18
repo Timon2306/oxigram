@@ -55,6 +55,12 @@ pub struct Settings {
     /// "small", "normal" or "large" message text.
     #[serde(rename = "textSize")]
     pub text_size: String,
+    /// "Проверять обновления автоматически": one request a day to GitHub.
+    #[serde(rename = "autoUpdate")]
+    pub auto_update: bool,
+    /// When the last check ran (Unix seconds).
+    #[serde(rename = "updateChecked")]
+    pub update_checked: i64,
 }
 
 impl Default for Settings {
@@ -70,6 +76,8 @@ impl Default for Settings {
             autostart: false,
             light_theme: false,
             text_size: "normal".to_owned(),
+            auto_update: true,
+            update_checked: 0,
         }
     }
 }
@@ -111,6 +119,7 @@ impl Settings {
             "muteAll" => &mut self.mute_all,
             "autostart" => &mut self.autostart,
             "lightTheme" => &mut self.light_theme,
+            "autoUpdate" => &mut self.auto_update,
             _ => return None,
         })
     }
@@ -156,6 +165,11 @@ impl Settings {
                 "Oxigram стартует при входе в систему и ждёт в трее, окно не открывается.",
             ),
             ("lightTheme", "Светлая тема", "Светлое оформление вместо тёмного."),
+            (
+                "autoUpdate",
+                "Проверять обновления автоматически",
+                "Раз в день один запрос к GitHub, через прокси, если он задан.",
+            ),
         ];
         rows.into_iter()
             .map(|(key, title, note)| SaverOption {
@@ -175,7 +189,7 @@ impl Settings {
 fn group(key: &str) -> &'static str {
     match key {
         "muteAll" => "notifications",
-        "gpuRender" | "autostart" | "lightTheme" => "general",
+        "gpuRender" | "autostart" | "lightTheme" | "autoUpdate" => "general",
         _ => "data",
     }
 }

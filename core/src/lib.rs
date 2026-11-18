@@ -16,4 +16,5 @@ mod proxy_ws;
 pub mod service;
 pub mod store;
 pub mod tg;
+pub mod update;
 pub mod updates;
