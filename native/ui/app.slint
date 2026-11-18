@@ -2304,6 +2304,8 @@ component SettingsCard inherits Rectangle {
 
 component SettingsPanel inherits Rectangle {
     in-out property <string> page: "main";
+    // "О программе": GitHub, slint.dev
+    callback open-url(string);
     in property <string> name;
     in property <string> phone;
     in property <string> username;
@@ -2587,6 +2589,39 @@ component SettingsPanel inherits Rectangle {
                         font-size: 14px;
                         wrap: word-wrap;
                         height: 60px;
+                    }
+
+                    Text {
+                        text: "github.com/Timon2306/oxigram";
+                        color: Theme.accent;
+                        font-size: 14px;
+                        height: 20px;
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.open-url("https://github.com/Timon2306/oxigram");
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Лицензия MIT © Timon2306";
+                        color: Theme.dim;
+                        font-size: 14px;
+                        height: 20px;
+                    }
+
+                    Text {
+                        text: "Made with Slint — slint.dev";
+                        color: Theme.accent;
+                        font-size: 14px;
+                        height: 20px;
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.open-url("https://slint.dev");
+                            }
+                        }
                     }
                 }
             }
@@ -4373,6 +4408,9 @@ export component AppWindow inherits Window {
 
     // ---- Settings: a column over the chat list, like Telegram Web
     if root.settings-open: SettingsPanel {
+        open-url(url) => {
+            root.open-link(url);
+        }
         x: 0;
         y: 0;
         width: min(340px, root.width);
