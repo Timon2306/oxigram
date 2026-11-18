@@ -200,3 +200,5 @@ jobs:
             Сборки без цифровой подписи:
             - Windows: если SmartScreen предупреждает — «Подробнее» → «Выполнить в любом случае».
             - macOS: при первом запуске правый клик по Oxigram → «Открыть» (или Системные настройки → Конфиденциальность и безопасность → «Всё равно открыть»).
+
+            <a href="https://slint.dev"><img src="https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png" height="40" alt="Made with Slint"></a>
