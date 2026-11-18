@@ -17,7 +17,7 @@ use crate::{App, AppWindow, DialogItem, SearchHit, format, request_avatar, run, 
 /// Searching in a chat waits this long after the last key.
 const CHAT_PAUSE: Duration = Duration::from_millis(350);
 /// Searching everywhere waits a little longer.
-const GLOBAL_PAUSE: Duration = Duration::from_millis(450);
+const GLOBAL_PAUSE: Duration = Duration::from_millis(300);
 /// Messages around a jump target: this many newer ones are loaded with it.
 const NEWER_AHEAD: i32 = 25;
 const WINDOW: usize = 60;
@@ -37,6 +37,9 @@ pub struct State {
     /// Chats met only in search results (not in the list), so their rows
     /// and header can still be drawn.
     strangers: HashMap<i64, DialogRow>,
+    /// Public channels and supergroups found but not joined: their chat
+    /// shows "Подписаться" / "Вступить" instead of the composer.
+    joinable: std::collections::HashSet<i64>,
     /// Peers of the rows in `found_chats` / `found_messages`.
     chat_peers: Vec<i64>,
     message_peers: Vec<(i64, i32)>,
@@ -58,11 +61,23 @@ impl State {
             hit_model,
             detached: false,
             strangers: HashMap::new(),
+            joinable: std::collections::HashSet::new(),
             chat_peers: Vec::new(),
             message_peers: Vec::new(),
             chat_model,
             message_model,
         }
+    }
+
+    /// A found channel or supergroup the user has not joined.
+    pub fn joinable(&self, peer: i64) -> bool {
+        self.joinable.contains(&peer)
+    }
+
+    /// Joined: the chat becomes an ordinary one of the list.
+    pub fn joined(&mut self, peer: i64) -> Option<DialogRow> {
+        self.joinable.remove(&peer);
+        self.strangers.remove(&peer)
     }
 
     /// A chat that is not in the dialog list.
@@ -132,6 +147,7 @@ pub fn wire(ui: &AppWindow) {
         }
     });
     ui.on_global_search(global_search);
+    ui.on_join_chat(join);
     ui.on_open_found_chat(|index| {
         let peer = with_app(|app| app.search.chat_peers.get(index.max(0) as usize).copied()).flatten();
         if let Some(peer) = peer {
@@ -385,11 +401,22 @@ fn global_search(text: SharedString) {
                 return None;
             }
             let messages = actions::search_global(tg(), &query, 30).await.unwrap_or_default();
-            let chat = match username {
-                Some(name) if GLOBAL_SEQ.load(Ordering::SeqCst) == seq => actions::resolve_username(tg(), &name).await.ok(),
-                _ => None,
-            };
-            Some((messages, chat))
+            let mut chats = Vec::new();
+            if let Some(name) = username
+                && GLOBAL_SEQ.load(Ordering::SeqCst) == seq
+                && let Ok(chat) = actions::resolve_username(tg(), &name).await
+            {
+                chats.push(chat);
+            }
+            // People, groups and channels by name (public ones too).
+            if GLOBAL_SEQ.load(Ordering::SeqCst) == seq {
+                for chat in actions::search_peers(tg(), &query, 20).await.unwrap_or_default() {
+                    if !chats.iter().any(|c: &FoundChat| c.id == chat.id) {
+                        chats.push(chat);
+                    }
+                }
+            }
+            Some((messages, chats))
         },
         move |found| {
             let Some((messages, chat)) = found else { return };
@@ -401,6 +428,25 @@ fn global_search(text: SharedString) {
             });
         },
     );
+}
+
+/// "Подписаться" / "Вступить" in a found public chat.
+fn join() {
+    let Some(Some(peer)) = with_app(|app| app.chat) else { return };
+    run(async move { actions::join_channel(tg(), peer).await }, move |result| match result {
+        Ok(()) => {
+            with_app(|app| {
+                if let Some(row) = app.search.joined(peer) {
+                    if !app.dialogs.iter().any(|d| d.id == peer) {
+                        app.dialogs.insert(0, row);
+                    }
+                }
+                app.refresh_dialogs();
+            });
+            crate::menus::toast("Готово: чат добавлен в список");
+        }
+        Err(err) => crate::menus::toast(&format::error(&err)),
+    });
 }
 
 /// Keeps a chat found by @username (a mention, a t.me link) so it opens like
@@ -453,17 +499,53 @@ fn found_item(app: &App, peer: i64, kind: &str, title: &str, preview: String, da
     }
 }
 
-fn show_found(app: &mut App, messages: Vec<FoundMessage>, chat: Option<FoundChat>) {
+/// "@name · 12 345 подписчиков" under a found chat.
+fn found_line(chat: &FoundChat) -> String {
+    let mut parts = Vec::new();
+    if let Some(name) = &chat.username {
+        parts.push(format!("@{name}"));
+    }
+    if let Some(n) = chat.members.filter(|n| *n > 0) {
+        let n = i64::from(n);
+        let word = if chat.kind == "channel" {
+            format::plural(n, "подписчик", "подписчика", "подписчиков")
+        } else {
+            format::plural(n, "участник", "участника", "участников")
+        };
+        parts.push(format!("{} {word}", group_digits(n)));
+    }
+    parts.join(" · ")
+}
+
+/// 12345 → "12 345".
+fn group_digits(n: i64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push('\u{00A0}');
+        }
+        out.push(c);
+    }
+    out
+}
+
+fn show_found(app: &mut App, messages: Vec<FoundMessage>, chats: Vec<FoundChat>) {
     app.search.clear_found();
-    // A chat by its @username, unless the list already shows it.
-    if let Some(chat) = chat
-        && !app.shown.contains(&chat.id)
-    {
+    // Chats by @username and by name, unless they are own chats already
+    // (those are in the "Чаты" part above).
+    for chat in chats {
+        if app.dialogs.iter().any(|d| d.id == chat.id) || app.shown.contains(&chat.id) {
+            continue;
+        }
         if app.dialog(chat.id).is_none() {
             let row = stranger_row(chat.id, &chat.kind, &chat.title, chat.photo_id.clone());
             app.search.strangers.insert(chat.id, row);
         }
-        let item = found_item(app, chat.id, &chat.kind, &chat.title, String::new(), 0);
+        if chat.joinable {
+            app.search.joinable.insert(chat.id);
+        }
+        let item = found_item(app, chat.id, &chat.kind, &chat.title, found_line(&chat), 0);
         app.search.chat_peers.push(chat.id);
         app.search.chat_model.push(item);
     }
@@ -486,7 +568,24 @@ fn show_found(app: &mut App, messages: Vec<FoundMessage>, chat: Option<FoundChat
 
 #[cfg(test)]
 mod tests {
-    use super::username_of;
+    use super::{found_line, username_of};
+    use oxigram_core::actions::FoundChat;
+
+    #[test]
+    fn found_lines() {
+        let chat = |kind: &str, username: Option<&str>, members: Option<i32>| FoundChat {
+            id: 1,
+            kind: kind.into(),
+            title: "T".into(),
+            photo_id: None,
+            username: username.map(Into::into),
+            members,
+            joinable: true,
+        };
+        assert_eq!(found_line(&chat("channel", Some("news"), Some(12345))), "@news · 12\u{a0}345 подписчиков");
+        assert_eq!(found_line(&chat("group", None, Some(3))), "3 участника");
+        assert_eq!(found_line(&chat("user", Some("ann"), None)), "@ann");
+    }
 
     #[test]
     fn usernames() {

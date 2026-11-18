@@ -2763,6 +2763,9 @@ export component AppWindow inherits Window {
     callback send-text(string);
     // False in a channel the user cannot post in: no composer, a mute switch.
     in property <bool> chat-can-post: true;
+    // "Подписаться" / "Вступить" for a found chat not joined; empty otherwise
+    in property <string> chat-join;
+    callback join-chat();
     // The one message whose text is selectable right now (see MessageView).
     in-out property <int> selecting-id: -1;
     in property <bool> chat-muted;
@@ -3458,6 +3461,17 @@ export component AppWindow inherits Window {
                             root.dialog-menu(index, x, y);
                         }
                     }
+                    if search.text != "" && root.found-chats.length > 0: Rectangle {
+                        height: 28px;
+                        Text {
+                            x: 14px;
+                            text: "Глобальный поиск";
+                            color: Theme.accent;
+                            font-size: 13px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
                     for item[index] in root.found-chats: DialogRow {
                         item: item;
                         init => {
@@ -3975,8 +3989,31 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                // A found public channel or group the user is not in.
+                if root.chat-join != "": Rectangle {
+                    height: 48px;
+                    background: join-touch.has-hover ? Theme.hover : Theme.raised;
+                    join-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.join-chat();
+                        }
+                    }
+                    Rectangle {
+                        y: 0;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+
+                    Text {
+                        text: root.chat-join;
+                        color: Theme.accent;
+                        font-weight: 600;
+                    }
+                }
+
                 // A channel the user cannot post in: a mute switch, as in Telegram.
-                if !root.chat-can-post: Rectangle {
+                if !root.chat-can-post && root.chat-join == "": Rectangle {
                     height: 48px;
                     background: mute-touch.has-hover ? Theme.hover : Theme.raised;
                     mute-touch := TouchArea {

@@ -609,6 +609,122 @@ pub struct FoundChat {
     pub kind: String,
     pub title: String,
     pub photo_id: Option<String>,
+    /// The public @username, without "@".
+    pub username: Option<String>,
+    /// Subscribers or members, when Telegram tells.
+    pub members: Option<i32>,
+    /// A channel or supergroup the user has not joined (it can be read, and
+    /// joined with `join_channel`).
+    pub joinable: bool,
+}
+
+/// People, groups and channels by name (contacts.search): own chats and
+/// contacts first, then public ones. Each is remembered, so it can be
+/// opened right away.
+pub async fn search_peers(tg: &Telegram, query: &str, limit: i32) -> Result<Vec<FoundChat>, UiError> {
+    use grammers_session::Session;
+    use grammers_session::types::{PeerId, PeerInfo};
+
+    let query = query.trim();
+    if query.chars().count() < 2 {
+        return Ok(Vec::new());
+    }
+    let handles = tg.handles().await?;
+    let request = tl::functions::contacts::Search {
+        broadcasts: false,
+        bots: false,
+        q: query.to_owned(),
+        limit,
+    };
+    let tl::enums::contacts::Found::Found(found) = handles.client.invoke(&request).await?;
+
+    // What the answer says about each peer, by its dialog ID.
+    let mut about: std::collections::HashMap<i64, FoundChat> = std::collections::HashMap::new();
+    for user in &found.users {
+        let tl::enums::User::User(u) = user else { continue };
+        let Some(id) = PeerId::user(u.id).map(chats::dialog_id) else { continue };
+        let title = [u.first_name.as_deref(), u.last_name.as_deref()]
+            .into_iter()
+            .flatten()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let photo_id = match &u.photo {
+            Some(tl::enums::UserProfilePhoto::Photo(p)) => Some(p.photo_id.to_string()),
+            _ => None,
+        };
+        let kind = if u.is_self { "saved" } else { "user" };
+        about.insert(id, FoundChat {
+            id,
+            kind: kind.into(),
+            title,
+            photo_id,
+            username: u.username.clone(),
+            members: None,
+            joinable: false,
+        });
+    }
+    for chat in &found.chats {
+        match chat {
+            tl::enums::Chat::Channel(c) => {
+                let Some(id) = PeerId::channel(c.id).map(chats::dialog_id) else { continue };
+                let photo_id = match &c.photo {
+                    tl::enums::ChatPhoto::Photo(p) => Some(p.photo_id.to_string()),
+                    _ => None,
+                };
+                about.insert(id, FoundChat {
+                    id,
+                    kind: if c.broadcast { "channel" } else { "group" }.into(),
+                    title: c.title.clone(),
+                    photo_id,
+                    username: c.username.clone(),
+                    members: c.participants_count,
+                    joinable: c.left,
+                });
+            }
+            tl::enums::Chat::Chat(c) => {
+                let Some(id) = PeerId::chat(c.id).map(chats::dialog_id) else { continue };
+                let photo_id = match &c.photo {
+                    tl::enums::ChatPhoto::Photo(p) => Some(p.photo_id.to_string()),
+                    _ => None,
+                };
+                about.insert(id, FoundChat {
+                    id,
+                    kind: "group".into(),
+                    title: c.title.clone(),
+                    photo_id,
+                    username: None,
+                    members: Some(c.participants_count),
+                    joinable: false,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    let mut peers: Vec<PeerInfo> = found.users.into_iter().map(PeerInfo::from).collect();
+    peers.extend(found.chats.into_iter().map(PeerInfo::from));
+    handles.session.cache_peers(peers).await.map_err(UiError::internal)?;
+
+    let mut out = Vec::new();
+    for peer in found.my_results.into_iter().chain(found.results) {
+        let id = chats::dialog_id(PeerId::from(peer));
+        if out.iter().any(|f: &FoundChat| f.id == id) {
+            continue;
+        }
+        if let Some(chat) = about.remove(&id) {
+            out.push(chat);
+        }
+    }
+    Ok(out)
+}
+
+/// Joins a public channel or supergroup ("Подписаться" / "Вступить").
+pub async fn join_channel(tg: &Telegram, peer_id: i64) -> Result<(), UiError> {
+    let handles = tg.handles().await?;
+    let peer = resolve_peer(&handles, peer_id).await?;
+    handles.client.join_chat(peer).await?;
+    Ok(())
 }
 
 /// Finds a user, group or channel by @username (as in mentions and t.me
@@ -639,11 +755,20 @@ pub async fn resolve_username(tg: &Telegram, username: &str) -> Result<FoundChat
     let peer_ref = resolve_peer(&handles, id).await?;
     let peer = handles.client.resolve_peer(peer_ref).await?;
     let summary = chats::peer_summary(Some(&peer));
+    let (username, joinable) = match &peer {
+        grammers_client::peer::Peer::Channel(c) => (c.username().map(str::to_owned), c.raw.left),
+        grammers_client::peer::Peer::Group(g) => (g.username().map(str::to_owned), matches!(&g.raw, tl::enums::Chat::Channel(raw) if raw.left)),
+        grammers_client::peer::Peer::User(u) => (u.username().map(str::to_owned), false),
+        _ => (None, false),
+    };
     Ok(FoundChat {
         id,
         kind: summary.kind,
         title: summary.title,
         photo_id: summary.photo_id,
+        username,
+        members: None,
+        joinable,
     })
 }
 

@@ -1070,7 +1070,15 @@ impl App {
     /// Composer or mute switch for the open chat, from its dialog row.
     fn show_chat_rights(&self, ui: &AppWindow) {
         let dialog = self.chat.and_then(|peer| self.dialog(peer));
-        ui.set_chat_can_post(dialog.is_none_or(|d| d.can_post));
+        // A found public chat the user is not in: read it, or join it.
+        let join = match (self.chat, dialog) {
+            (Some(peer), Some(d)) if self.search.joinable(peer) => {
+                if d.kind == "channel" { "Подписаться" } else { "Вступить" }
+            }
+            _ => "",
+        };
+        ui.set_chat_join(join.into());
+        ui.set_chat_can_post(join.is_empty() && dialog.is_none_or(|d| d.can_post));
         ui.set_chat_muted(dialog.is_some_and(|d| d.muted));
     }
 
