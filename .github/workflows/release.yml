@@ -177,6 +177,11 @@ jobs:
           path: out
           merge-multiple: true
 
+      # The in-app updater checks the downloaded installer against this file.
+      - name: Checksums
+        shell: bash
+        run: cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+
       - name: Draft pre-release
         uses: softprops/action-gh-release@v2
         with:
