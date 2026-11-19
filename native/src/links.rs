@@ -8,6 +8,7 @@
 //! handled here; anything else is a plain URL for the browser.
 
 use oxigram_core::actions;
+use oxigram_core::tr;
 use oxigram_core::store::chats::{Entity, MessageRow};
 
 use crate::{format, run, tg, ui, with_app};
@@ -135,7 +136,7 @@ pub fn copy_link(id: i32, action: &str) {
     if let Some(ui) = ui() {
         ui.invoke_copy_text(link.copy.into());
     }
-    crate::menus::toast("Ссылка скопирована");
+    crate::menus::toast(tr!("Link copied"));
 }
 
 /// The text with its links as markdown for `StyledText`, or `None` when the
@@ -210,7 +211,7 @@ fn open(target: &str) {
     if let Some(url) = target.strip_prefix("oxi-hidden:") {
         let shown = url.to_owned();
         let url = url.to_owned();
-        crate::menus::confirm("Открыть ссылку?", &shown, "Открыть", "", move |_| open_url(&url));
+        crate::menus::confirm(&tr!("Open the link?"), &shown, &tr!("Open"), "", move |_| open_url(&url));
     } else if let Some(name) = target.strip_prefix("oxi-mention:") {
         open_username(name.to_owned(), None);
     } else if let Some(id) = target.strip_prefix("oxi-user:") {
@@ -276,7 +277,7 @@ fn browse(url: &str) {
     let lower = url.to_ascii_lowercase();
     // Only web and mail addresses: never a local file or program.
     if !(lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("mailto:")) {
-        crate::menus::toast("Эту ссылку нельзя открыть");
+        crate::menus::toast(tr!("This link cannot be opened"));
         return;
     }
     #[cfg(windows)]
@@ -294,7 +295,7 @@ fn browse(url: &str) {
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = std::process::Command::new("xdg-open").arg(url).spawn().map(drop).map_err(drop);
     if result.is_err() {
-        crate::menus::toast("Не удалось открыть браузер");
+        crate::menus::toast(tr!("Could not open the browser"));
     }
 }
 

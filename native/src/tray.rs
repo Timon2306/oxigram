@@ -11,6 +11,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use oxigram_core::tr;
 use slint::ComponentHandle;
 use slint::winit_030::{WinitWindowAccessor, winit};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -32,13 +33,13 @@ pub fn available() -> bool {
     AVAILABLE.load(Ordering::Relaxed)
 }
 
-fn mute_label(mute: bool) -> &'static str {
-    if mute { "Включить все уведомления" } else { "Выключить все уведомления" }
+fn mute_label(mute: bool) -> String {
+    if mute { tr!("Turn On All Notifications") } else { tr!("Turn Off All Notifications") }
 }
 
 fn tooltip(unread: i32) -> String {
     match unread {
-        n if n > 0 => format!("Oxigram — {n} непрочитанных"),
+        n if n > 0 => format!("Oxigram — {}", tr!("{} unread", n)),
         _ => "Oxigram".to_owned(),
     }
 }
@@ -57,10 +58,10 @@ impl Tray {
         let (w, h) = image.dimensions();
         let icon = Icon::from_rgba(image.into_raw(), w, h).ok()?;
         let label = notify::mute_all();
-        let open = MenuItem::with_id("open", "Открыть Oxigram", true, None);
+        let open = MenuItem::with_id("open", tr!("Open Oxigram"), true, None);
         let mute = MenuItem::with_id("mute", mute_label(label), true, None);
-        let lock = MenuItem::with_id("lock", "Заблокировать", true, None);
-        let quit = MenuItem::with_id("quit", "Выход", true, None);
+        let lock = MenuItem::with_id("lock", tr!("Lock"), true, None);
+        let quit = MenuItem::with_id("quit", tr!("Quit"), true, None);
         let menu = Menu::new();
         menu.append_items(&[&open, &mute, &lock, &PredefinedMenuItem::separator(), &quit]).ok()?;
         let icon = TrayIconBuilder::new()
@@ -269,8 +270,8 @@ mod tests {
 
     #[test]
     fn labels_follow_state() {
-        assert_eq!(mute_label(false), "Выключить все уведомления");
-        assert_eq!(mute_label(true), "Включить все уведомления");
+        assert_eq!(mute_label(false), "Turn Off All Notifications");
+        assert_eq!(mute_label(true), "Turn On All Notifications");
         assert_eq!(tooltip(0), "Oxigram");
         assert!(tooltip(3).contains('3'));
     }

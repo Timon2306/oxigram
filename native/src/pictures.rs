@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use oxigram_core::chats;
 use oxigram_core::store::chats::MessageRow;
+use oxigram_core::tr;
 use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
 
 use crate::{App, AppWindow, MediaCell, format, run, tg, ui, with_app};
@@ -90,7 +91,7 @@ pub struct Viewer {
     token: u64,
     /// The downloaded original, once there.
     file: Option<PathBuf>,
-    /// Where "Сохранить" put it.
+    /// Where tr!("Save") put it.
     saved: Option<PathBuf>,
 }
 
@@ -324,19 +325,19 @@ fn viewer_menu(x: f32, y: f32) {
     if has_file {
         // A video copies the frame on screen.
         items.push(if video {
-            crate::context_menu::entry("copy-frame", "Копировать кадр", crate::context_menu::COPY)
+            crate::context_menu::entry("copy-frame", &tr!("Copy Frame"), crate::context_menu::COPY)
         } else {
-            crate::context_menu::entry("copy-image", "Копировать картинку", crate::context_menu::COPY)
+            crate::context_menu::entry("copy-image", &tr!("Copy Image"), crate::context_menu::COPY)
         });
         items.push(if saved {
-            crate::context_menu::entry("save", "Показать в папке", crate::context_menu::SAVE)
+            crate::context_menu::entry("save", &tr!("Show in Folder"), crate::context_menu::SAVE)
         } else {
-            crate::context_menu::entry("save", "Сохранить", crate::context_menu::SAVE)
+            crate::context_menu::entry("save", &tr!("Save"), crate::context_menu::SAVE)
         });
     }
-    items.push(crate::context_menu::entry("forward", "Переслать", crate::context_menu::FORWARD));
+    items.push(crate::context_menu::entry("forward", &tr!("Forward"), crate::context_menu::FORWARD));
     if caption {
-        items.push(crate::context_menu::entry("copy", "Копировать подпись", crate::context_menu::COPY));
+        items.push(crate::context_menu::entry("copy", &tr!("Copy Caption"), crate::context_menu::COPY));
     }
     crate::context_menu::show(items, crate::context_menu::MenuTarget::Viewer(id), x, y);
 }
@@ -384,7 +385,7 @@ fn copy_pixels(width: u32, height: u32, rgba: Vec<u8>) {
             .flatten()
         },
         |done| {
-            crate::menus::toast(if done.is_some() { "Кадр скопирован" } else { "Не удалось скопировать кадр" });
+            crate::menus::toast(if done.is_some() { tr!("Frame copied") } else { tr!("Could not copy the frame") });
         },
     );
 }
@@ -410,9 +411,9 @@ pub fn copy_image(file: PathBuf) {
         },
         |done| {
             crate::menus::toast(if done.is_some() {
-                "Картинка скопирована"
+                tr!("Image copied")
             } else {
-                "Не удалось скопировать картинку"
+                tr!("Could not copy the image")
             });
         },
     );
@@ -421,10 +422,10 @@ pub fn copy_image(file: PathBuf) {
 /// "Копировать картинку" in a message's menu: the original is fetched first.
 pub fn copy_message_image(id: i32) {
     let Some(peer) = with_app(|app| app.chat).flatten() else { return };
-    crate::menus::toast("Копирование…");
+    crate::menus::toast(tr!("Copying…"));
     run(async move { chats::message_file(tg(), peer, id, |_| {}).await }, |path| match path {
         Ok(path) => copy_image(PathBuf::from(path)),
-        Err(_) => crate::menus::toast("Не удалось скопировать картинку"),
+        Err(_) => crate::menus::toast(tr!("Could not copy the image")),
     });
 }
 
@@ -599,7 +600,7 @@ fn open(id: i32) {
             if row.playable {
                 show(id, peer, row.file_size, Shown::Player);
             } else {
-                crate::menus::toast("Этот формат видео пока не воспроизводится");
+                crate::menus::toast(tr!("This video format is not supported yet"));
             }
         }
         "photo" if row.playable => show(id, peer, row.file_size, Shown::Original),
@@ -632,7 +633,7 @@ fn show(id: i32, peer: i64, size: i64, shown: Shown) {
     });
     window.set_viewer_image(Image::default());
     window.set_viewer_has_image(false);
-    window.set_viewer_status("Загрузка…".into());
+    window.set_viewer_status(tr!("Loading…").into());
     window.set_viewer_save_text(SharedString::new());
     window.set_viewer_video(false);
     window.set_viewer_open(true);
@@ -684,7 +685,7 @@ fn show(id: i32, peer: i64, size: i64, shown: Shown) {
             .await
             .ok()
             .flatten()
-            .ok_or_else(|| "Не удалось открыть картинку".to_owned())?;
+            .ok_or_else(|| tr!("Could not open the image").to_owned())?;
             Ok((path, Some(pixels)))
         },
         move |result: Result<(PathBuf, Option<image::RgbaImage>), String>| {
@@ -711,7 +712,7 @@ fn show(id: i32, peer: i64, size: i64, shown: Shown) {
                     window.set_viewer_has_image(true);
                     window.set_viewer_status(SharedString::new());
                     if shown == Shown::Original {
-                        window.set_viewer_save_text("Сохранить".into());
+                        window.set_viewer_save_text(tr!("Save").into());
                     }
                     with_app(|app| {
                         if let Some(viewer) = app.viewer.as_mut() {
@@ -731,9 +732,9 @@ fn current(token: u64) -> bool {
 
 fn progress_text(done: u64, total: u64) -> String {
     if total > 0 {
-        format!("{} из {}", crate::menus::format_size(done), crate::menus::format_size(total))
+        tr!("{} of {}", crate::menus::format_size(done), crate::menus::format_size(total))
     } else {
-        format!("Загрузка… {}", crate::menus::format_size(done))
+        tr!("Loading… {}", crate::menus::format_size(done))
     }
 }
 
@@ -770,7 +771,7 @@ fn play_here(path: &Path, max_w: u32, max_h: u32) -> bool {
     if let Some(window) = ui() {
         window.set_viewer_status(SharedString::new());
         window.set_viewer_video(true);
-        window.set_viewer_save_text("Сохранить".into());
+        window.set_viewer_save_text(tr!("Save").into());
         window.set_viewer_muted(looped);
     }
     true
@@ -836,7 +837,7 @@ pub fn close_viewer() {
     }
 }
 
-/// "Сохранить" copies the original to Downloads; then the button shows it in
+/// tr!("Save") copies the original to Downloads; then the button shows it in
 /// the folder.
 fn save() {
     let Some(Some((file, saved, id))) = with_app(|app| {
@@ -850,7 +851,7 @@ fn save() {
         return;
     }
     let Some(dir) = dirs::download_dir() else {
-        crate::menus::toast("Нет папки «Загрузки»");
+        crate::menus::toast(tr!("There is no Downloads folder"));
         return;
     };
     let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("jpg").to_owned();
@@ -863,10 +864,10 @@ fn save() {
                 }
             });
             if let Some(ui) = ui() {
-                ui.set_viewer_save_text("Показать в папке".into());
+                ui.set_viewer_save_text(tr!("Show in Folder").into());
             }
         }
-        Err(_) => crate::menus::toast("Не удалось сохранить"),
+        Err(_) => crate::menus::toast(tr!("Could not save")),
     }
 }
 
@@ -896,7 +897,7 @@ fn open_external(path: &Path) {
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = std::process::Command::new("xdg-open").arg(path).spawn();
     if result.is_err() {
-        crate::menus::toast("Не удалось открыть плеер");
+        crate::menus::toast(tr!("Could not open the player"));
     }
 }
 

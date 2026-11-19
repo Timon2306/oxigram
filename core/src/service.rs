@@ -5,6 +5,8 @@ use grammers_client::message::Message;
 use grammers_client::peer::Peer;
 use grammers_client::tl::enums::MessageAction as Action;
 
+use crate::tr;
+
 /// The line shown in the chat for a service message, or `None` for an
 /// ordinary message.
 pub fn text(message: &Message) -> Option<String> {
@@ -12,95 +14,56 @@ pub fn text(message: &Message) -> Option<String> {
     let you = message.outgoing();
     let sender_id = message.sender_id().and_then(|id| id.bare_id());
     let name = message.sender().and_then(Peer::name).unwrap_or_default();
-    // "Вы создали" vs "Анна создал(а)": Russian verbs agree with the subject.
-    let who = |you_form: &str, other_form: &str| -> String {
-        if you {
-            format!("Вы {you_form}")
-        } else if name.is_empty() {
-            capitalize(other_form)
-        } else {
-            format!("{name} {other_form}")
-        }
-    };
+    let n = if name.is_empty() { tr!("Someone") } else { name.to_owned() };
 
     Some(match action {
-        Action::ChatCreate(a) => format!(
-            "{} группу «{}»",
-            who("создали", "создал(а)"),
-            a.title
-        ),
-        Action::ChannelCreate(a) => format!("Создан канал «{}»", a.title),
-        Action::ChatEditTitle(a) => format!(
-            "{} название на «{}»",
-            who("изменили", "изменил(а)"),
-            a.title
-        ),
-        Action::ChatEditPhoto(_) => who("обновили фото", "обновил(а) фото"),
-        Action::ChatDeletePhoto => who("удалили фото", "удалил(а) фото"),
+        Action::ChatCreate(a) => if you { tr!("You created the group «{}»", a.title) } else { tr!("{} created the group «{}»", n, a.title) },
+        Action::ChannelCreate(a) => tr!("Channel «{}» created", a.title),
+        Action::ChatEditTitle(a) => if you { tr!("You changed the group name to «{}»", a.title) } else { tr!("{} changed the group name to «{}»", n, a.title) },
+        Action::ChatEditPhoto(_) => if you { tr!("You updated the group photo") } else { tr!("{} updated the group photo", n) },
+        Action::ChatDeletePhoto => if you { tr!("You removed the group photo") } else { tr!("{} removed the group photo", n) },
         Action::ChatAddUser(a) => {
             if a.users.len() == 1 && Some(a.users[0]) == sender_id {
-                who("вступили в группу", "вступил(а) в группу")
+                if you { tr!("You joined the group") } else { tr!("{} joined the group", n) }
             } else {
-                who("добавили участников", "добавил(а) участников")
+                if you { tr!("You added members") } else { tr!("{} added members", n) }
             }
         }
         Action::ChatDeleteUser(a) => {
             if Some(a.user_id) == sender_id {
-                who("покинули группу", "покинул(а) группу")
+                if you { tr!("You left the group") } else { tr!("{} left the group", n) }
             } else {
-                who("исключили участника", "исключил(а) участника")
+                if you { tr!("You removed a member") } else { tr!("{} removed a member", n) }
             }
         }
-        Action::ChatJoinedByLink(_) => who(
-            "вступили по ссылке-приглашению",
-            "вступил(а) по ссылке-приглашению",
-        ),
-        Action::ChatJoinedByRequest => who("приняты в группу", "принят(а) в группу"),
+        Action::ChatJoinedByLink(_) => if you { tr!("You joined via an invite link") } else { tr!("{} joined via an invite link", n) },
+        Action::ChatJoinedByRequest => if you { tr!("You were accepted into the group") } else { tr!("{} was accepted into the group", n) },
         Action::ChatMigrateTo(_) | Action::ChannelMigrateFrom(_) => {
-            "Группа преобразована в супергруппу".to_owned()
+            tr!("The group was upgraded to a supergroup")
         }
-        Action::PinMessage => who("закрепили сообщение", "закрепил(а) сообщение"),
-        Action::HistoryClear => "История очищена".to_owned(),
+        Action::PinMessage => if you { tr!("You pinned a message") } else { tr!("{} pinned a message", n) },
+        Action::HistoryClear => tr!("History cleared"),
         Action::PhoneCall(a) => {
             let kind = match (a.video, you) {
-                (true, true) => "Исходящий видеозвонок",
-                (true, false) => "Входящий видеозвонок",
-                (false, true) => "Исходящий звонок",
-                (false, false) => "Входящий звонок",
+                (true, true) => tr!("Outgoing video call"),
+                (true, false) => tr!("Incoming video call"),
+                (false, true) => tr!("Outgoing call"),
+                (false, false) => tr!("Incoming call"),
             };
             match a.duration {
                 Some(seconds) if seconds > 0 => {
                     format!("{kind} · {}:{:02}", seconds / 60, seconds % 60)
                 }
-                _ => kind.to_owned(),
+                _ => kind,
             }
         }
-        Action::ContactSignUp => who("теперь в Telegram", "теперь в Telegram"),
-        Action::ScreenshotTaken => who("сделали снимок экрана", "сделал(а) снимок экрана"),
+        Action::ContactSignUp => if you { tr!("You are now on Telegram") } else { tr!("{} is now on Telegram", n) },
+        Action::ScreenshotTaken => if you { tr!("You took a screenshot") } else { tr!("{} took a screenshot", n) },
         Action::GroupCall(_) | Action::GroupCallScheduled(_) | Action::InviteToGroupCall(_) => {
-            "Видеочат".to_owned()
+            tr!("Video chat")
         }
-        Action::TopicCreate(a) => format!("Создана тема «{}»", a.title),
+        Action::TopicCreate(a) => tr!("Topic «{}» created", a.title),
         Action::CustomAction(a) => a.message.clone(),
-        _ => "Служебное сообщение".to_owned(),
+        _ => tr!("Service message"),
     })
-}
-
-fn capitalize(text: &str) -> String {
-    let mut chars = text.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().chain(chars).collect(),
-        None => String::new(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::capitalize;
-
-    #[test]
-    fn capitalizes_cyrillic() {
-        assert_eq!(capitalize("создал(а) группу"), "Создал(а) группу");
-        assert_eq!(capitalize(""), "");
-    }
 }

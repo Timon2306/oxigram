@@ -1,10 +1,10 @@
-//! "печатает…": who is typing where. Display only; the user's own typing
+//! "typing…": who is typing where. Display only; the user's own typing
 //! status is sent (or not) elsewhere, exactly as before.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use crate::format;
+use oxigram_core::{tr, trn};
 
 /// An entry lives this long unless the same status arrives again.
 pub const TTL: Duration = Duration::from_secs(6);
@@ -78,22 +78,22 @@ impl Typing {
     pub fn line(&self, peer: i64, private: bool, name: impl Fn(i64) -> Option<String>) -> Option<String> {
         let list = self.by_peer.get(&peer).filter(|l| !l.is_empty())?;
         if private {
-            return Some(action_text(list[0].action).to_owned());
+            return Some(action_text(list[0].action, None));
         }
         if list.len() == 1 {
             let e = &list[0];
             return Some(match name(e.user) {
-                Some(n) => format!("{} {}", first_word(&n), action_text(e.action)),
-                None => action_text(e.action).to_owned(),
+                Some(n) => action_text(e.action, Some(first_word(&n))),
+                None => action_text(e.action, None),
             });
         }
         let names: Vec<String> =
             list.iter().filter_map(|e| name(e.user)).map(|n| first_word(&n).to_owned()).collect();
         if list.len() == 2 && names.len() == 2 {
-            return Some(format!("{} и {} печатают…", names[0], names[1]));
+            return Some(tr!("{} and {} are typing…", names[0], names[1]));
         }
         let n = list.len() as i64;
-        Some(format!("{n} {} печатают…", format::plural(n, "человек", "человека", "человек")))
+        Some(trn!("{n} person is typing…", "{n} people are typing…", n))
     }
 }
 
@@ -101,16 +101,16 @@ fn first_word(name: &str) -> &str {
     name.split_whitespace().next().unwrap_or(name)
 }
 
-/// "печатает…", "записывает голосовое…" and so on (as the Tauri build).
-pub fn action_text(action: &str) -> &'static str {
+/// "typing…", "recording a voice message…" and so on; with a name: "Ann is typing…".
+pub fn action_text(action: &str, name: Option<&str>) -> String {
     match action {
-        "voice" => "записывает голосовое…",
-        "round" => "записывает видеосообщение…",
-        "video" => "отправляет видео…",
-        "photo" => "отправляет фото…",
-        "file" => "отправляет файл…",
-        "sticker" => "выбирает стикер…",
-        _ => "печатает…",
+        "voice" => match name { Some(n) => tr!("{} is recording a voice message…", n), None => tr!("recording a voice message…") },
+        "round" => match name { Some(n) => tr!("{} is recording a video message…", n), None => tr!("recording a video message…") },
+        "video" => match name { Some(n) => tr!("{} is sending a video…", n), None => tr!("sending a video…") },
+        "photo" => match name { Some(n) => tr!("{} is sending a photo…", n), None => tr!("sending a photo…") },
+        "file" => match name { Some(n) => tr!("{} is sending a file…", n), None => tr!("sending a file…") },
+        "sticker" => match name { Some(n) => tr!("{} is choosing a sticker…", n), None => tr!("choosing a sticker…") },
+        _ => match name { Some(n) => tr!("{} is typing…", n), None => tr!("typing…") },
     }
 }
 
@@ -120,8 +120,8 @@ mod tests {
 
     fn names(id: i64) -> Option<String> {
         match id {
-            1 => Some("Иван Петров".into()),
-            2 => Some("Мария".into()),
+            1 => Some("Ivan Petrov".into()),
+            2 => Some("Maria".into()),
             _ => None,
         }
     }
@@ -130,14 +130,14 @@ mod tests {
     fn private_and_group_wording() {
         let (mut t, now) = (Typing::default(), Instant::now());
         t.update(10, 1, "typing", now);
-        assert_eq!(t.line(10, true, names).unwrap(), "печатает…");
-        assert_eq!(t.line(10, false, names).unwrap(), "Иван печатает…");
+        assert_eq!(t.line(10, true, names).unwrap(), "typing…");
+        assert_eq!(t.line(10, false, names).unwrap(), "Ivan is typing…");
         t.update(10, 3, "voice", now);
-        assert_eq!(t.line(10, false, names).unwrap(), "2 человека печатают…");
+        assert_eq!(t.line(10, false, names).unwrap(), "2 people are typing…");
         t.update(10, 2, "typing", now);
-        assert_eq!(t.line(10, false, names).unwrap(), "3 человека печатают…");
+        assert_eq!(t.line(10, false, names).unwrap(), "3 people are typing…");
         t.remove(10, 3);
-        assert_eq!(t.line(10, false, names).unwrap(), "Иван и Мария печатают…");
+        assert_eq!(t.line(10, false, names).unwrap(), "Ivan and Maria are typing…");
         assert!(t.line(11, false, names).is_none());
     }
 
@@ -145,9 +145,9 @@ mod tests {
     fn actions_and_unknown_name() {
         let (mut t, now) = (Typing::default(), Instant::now());
         t.update(10, 9, "photo", now);
-        assert_eq!(t.line(10, false, names).unwrap(), "отправляет фото…");
+        assert_eq!(t.line(10, false, names).unwrap(), "sending a photo…");
         t.update(10, 9, "sticker", now);
-        assert_eq!(t.line(10, false, names).unwrap(), "выбирает стикер…");
+        assert_eq!(t.line(10, false, names).unwrap(), "choosing a sticker…");
     }
 
     #[test]

@@ -6,6 +6,7 @@ use std::cell::RefCell;
 
 use oxigram_core::chats::{self, Folder};
 use oxigram_core::store::chats::DialogRow;
+use oxigram_core::tr;
 use slint::{ModelRc, VecModel};
 
 use crate::{AppWindow, FolderTab, run, tg, ui, with_app};
@@ -93,7 +94,7 @@ pub fn refresh_tabs(ui: &AppWindow, dialogs: &[DialogRow]) {
             return Vec::new();
         }
         let current = state.list.iter().any(|f| f.id == state.active);
-        let mut tabs = vec![FolderTab { title: "Все чаты".into(), unread: 0, on: !current }];
+        let mut tabs = vec![FolderTab { title: tr!("All Chats").into(), unread: 0, on: !current }];
         for folder in &state.list {
             let unread = dialogs
                 .iter()

@@ -4,6 +4,7 @@
 use oxigram_core::actions;
 use oxigram_core::chats;
 use oxigram_core::store::chats::{Entity, MessageRow};
+use oxigram_core::{tr, trn};
 use slint::{ModelRc, SharedString, VecModel};
 
 use crate::{App, AppWindow, DialogItem, format, run, tg, ui, with_app};
@@ -37,7 +38,7 @@ pub(crate) fn message_action(id: i32, name: SharedString) {
             if let Some(ui) = ui() {
                 ui.invoke_copy_text(row.text.as_str().into());
             }
-            crate::menus::toast("Текст скопирован");
+            crate::menus::toast(tr!("Text copied"));
         }
         // Makes this one bubble selectable (see MessageView in app.slint).
         "select" => {
@@ -51,7 +52,7 @@ pub(crate) fn message_action(id: i32, name: SharedString) {
             run(
                 async move { actions::pin_message(tg(), peer, id, true).await },
                 |done| match done {
-                    Ok(()) => crate::menus::toast("Сообщение закреплено"),
+                    Ok(()) => crate::menus::toast(tr!("Message pinned")),
                     Err(err) => crate::menus::toast(&format::error(&err)),
                 },
             );
@@ -86,7 +87,7 @@ fn start_reply(row: &MessageRow) {
     with_app(|app| {
         app.compose = Compose::Reply(row.id);
         let who = if row.outgoing {
-            "Вы".to_owned()
+            tr!("You")
         } else if row.sender_name.is_empty() {
             app.chat
                 .and_then(|peer| app.dialog(peer))
@@ -96,7 +97,7 @@ fn start_reply(row: &MessageRow) {
             row.sender_name.clone()
         };
         if let Some(ui) = app.ui.upgrade() {
-            set_bar(&ui, "reply", &format!("Ответ: {who}"), &first_line(row));
+            set_bar(&ui, "reply", &tr!("Reply to {}", who), &first_line(row));
             ui.invoke_focus_composer();
         }
     });
@@ -109,7 +110,7 @@ pub(crate) fn start_edit(row: &MessageRow) {
     with_app(|app| {
         app.compose = Compose::Edit(row.id);
         if let Some(ui) = app.ui.upgrade() {
-            set_bar(&ui, "edit", "Редактирование", &first_line(row));
+            set_bar(&ui, "edit", &tr!("Editing"), &first_line(row));
             ui.invoke_set_composer(to_markup(&row.text, &row.entities).into());
             ui.invoke_focus_composer();
         }
@@ -156,22 +157,23 @@ pub(crate) fn ask_delete(ids: Vec<i32>, selection: bool) {
     };
     let big = peer <= -1_000_000_000_000;
     let check = if !big && all_own && kind != "saved" {
-        if kind == "user" { "Удалить также у собеседника" } else { "Удалить также у всех" }
+        if kind == "user" { tr!("Also delete for the other person") } else { tr!("Also delete for everyone") }
     } else {
-        ""
+        String::new()
     };
+    let has_check = !check.is_empty();
     let title = if bubbles > 1 {
-        format!("Удалить {bubbles} {}?", format::plural(bubbles as i64, "сообщение", "сообщения", "сообщений"))
+        trn!("Delete {n} message?", "Delete {n} messages?", bubbles)
     } else {
-        "Удалить сообщение?".to_owned()
+        tr!("Delete message?")
     };
     crate::menus::confirm(
         &title,
-        "Это действие нельзя отменить.",
-        "Удалить",
-        check,
+        &tr!("This action cannot be undone."),
+        &tr!("Delete"),
+        &check,
         move |checked| {
-            let for_everyone = big || (!check.is_empty() && checked);
+            let for_everyone = big || (has_check && checked);
             // Gone from the chat at once, as in the official apps: the request
             // can take a while (a connection that slept reconnects first).
             with_app(|app| {
@@ -186,7 +188,7 @@ pub(crate) fn ask_delete(ids: Vec<i32>, selection: bool) {
                 async move { actions::delete_messages(tg(), peer, &ids, for_everyone).await },
                 move |done| {
                     if let Err(err) = done {
-                        crate::menus::toast(&format!("Не удалось удалить: {}", format::error(&err)));
+                        crate::menus::toast(tr!("Could not delete: {}", format::error(&err)));
                         // Bring the messages back by reloading the chat.
                         if with_app(|app| app.chat == Some(peer)).unwrap_or(false) {
                             crate::open_chat(peer);
@@ -218,7 +220,7 @@ fn forward_pick(index: i32) {
                         app.add_message(row);
                     }
                 });
-                crate::menus::toast("Переслано");
+                crate::menus::toast(tr!("Forwarded"));
             }
             Err(err) => crate::menus::toast(&format::error(&err)),
         },

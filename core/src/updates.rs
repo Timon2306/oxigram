@@ -15,6 +15,7 @@ use tokio::time::{sleep, timeout};
 
 use crate::chats::{self, PeerSummary};
 use crate::store::Db;
+use crate::tr;
 use crate::store::chats::{self as cache, MessageRow, Presence};
 
 /// Updates arriving within this window travel to the window as one batch,
@@ -151,7 +152,7 @@ impl UiSink {
         // Updates do not always carry the chat's details; the list has its
         // name, and in a private chat the sender is the chat.
         let title = if peer.kind == "saved" {
-            "Избранное".to_owned()
+            tr!("Saved Messages")
         } else if !peer.title.is_empty() {
             peer.title.clone()
         } else if let Some(title) = listed_title {
@@ -159,7 +160,7 @@ impl UiSink {
         } else if !sender.is_empty() {
             sender.to_owned()
         } else {
-            "Новое сообщение".to_owned()
+            tr!("New message")
         };
         let text = notification_text(message);
         let in_group = peer.kind == "group" || (peer.kind.is_empty() && message.peer_id < 0);
@@ -269,20 +270,19 @@ fn notification_text(message: &MessageRow) -> String {
         return text;
     }
     match message.kind.as_str() {
-        "photo" => "Фотография",
-        "video" => "Видео",
-        "round" => "Видеосообщение",
-        "voice" => "Голосовое сообщение",
-        "audio" => "Аудио",
-        "sticker" => "Стикер",
-        "gif" => "GIF",
-        "document" => "Файл",
-        "contact" => "Контакт",
-        "poll" => "Опрос",
-        "location" => "Геопозиция",
-        _ => "Новое сообщение",
+        "photo" => tr!("Photo"),
+        "video" => tr!("Video"),
+        "round" => tr!("Video message"),
+        "voice" => tr!("Voice message"),
+        "audio" => tr!("Audio"),
+        "sticker" => tr!("Sticker"),
+        "gif" => "GIF".to_owned(),
+        "document" => tr!("File"),
+        "contact" => tr!("Contact"),
+        "poll" => tr!("Poll"),
+        "location" => tr!("Location"),
+        _ => tr!("New message"),
     }
-    .to_owned()
 }
 
 /// Applies one update to the cache and returns the event for the window.

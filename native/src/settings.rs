@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use oxigram_core::tr;
 use serde::{Deserialize, Serialize};
 use slint::{ModelRc, VecModel};
 
@@ -135,58 +136,26 @@ impl Settings {
     pub fn options(&self) -> Vec<SaverOption> {
         let mut copy = self.clone();
         let rows = [
-            ("avatars", "Фото на аватарках", "Без них — цветной кружок с буквой."),
-            (
-                "autoloadImages",
-                "Загружать картинки сами",
-                "Без этого картинка и превью видео грузятся по клику. Заработает вместе с картинками.",
-            ),
-            (
-                "autoplayGifs",
-                "Проигрывать GIF и стикеры",
-                "Без этого они стоят на месте, пока не откроешь. Заработает вместе с картинками.",
-            ),
-            (
-                "customEmoji",
-                "Кастомные эмодзи в реакциях",
-                "Картинки таких реакций, по клику можно поставить такую же. Без этого — одна ✨ с общим числом. Заработает вместе с реакциями.",
-            ),
-            (
-                "prefetchChats",
-                "Подгружать верхние чаты",
-                "Десять верхних чатов открываются сразу, без ожидания сети.",
-            ),
-            (
-                "gpuRender",
-                "Отрисовка на видеокарте",
-                "Плавнее прокрутка и цветные эмодзи, но OpenGL-драйвер добавляет около 75 МБ ОЗУ. Применится после перезапуска.",
-            ),
-            (
-                "muteAll",
-                "Выключить все уведомления",
-                "Системные уведомления о новых сообщениях не показываются.",
-            ),
-            (
-                "autostart",
-                "Запускать вместе с системой",
-                "Oxigram стартует при входе в систему и ждёт в трее, окно не открывается.",
-            ),
-            ("lightTheme", "Светлая тема", "Светлое оформление вместо тёмного."),
-            (
-                "autoUpdate",
-                "Проверять обновления автоматически",
-                "Раз в день один запрос к GitHub, через прокси, если он задан.",
-            ),
+            ("avatars", tr!("Profile pictures"), tr!("Without them, a coloured circle with a letter.")),
+            ("autoloadImages", tr!("Load images automatically"), tr!("Without this, an image or a video preview loads on click. Works together with pictures.")),
+            ("autoplayGifs", tr!("Play GIFs and stickers"), tr!("Without this, they stay still until you open them. Works together with pictures.")),
+            ("customEmoji", tr!("Custom emoji in reactions"), tr!("The pictures of such reactions; click to add the same one. Without this, a single ✨ with the total count. Works together with reactions.")),
+            ("prefetchChats", tr!("Preload top chats"), tr!("The top ten chats open at once, without waiting for the network.")),
+            ("gpuRender", tr!("GPU rendering"), tr!("Smoother scrolling and colour emoji, but the OpenGL driver adds about 75 MB of RAM. Applies after a restart.")),
+            ("muteAll", tr!("Turn off all notifications"), tr!("System notifications about new messages are not shown.")),
+            ("autostart", tr!("Start with the system"), tr!("Oxigram starts when you sign in to the system and waits in the tray; the window does not open.")),
+            ("lightTheme", tr!("Light theme"), tr!("A light look instead of the dark one.")),
+            ("autoUpdate", tr!("Check for updates automatically"), tr!("Once a day, one request to GitHub, through the proxy if one is set.")),
         ];
         rows.into_iter()
             .map(|(key, title, note)| SaverOption {
                 on: copy.flag(key).is_some_and(|f| *f),
                 key: key.into(),
-                title: title.into(),
+                title: title.as_str().into(),
                 group: group(key).into(),
                 // About 34 characters fit a line of the settings column.
                 note_lines: (note.chars().count() as i32 + 33) / 34,
-                note: note.into(),
+                note: note.as_str().into(),
             })
             .collect()
     }
@@ -282,7 +251,7 @@ pub fn wire(window: &AppWindow) {
     });
 }
 
-/// The message text scale of a "Размер текста" choice (as in the WebView build).
+/// The message text scale of a "Text size" choice (as in the WebView build).
 fn scale(size: &str) -> f32 {
     match size {
         "small" => 0.9,
@@ -291,11 +260,11 @@ fn scale(size: &str) -> f32 {
     }
 }
 
-fn size_label(size: &str) -> &'static str {
+fn size_label(size: &str) -> String {
     match size {
-        "small" => "Мелкий",
-        "large" => "Крупный",
-        _ => "Обычный",
+        "small" => tr!("Small"),
+        "large" => tr!("Large"),
+        _ => tr!("Normal"),
     }
 }
 

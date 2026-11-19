@@ -5,6 +5,7 @@
 use std::cell::Cell;
 use std::time::{Duration, Instant};
 
+use oxigram_core::tr;
 use slint::SharedString;
 
 use crate::{AppWindow, format, login_step, run, tg, ui, with_app};
@@ -25,9 +26,9 @@ pub fn touch() {
 
 pub fn auto_lock_label(minutes: u32) -> String {
     match minutes {
-        0 => "Выкл.".to_owned(),
-        m if m < 60 => format!("через {m} мин"),
-        m => format!("через {} ч", m / 60),
+        0 => tr!("Off"),
+        m if m < 60 => tr!("after {} min", m),
+        m => tr!("after {} h", m / 60),
     }
 }
 
@@ -49,9 +50,9 @@ pub fn wire(window: &AppWindow) {
     });
     window.on_forgot_passcode(|| {
         crate::menus::confirm(
-            "Забыли код-пароль?",
-            "Его нельзя восстановить: зашифрованные данные Oxigram на этом компьютере будут удалены, и придётся заново ввести ключи API и войти. Аккаунт и переписка в Telegram не пострадают; этот вход останется в списке активных сеансов, пока его не завершить с другого устройства.",
-            "Удалить данные",
+            &tr!("Forgot the passcode?"),
+            &tr!("It cannot be recovered: the encrypted Oxigram data on this computer will be deleted, and you will have to enter the API keys and sign in again. Your Telegram account and chats are not affected; this sign-in stays in the list of active sessions until you end it from another device."),
+            &tr!("Delete Data"),
             "",
             |_| login_step(async { tg().forget_passcode().await }),
         );
@@ -59,31 +60,31 @@ pub fn wire(window: &AppWindow) {
     window.on_lock_now(lock_now);
     window.on_passcode_enable(|first, second| {
         if first != second {
-            status("Коды не совпадают");
+            status(&tr!("The codes do not match"));
             return;
         }
         if !oxigram_core::vault::valid_passcode(&first) {
-            status("Нужно хотя бы 4 символа");
+            status(&tr!("At least 4 characters are needed"));
             return;
         }
-        busy(true, "Шифрование…");
+        busy(true, &tr!("Encrypting…"));
         run(async move { tg().enable_passcode(&first).await }, |result| {
-            done(result, "Код-пароль включён. Данные на диске зашифрованы.");
+            done(result, &tr!("Passcode turned on. The data on disk is encrypted."));
             crate::drafts::forget_file();
         });
     });
     window.on_passcode_change(|old, first, second| {
         if first != second {
-            status("Новые коды не совпадают");
+            status(&tr!("The new codes do not match"));
             return;
         }
-        busy(true, "Смена кода…");
-        run(async move { tg().change_passcode(&old, &first).await }, |result| done(result, "Код-пароль изменён"));
+        busy(true, &tr!("Changing the code…"));
+        run(async move { tg().change_passcode(&old, &first).await }, |result| done(result, &tr!("Passcode changed")));
     });
     window.on_passcode_disable(|passcode| {
-        busy(true, "Расшифровка…");
+        busy(true, &tr!("Decrypting…"));
         run(async move { tg().disable_passcode(&passcode).await }, |result| {
-            done(result, "Код-пароль выключен");
+            done(result, &tr!("Passcode turned off"));
             crate::drafts::save_now();
         });
     });
@@ -137,13 +138,13 @@ fn done(result: Result<(), oxigram_core::error::UiError>, ok: &str) {
 
 fn unlock_error(err: &oxigram_core::error::UiError) -> String {
     match err.code.as_str() {
-        "PASSCODE_WRONG" => "Неверный код-пароль".to_owned(),
-        "PASSCODE_WAIT" => format!(
-            "Слишком много неверных попыток. Подождите {} с",
+        "PASSCODE_WRONG" => tr!("Wrong passcode"),
+        "PASSCODE_WAIT" => tr!(
+            "Too many wrong attempts. Wait {} s",
             err.wait_seconds.unwrap_or(1)
         ),
-        "PASSCODE_SHORT" => "Нужно хотя бы 4 символа".to_owned(),
-        "PASSCODE_DAMAGED" => "Зашифрованные данные повреждены".to_owned(),
+        "PASSCODE_SHORT" => tr!("At least 4 characters are needed"),
+        "PASSCODE_DAMAGED" => tr!("The encrypted data is damaged"),
         _ => format::error(err),
     }
 }

@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use oxigram_core::chats;
+use oxigram_core::tr;
 use oxigram_core::store::chats::MessageRow;
 use slint::ComponentHandle;
 
@@ -58,7 +59,7 @@ pub fn item(m: &MessageRow) -> TrackItem {
     } else if !m.file_name.is_empty() {
         m.file_name.clone()
     } else {
-        "Аудио".to_owned()
+        tr!("Audio")
     };
     TrackItem {
         kind: if voice { 1 } else { 2 },
@@ -805,7 +806,7 @@ fn tick() {
     });
     match problem {
         Some(true) => {
-            crate::menus::toast("Не удалось воспроизвести");
+            crate::menus::toast(tr!("Could not play"));
             with_track(|slot| *slot = None);
         }
         // Played to the end: back to the idle row, as in Telegram.

@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use oxigram_core::actions;
 use oxigram_core::chats;
+use oxigram_core::tr;
 use oxigram_core::store::chats::{DialogRow, Presence};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
@@ -40,7 +41,7 @@ thread_local! {
 }
 
 fn item(entry: &Entry, photo: Option<&slint::Image>) -> ContactItem {
-    let title = if entry.title.is_empty() { "Без имени".to_owned() } else { entry.title.clone() };
+    let title = if entry.title.is_empty() { tr!("No name") } else { entry.title.clone() };
     ContactItem {
         initial: format::initial(&title).into(),
         title: title.into(),
@@ -72,11 +73,11 @@ fn refresh() {
         let note = if !state.error.is_empty() {
             state.error.clone()
         } else if !state.loaded {
-            "Загрузка…".to_owned()
+            tr!("Loading…")
         } else if !needle.is_empty() {
-            "Ничего не найдено".to_owned()
+            tr!("Nothing found")
         } else {
-            "Контактов нет".to_owned()
+            tr!("No contacts")
         };
         (state.model.clone(), items, note)
     });

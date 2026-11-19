@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 
 use oxigram_core::actions::{self, AlbumItem, OutgoingFile};
 use oxigram_core::error::UiError;
+use oxigram_core::{tr, trn};
 use oxigram_core::store::chats::MessageRow;
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
@@ -132,7 +133,7 @@ fn is_video(name: &str) -> bool {
 }
 
 fn count_text(n: usize) -> String {
-    format!("{n} {}", if n < 5 { "файла" } else { "файлов" })
+    trn!("{n} file", "{n} files", n)
 }
 
 // ---- Adding files --------------------------------------------------------
@@ -142,15 +143,15 @@ fn can_stage() -> bool {
     let open = with_app(|app| app.chat.is_some()).unwrap_or(false);
     let Some(ui) = ui() else { return false };
     if !open {
-        crate::menus::toast("Откройте чат, чтобы отправить файлы");
+        crate::menus::toast(tr!("Open a chat to send files"));
         return false;
     }
     if !ui.get_chat_can_post() {
-        crate::menus::toast("В этот чат нельзя писать");
+        crate::menus::toast(tr!("You can't write in this chat"));
         return false;
     }
     if ui.get_bar_mode() == "edit" {
-        crate::menus::toast("Файл нельзя прикрепить при редактировании");
+        crate::menus::toast(tr!("A file can't be attached while editing"));
         return false;
     }
     true
@@ -167,7 +168,7 @@ pub(crate) fn add_paths(paths: Vec<PathBuf>) {
         if !meta.is_file() || meta.len() == 0 {
             continue;
         }
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Файл".into());
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| tr!("File"));
         added.push((Source::Path(path), name, meta.len()));
     }
     stage(added);
@@ -175,7 +176,7 @@ pub(crate) fn add_paths(paths: Vec<PathBuf>) {
 
 fn stage(added: Vec<(Source, String, u64)>) {
     if added.is_empty() {
-        crate::menus::toast("Нечего отправлять: файлы пустые или это папки");
+        crate::menus::toast(tr!("Nothing to send: the files are empty or are folders"));
         return;
     }
     let mut thumbs = Vec::new();
@@ -300,11 +301,11 @@ fn pick_files() {
     if !can_stage() {
         return;
     }
-    let mut dialog = rfd::AsyncFileDialog::new().set_title("Выберите файлы");
+    let mut dialog = rfd::AsyncFileDialog::new().set_title(tr!("Choose files"));
     if let Some(ui) = ui()
         && let Some(with_parent) = ui
             .window()
-            .with_winit_window(|w| rfd::AsyncFileDialog::new().set_title("Выберите файлы").set_parent(w))
+            .with_winit_window(|w| rfd::AsyncFileDialog::new().set_title(tr!("Choose files")).set_parent(w))
     {
         dialog = with_parent;
     }
@@ -556,18 +557,18 @@ struct Job {
 fn go(caption: SharedString, compress: bool) {
     let caption = caption.to_string();
     if st(|s| s.send.is_some()) {
-        crate::menus::toast("Дождитесь окончания отправки");
+        crate::menus::toast(tr!("Wait for the sending to finish"));
         return;
     }
     if st(|s| s.files.is_empty()) {
         return;
     }
     if st(|s| s.files.iter().any(|f| matches!(f.probe, Probe::Queued | Probe::Running))) {
-        crate::menus::toast("Читаю видео, секунду…");
+        crate::menus::toast(tr!("Reading the video, one moment…"));
         return;
     }
     if caption.encode_utf16().count() > 1024 {
-        crate::menus::toast("Подпись длиннее 1024 символов");
+        crate::menus::toast(tr!("The caption is longer than 1024 characters"));
         return;
     }
     let Some(Some((peer, compose))) = with_app(|app| app.chat.map(|peer| (peer, app.compose))) else {
@@ -718,23 +719,22 @@ async fn send_group(
     actions::send_album(tg(), peer, items, &caption, reply).await
 }
 
-/// Readable Russian text for what can go wrong while sending a file.
+/// Readable text for what can go wrong while sending a file.
 fn describe(err: &UiError) -> String {
-    let known = match err.code.as_str() {
-        "FILE_EMPTY" => "Файл пустой.",
-        "FILE_TOO_BIG" => "Файл слишком большой: Oxigram отправляет файлы до 512 МБ.",
-        "FILE_READ" => "Не удалось прочитать файл. Возможно, он удалён или занят другой программой.",
-        "UPLOAD_FAILED" => "Не удалось загрузить файл. Проверьте соединение и попробуйте ещё раз.",
-        "CAPTION_TOO_LONG" => "Подпись длиннее 1024 символов.",
+    match err.code.as_str() {
+        "FILE_EMPTY" => tr!("The file is empty."),
+        "FILE_TOO_BIG" => tr!("The file is too big: Oxigram sends files up to 512 MB."),
+        "FILE_READ" => tr!("Could not read the file. It may have been deleted or be in use by another program."),
+        "UPLOAD_FAILED" => tr!("Could not upload the file. Check your connection and try again."),
+        "CAPTION_TOO_LONG" => tr!("The caption is longer than 1024 characters."),
         "PHOTO_INVALID_DIMENSIONS" | "IMAGE_PROCESS_FAILED" | "PHOTO_EXT_INVALID" | "PHOTO_SAVE_FILE_INVALID" => {
-            "Telegram не принял картинку как фото. Отправьте её без сжатия, как файл."
+            tr!("Telegram did not accept the picture as a photo. Send it uncompressed, as a file.")
         }
-        "MEDIA_EMPTY" | "FILE_PARTS_INVALID" => "Telegram не принял файл.",
+        "MEDIA_EMPTY" | "FILE_PARTS_INVALID" => tr!("Telegram did not accept the file."),
         "CHAT_SEND_MEDIA_FORBIDDEN" | "CHAT_SEND_PHOTOS_FORBIDDEN" | "CHAT_SEND_VIDEOS_FORBIDDEN"
-        | "CHAT_SEND_DOCS_FORBIDDEN" => "В этом чате нельзя отправлять такие файлы.",
-        _ => return format::error(err),
-    };
-    known.to_owned()
+        | "CHAT_SEND_DOCS_FORBIDDEN" => tr!("You can't send files like this in this chat."),
+        _ => format::error(err),
+    }
 }
 
 // ---- Progress and cancel -------------------------------------------------
@@ -777,9 +777,9 @@ fn show_progress() {
             .map(|(t, b)| (*b).min(a.sizes.get(t).copied().unwrap_or(0)))
             .sum();
         let text = if a.count == 1 {
-            format!("Отправка: {}", a.name)
+            tr!("Sending: {}", a.name)
         } else {
-            format!("Отправка: {} из {}", (a.finished + 1).min(a.count), a.count)
+            tr!("Sending: {} of {}", (a.finished + 1).min(a.count), a.count)
         };
         Some((text, if a.total == 0 { 0.0 } else { done as f32 / a.total as f32 }))
     }) else {
@@ -804,7 +804,7 @@ fn abort() {
     if let Some(ui) = ui() {
         ui.set_sending_active(false);
     }
-    crate::menus::toast("Отправка отменена");
+    crate::menus::toast(tr!("Sending cancelled"));
 }
 
 #[cfg(test)]
@@ -813,23 +813,23 @@ mod tests {
 
     #[test]
     fn classifies_by_extension() {
-        assert!(is_picture("Фото.JPG"));
-        assert!(!is_picture("архив.zip"));
-        assert!(is_video("клип.MP4"));
-        assert!(!is_video("клип"));
+        assert!(is_picture("Photo.JPG"));
+        assert!(!is_picture("archive.zip"));
+        assert!(is_video("clip.MP4"));
+        assert!(!is_video("clip"));
     }
 
     #[test]
-    fn plural_like_the_webview() {
-        assert_eq!(count_text(2), "2 файла");
-        assert_eq!(count_text(5), "5 файлов");
+    fn count_text_is_plural() {
+        assert_eq!(count_text(1), "1 file");
+        assert_eq!(count_text(5), "5 files");
     }
 
     #[test]
-    fn describes_errors_in_russian() {
+    fn describes_errors() {
         let text = describe(&UiError::new("FILE_TOO_BIG", "the file is too big"));
         assert!(text.contains("512"));
-        assert!(describe(&UiError::new("UPLOAD_FAILED", "x")).starts_with("Не удалось"));
+        assert!(describe(&UiError::new("UPLOAD_FAILED", "x")).starts_with("Could not"));
     }
 
     #[cfg(not(windows))]

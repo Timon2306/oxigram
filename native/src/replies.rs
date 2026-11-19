@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use oxigram_core::chats;
 use oxigram_core::store::chats::MessageRow;
+use oxigram_core::tr;
 
 use crate::{App, format, run, tg, with_app};
 
@@ -34,7 +35,7 @@ impl Replies {
 /// Who wrote `row`, as the quote names them.
 fn who(app: &App, row: &MessageRow) -> String {
     if row.outgoing {
-        return "Вы".to_owned();
+        return tr!("You");
     }
     if !row.sender_name.is_empty() {
         return row.sender_name.clone();
@@ -52,7 +53,7 @@ fn line(row: &MessageRow) -> String {
     if row.kind == "document" && !row.file_name.is_empty() {
         return row.file_name.clone();
     }
-    format::kind_label(&row.kind).unwrap_or("Сообщение").to_owned()
+    format::kind_label(&row.kind).unwrap_or_else(|| tr!("Message"))
 }
 
 /// The quote of a reply: (who, line), or `None` for a message that answers
@@ -101,7 +102,7 @@ fn fetch() {
             for (id, row) in found {
                 let quote = match row {
                     Some(row) => (who(app, &row), line(&row)),
-                    None => (String::new(), "Сообщение удалено".to_owned()),
+                    None => (String::new(), tr!("Message deleted")),
                 };
                 app.replies.known.insert(id, quote);
                 done.insert(id);

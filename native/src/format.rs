@@ -4,6 +4,7 @@
 use chrono::{DateTime, Datelike, Local, TimeZone};
 use oxigram_core::error::UiError;
 use oxigram_core::store::chats::{DialogRow, MessageRow, Presence};
+use oxigram_core::{tr, trn};
 use slint::Color;
 
 const AVATAR_COLORS: [u32; 7] = [
@@ -37,9 +38,9 @@ pub fn initial(title: &str) -> String {
 
 pub fn dialog_title(dialog: &DialogRow) -> String {
     if dialog.kind == "saved" {
-        "Избранное".to_owned()
+        tr!("Saved Messages")
     } else if dialog.title.is_empty() {
-        "Без названия".to_owned()
+        tr!("Untitled")
     } else {
         dialog.title.clone()
     }
@@ -73,18 +74,30 @@ pub fn same_day(a: i64, b: i64) -> bool {
     }
 }
 
-/// "15 ноября", with the year when it is not this one.
+/// "November 15", with the year when it is not this one.
 pub fn day(unix: i64) -> String {
-    const MONTHS: [&str; 12] = [
-        "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября",
-        "октября", "ноября", "декабря",
-    ];
     let Some(t) = local(unix) else { return String::new() };
-    let month = MONTHS[t.month0() as usize];
-    if t.year() == Local::now().year() {
-        format!("{} {month}", t.day())
-    } else {
-        format!("{} {month} {}", t.day(), t.year())
+    let year = (t.year() != Local::now().year()).then_some(t.year());
+    month_day(t.month0(), t.day(), year)
+}
+
+/// "November 15" / "November 15, 2023" for a month number (0-11).
+pub fn month_day(month0: u32, d: u32, year: Option<i32>) -> String {
+    let (this_year, y) = (year.is_none(), year.unwrap_or_default());
+    match month0 {
+        0 => if this_year { tr!("January {}", d) } else { tr!("January {}, {}", d, y) },
+        1 => if this_year { tr!("February {}", d) } else { tr!("February {}, {}", d, y) },
+        2 => if this_year { tr!("March {}", d) } else { tr!("March {}, {}", d, y) },
+        3 => if this_year { tr!("April {}", d) } else { tr!("April {}, {}", d, y) },
+        4 => if this_year { tr!("May {}", d) } else { tr!("May {}, {}", d, y) },
+        5 => if this_year { tr!("June {}", d) } else { tr!("June {}, {}", d, y) },
+        6 => if this_year { tr!("July {}", d) } else { tr!("July {}, {}", d, y) },
+        7 => if this_year { tr!("August {}", d) } else { tr!("August {}, {}", d, y) },
+        8 => if this_year { tr!("September {}", d) } else { tr!("September {}, {}", d, y) },
+        9 => if this_year { tr!("October {}", d) } else { tr!("October {}, {}", d, y) },
+        10 => if this_year { tr!("November {}", d) } else { tr!("November {}, {}", d, y) },
+        11 => if this_year { tr!("December {}", d) } else { tr!("December {}, {}", d, y) },
+        _ => String::new(),
     }
 }
 
@@ -110,19 +123,6 @@ pub fn decimal(text: String) -> String {
     if crate::i18n::current() == "en" { text } else { text.replace('.', ",") }
 }
 
-pub fn plural<'a>(n: i64, one: &'a str, few: &'a str, many: &'a str) -> &'a str {
-    let (tens, ones) = (n % 100, n % 10);
-    if (11..=14).contains(&tens) {
-        many
-    } else if ones == 1 {
-        one
-    } else if (2..=4).contains(&ones) {
-        few
-    } else {
-        many
-    }
-}
-
 pub fn now() -> i64 {
     Local::now().timestamp()
 }
@@ -132,59 +132,56 @@ pub fn is_online(presence: Option<&Presence>) -> bool {
     presence.is_some_and(|p| p.kind == "online" && p.at > now())
 }
 
-/// "в сети", "был(а) в 14:05", "был(а) недавно"… as Telegram words it.
+/// "online", "last seen at 14:05", "last seen recently"… as Telegram words it.
 pub fn presence_text(presence: Option<&Presence>) -> String {
     let Some(presence) = presence else { return String::new() };
     if is_online(Some(presence)) {
-        return "в сети".to_owned();
+        return tr!("online");
     }
     match presence.kind {
-        "recently" => return "был(а) недавно".to_owned(),
-        "week" => return "был(а) на этой неделе".to_owned(),
-        "month" => return "был(а) в этом месяце".to_owned(),
-        "hidden" => return "был(а) давно".to_owned(),
+        "recently" => return tr!("last seen recently"),
+        "week" => return tr!("last seen within a week"),
+        "month" => return tr!("last seen within a month"),
+        "hidden" => return tr!("last seen a long time ago"),
         _ => {}
     }
     let ago = now() - presence.at;
     if ago < 60 {
-        return "был(а) только что".to_owned();
+        return tr!("last seen just now");
     }
     if ago < 3600 {
         let minutes = ago / 60;
-        return format!(
-            "был(а) {minutes} {} назад",
-            plural(minutes, "минуту", "минуты", "минут")
-        );
+        return trn!("last seen {n} minute ago", "last seen {n} minutes ago", minutes);
     }
     let (Some(seen), today) = (local(presence.at), Local::now().date_naive()) else {
         return String::new();
     };
     let time = seen.format("%H:%M");
     if seen.date_naive() == today {
-        format!("был(а) в {time}")
+        tr!("last seen at {}", time)
     } else if today.pred_opt() == Some(seen.date_naive()) {
-        format!("был(а) вчера в {time}")
+        tr!("last seen yesterday at {}", time)
     } else {
-        format!("был(а) {}", seen.format("%d.%m.%y"))
+        tr!("last seen {}", seen.format("%d.%m.%y"))
     }
 }
 
-pub fn kind_label(kind: &str) -> Option<&'static str> {
+pub fn kind_label(kind: &str) -> Option<String> {
     Some(match kind {
         "text" | "service" => return None,
-        "photo" => "Фото",
-        "sticker" => "Стикер",
-        "document" => "Файл",
-        "video" => "Видео",
-        "gif" => "GIF",
-        "round" => "Видеосообщение",
-        "voice" => "Голосовое сообщение",
-        "audio" => "Аудио",
-        "contact" => "Контакт",
-        "poll" => "Опрос",
-        "location" => "Геопозиция",
-        "dice" => "Кубик",
-        _ => "Вложение",
+        "photo" => tr!("Photo"),
+        "sticker" => tr!("Sticker"),
+        "document" => tr!("File"),
+        "video" => tr!("Video"),
+        "gif" => "GIF".to_owned(),
+        "round" => tr!("Video message"),
+        "voice" => tr!("Voice message"),
+        "audio" => tr!("Audio"),
+        "contact" => tr!("Contact"),
+        "poll" => tr!("Poll"),
+        "location" => tr!("Location"),
+        "dice" => tr!("Dice"),
+        _ => tr!("Attachment"),
     })
 }
 
@@ -192,10 +189,10 @@ pub fn kind_label(kind: &str) -> Option<&'static str> {
 pub fn preview_text(text: &str) -> String {
     let line = text.lines().next().unwrap_or_default();
     let kind = line.strip_prefix('[').and_then(|rest| rest.strip_suffix(']'));
-    // Only "[photo]"-style markers; "[текст в скобках]" stays text.
+    // Only "[photo]"-style markers; "[text in brackets]" stays text.
     if let Some(kind) = kind.filter(|k| !k.is_empty() && k.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')) {
         if let Some(label) = kind_label(kind) {
-            return label.to_owned();
+            return label;
         }
     }
     line.to_owned()
@@ -212,41 +209,38 @@ pub fn message_preview(message: &MessageRow) -> String {
 pub fn error(err: &UiError) -> String {
     if let Some(seconds) = err.wait_seconds {
         let wait = if seconds < 60 {
-            format!("{seconds} с")
+            tr!("{} s", seconds)
         } else if seconds < 3600 {
-            format!("{} мин", seconds.div_ceil(60))
+            tr!("{} min", seconds.div_ceil(60))
         } else {
-            format!("{} ч", seconds.div_ceil(3600))
+            tr!("{} h", seconds.div_ceil(3600))
         };
-        return format!("Telegram просит подождать {wait} перед следующей попыткой.");
+        return tr!("Telegram asks you to wait {} before trying again.", wait);
     }
-    let known = match err.code.as_str() {
-        "KEYS_INVALID" => "Проверьте ключи: api_id — число, api_hash — 32 символа (0–9, a–f).",
-        "API_ID_INVALID" => "Telegram не принял эти api_id / api_hash. Проверьте их и введите заново.",
-        "API_ID_PUBLISHED_FLOOD" => "Этот api_id ограничен Telegram. Нужен другой ключ.",
-        "PHONE_NUMBER_INVALID" => "Неверный номер телефона. Введите его в международном формате.",
-        "PHONE_NUMBER_BANNED" => "Этот номер заблокирован в Telegram.",
-        "PHONE_NUMBER_FLOOD" => "Слишком много попыток входа с этого номера. Попробуйте позже.",
-        "PHONE_CODE_INVALID" => "Неверный код.",
-        "PHONE_CODE_EXPIRED" => "Код устарел. Запросите новый.",
-        "PHONE_CODE_EMPTY" => "Введите код.",
-        "PASSWORD_INVALID" => "Неверный пароль.",
-        "SIGN_UP_REQUIRED" => {
-            "Аккаунта с этим номером нет. Зарегистрироваться можно только в официальном приложении Telegram."
-        }
-        "NETWORK" => "Нет связи с Telegram. Проверьте интернет и попробуйте ещё раз.",
-        "NOT_AUTHORIZED" => "Вход в аккаунт не выполнен.",
-        "AUTH_KEY_UNREGISTERED" => "Сессия завершена на сервере. Войдите заново.",
-        "PEER_UNKNOWN" => "Этот чат пока недоступен. Обновите список диалогов.",
-        "MESSAGE_EMPTY" => "Сообщение пустое.",
-        "MESSAGE_TOO_LONG" => "Сообщение длиннее 4096 символов.",
-        "CHAT_WRITE_FORBIDDEN" => "В этот чат нельзя писать.",
-        "USER_IS_BLOCKED" => "Пользователь вас заблокировал.",
-        "WRONG_STAGE" => "Этот шаг входа уже неактуален. Начните вход заново.",
-        "ALREADY_RUNNING" => "Oxigram уже запущен с этим аккаунтом. Закройте другое окно (и значок в трее).",
+    match err.code.as_str() {
+        "KEYS_INVALID" => tr!("Check the keys: api_id is a number, api_hash is 32 characters (0–9, a–f)."),
+        "API_ID_INVALID" => tr!("Telegram did not accept this api_id / api_hash. Check them and enter them again."),
+        "API_ID_PUBLISHED_FLOOD" => tr!("This api_id is limited by Telegram. You need another key."),
+        "PHONE_NUMBER_INVALID" => tr!("Invalid phone number. Enter it in international format."),
+        "PHONE_NUMBER_BANNED" => tr!("This number is banned in Telegram."),
+        "PHONE_NUMBER_FLOOD" => tr!("Too many sign-in attempts from this number. Try again later."),
+        "PHONE_CODE_INVALID" => tr!("Invalid code."),
+        "PHONE_CODE_EXPIRED" => tr!("The code has expired. Request a new one."),
+        "PHONE_CODE_EMPTY" => tr!("Enter the code."),
+        "PASSWORD_INVALID" => tr!("Wrong password."),
+        "SIGN_UP_REQUIRED" => tr!("There is no account with this number. You can only sign up in the official Telegram app."),
+        "NETWORK" => tr!("Can't reach Telegram. Check your internet and try again."),
+        "NOT_AUTHORIZED" => tr!("You are not signed in."),
+        "AUTH_KEY_UNREGISTERED" => tr!("The session was ended on the server. Sign in again."),
+        "PEER_UNKNOWN" => tr!("This chat is not available yet. Refresh the chat list."),
+        "MESSAGE_EMPTY" => tr!("The message is empty."),
+        "MESSAGE_TOO_LONG" => tr!("The message is longer than 4096 characters."),
+        "CHAT_WRITE_FORBIDDEN" => tr!("You can't write in this chat."),
+        "USER_IS_BLOCKED" => tr!("The user has blocked you."),
+        "WRONG_STAGE" => tr!("This sign-in step is no longer valid. Start signing in again."),
+        "ALREADY_RUNNING" => tr!("Oxigram is already running with this account. Close the other window (and the tray icon)."),
         _ => return format!("{} ({})", err.message, err.code),
-    };
-    known.to_owned()
+    }
 }
 
 #[cfg(test)]
@@ -255,22 +249,14 @@ mod tests {
 
     #[test]
     fn previews_name_media() {
-        assert_eq!(preview_text("[photo]"), "Фото");
-        assert_eq!(preview_text("привет\nкак дела"), "привет");
-        assert_eq!(preview_text("[не тип]"), "[не тип]");
-    }
-
-    #[test]
-    fn plurals_follow_russian_rules() {
-        assert_eq!(plural(1, "чат", "чата", "чатов"), "чат");
-        assert_eq!(plural(3, "чат", "чата", "чатов"), "чата");
-        assert_eq!(plural(12, "чат", "чата", "чатов"), "чатов");
-        assert_eq!(plural(21, "чат", "чата", "чатов"), "чат");
+        assert_eq!(preview_text("[photo]"), "Photo");
+        assert_eq!(preview_text("hello\nhow are you"), "hello");
+        assert_eq!(preview_text("[not a kind]"), "[not a kind]");
     }
 
     #[test]
     fn initials_are_uppercase() {
-        assert_eq!(initial("  анна"), "А");
+        assert_eq!(initial("  anna"), "A");
         assert_eq!(initial(""), "?");
     }
 }

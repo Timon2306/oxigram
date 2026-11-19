@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use oxigram_core::store::chats::{MessageRow, Reaction};
-use oxigram_core::{actions, chats};
+use oxigram_core::{actions, chats, tr};
 use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
 
 use crate::{App, AppWindow, ReactionChip, ReactionRow, format, run, tg, with_app};
@@ -266,12 +266,12 @@ fn react(id: i32, key: &str) {
 
 fn error_text(err: &oxigram_core::error::UiError) -> String {
     match err.code.as_str() {
-        "REACTION_INVALID" | "REACTION_EMPTY" => "В этом чате такая реакция недоступна.".to_owned(),
+        "REACTION_INVALID" | "REACTION_EMPTY" => tr!("This reaction is not available in this chat."),
         "PREMIUM_ACCOUNT_REQUIRED" | "REACTIONS_TOO_MANY" => {
-            "Для этой реакции нужен Telegram Premium.".to_owned()
+            tr!("This reaction needs Telegram Premium.")
         }
-        "MESSAGE_NOT_MODIFIED" => "Реакция уже стоит.".to_owned(),
-        _ => format!("Реакция не поставлена: {}", format::error(err)),
+        "MESSAGE_NOT_MODIFIED" => tr!("The reaction is already set."),
+        _ => tr!("The reaction was not set: {}", format::error(err)),
     }
 }
 

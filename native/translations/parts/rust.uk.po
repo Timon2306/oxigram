@@ -1,0 +1,1017 @@
+msgid "Saved Messages"
+msgstr "Збережене"
+
+msgid "Untitled"
+msgstr "Без назви"
+
+msgid "January {}"
+msgstr "{} січня"
+
+msgid "January {}, {}"
+msgstr "{} січня {}"
+
+msgid "February {}"
+msgstr "{} лютого"
+
+msgid "February {}, {}"
+msgstr "{} лютого {}"
+
+msgid "March {}"
+msgstr "{} березня"
+
+msgid "March {}, {}"
+msgstr "{} березня {}"
+
+msgid "April {}"
+msgstr "{} квітня"
+
+msgid "April {}, {}"
+msgstr "{} квітня {}"
+
+msgid "May {}"
+msgstr "{} травня"
+
+msgid "May {}, {}"
+msgstr "{} травня {}"
+
+msgid "June {}"
+msgstr "{} червня"
+
+msgid "June {}, {}"
+msgstr "{} червня {}"
+
+msgid "July {}"
+msgstr "{} липня"
+
+msgid "July {}, {}"
+msgstr "{} липня {}"
+
+msgid "August {}"
+msgstr "{} серпня"
+
+msgid "August {}, {}"
+msgstr "{} серпня {}"
+
+msgid "September {}"
+msgstr "{} вересня"
+
+msgid "September {}, {}"
+msgstr "{} вересня {}"
+
+msgid "October {}"
+msgstr "{} жовтня"
+
+msgid "October {}, {}"
+msgstr "{} жовтня {}"
+
+msgid "November {}"
+msgstr "{} листопада"
+
+msgid "November {}, {}"
+msgstr "{} листопада {}"
+
+msgid "December {}"
+msgstr "{} грудня"
+
+msgid "December {}, {}"
+msgstr "{} грудня {}"
+
+msgid "online"
+msgstr "в мережі"
+
+msgid "last seen recently"
+msgstr "був(ла) нещодавно"
+
+msgid "last seen within a week"
+msgstr "був(ла) цього тижня"
+
+msgid "last seen within a month"
+msgstr "був(ла) цього місяця"
+
+msgid "last seen a long time ago"
+msgstr "був(ла) давно"
+
+msgid "last seen just now"
+msgstr "був(ла) щойно"
+
+msgid "last seen {n} minute ago"
+msgid_plural "last seen {n} minutes ago"
+msgstr[0] "був(ла) {n} хвилину тому"
+msgstr[1] "був(ла) {n} хвилини тому"
+msgstr[2] "був(ла) {n} хвилин тому"
+
+msgid "last seen at {}"
+msgstr "був(ла) о {}"
+
+msgid "last seen yesterday at {}"
+msgstr "був(ла) вчора о {}"
+
+msgid "last seen {}"
+msgstr "був(ла) {}"
+
+msgid "Photo"
+msgstr "Фото"
+
+msgid "Sticker"
+msgstr "Стікер"
+
+msgid "File"
+msgstr "Файл"
+
+msgid "Video"
+msgstr "Відео"
+
+msgid "Video message"
+msgstr "Відеоповідомлення"
+
+msgid "Voice message"
+msgstr "Голосове повідомлення"
+
+msgid "Audio"
+msgstr "Аудіо"
+
+msgid "Contact"
+msgstr "Контакт"
+
+msgid "Poll"
+msgstr "Опитування"
+
+msgid "Location"
+msgstr "Геопозиція"
+
+msgid "Dice"
+msgstr "Кубик"
+
+msgid "Attachment"
+msgstr "Вкладення"
+
+msgid "{} s"
+msgstr "{} с"
+
+msgid "{} min"
+msgstr "{} хв"
+
+msgid "{} h"
+msgstr "{} год"
+
+msgid "Telegram asks you to wait {} before trying again."
+msgstr "Telegram просить зачекати {} перед наступною спробою."
+
+msgid "Check the keys: api_id is a number, api_hash is 32 characters (0–9, a–f)."
+msgstr "Перевірте ключі: api_id — число, api_hash — 32 символи (0–9, a–f)."
+
+msgid "Telegram did not accept this api_id / api_hash. Check them and enter them again."
+msgstr "Telegram не прийняв ці api_id / api_hash. Перевірте їх і введіть знову."
+
+msgid "This api_id is limited by Telegram. You need another key."
+msgstr "Цей api_id обмежений Telegram. Потрібен інший ключ."
+
+msgid "Invalid phone number. Enter it in international format."
+msgstr "Хибний номер телефону. Введіть його в міжнародному форматі."
+
+msgid "This number is banned in Telegram."
+msgstr "Цей номер заблоковано в Telegram."
+
+msgid "Too many sign-in attempts from this number. Try again later."
+msgstr "Забагато спроб входу з цього номера. Спробуйте пізніше."
+
+msgid "Invalid code."
+msgstr "Хибний код."
+
+msgid "The code has expired. Request a new one."
+msgstr "Код застарів. Запросіть новий."
+
+msgid "Enter the code."
+msgstr "Введіть код."
+
+msgid "Wrong password."
+msgstr "Хибний пароль."
+
+msgid "There is no account with this number. You can only sign up in the official Telegram app."
+msgstr "Облікового запису з цим номером немає. Зареєструватися можна лише в офіційному застосунку Telegram."
+
+msgid "Can't reach Telegram. Check your internet and try again."
+msgstr "Немає зв'язку з Telegram. Перевірте інтернет і спробуйте ще раз."
+
+msgid "You are not signed in."
+msgstr "Вхід в обліковий запис не виконано."
+
+msgid "The session was ended on the server. Sign in again."
+msgstr "Сеанс завершено на сервері. Увійдіть знову."
+
+msgid "This chat is not available yet. Refresh the chat list."
+msgstr "Цей чат поки недоступний. Оновіть список діалогів."
+
+msgid "The message is empty."
+msgstr "Повідомлення порожнє."
+
+msgid "The message is longer than 4096 characters."
+msgstr "Повідомлення довше за 4096 символів."
+
+msgid "You can't write in this chat."
+msgstr "У цей чат не можна писати."
+
+msgid "The user has blocked you."
+msgstr "Користувач вас заблокував."
+
+msgid "This sign-in step is no longer valid. Start signing in again."
+msgstr "Цей крок входу вже неактуальний. Почніть вхід заново."
+
+msgid "Oxigram is already running with this account. Close the other window (and the tray icon)."
+msgstr "Oxigram уже запущено з цим обліковим записом. Закрийте інше вікно (і значок у треї)."
+
+msgid "Open a chat to send files"
+msgstr "Відкрийте чат, щоб надіслати файли"
+
+msgid "You can't write in this chat"
+msgstr "У цей чат не можна писати"
+
+msgid "A file can't be attached while editing"
+msgstr "Файл не можна прикріпити під час редагування"
+
+msgid "Nothing to send: the files are empty or are folders"
+msgstr "Нічого надсилати: файли порожні або це теки"
+
+msgid "Choose files"
+msgstr "Виберіть файли"
+
+msgid "Wait for the sending to finish"
+msgstr "Дочекайтеся завершення надсилання"
+
+msgid "Reading the video, one moment…"
+msgstr "Читаю відео, секунду…"
+
+msgid "The caption is longer than 1024 characters"
+msgstr "Підпис довший за 1024 символи"
+
+msgid "Sending cancelled"
+msgstr "Надсилання скасовано"
+
+msgid "The file is empty."
+msgstr "Файл порожній."
+
+msgid "The file is too big: Oxigram sends files up to 512 MB."
+msgstr "Файл завеликий: Oxigram надсилає файли до 512 МБ."
+
+msgid "Could not read the file. It may have been deleted or be in use by another program."
+msgstr "Не вдалося прочитати файл. Можливо, його видалено або він зайнятий іншою програмою."
+
+msgid "Could not upload the file. Check your connection and try again."
+msgstr "Не вдалося завантажити файл. Перевірте з'єднання і спробуйте ще раз."
+
+msgid "The caption is longer than 1024 characters."
+msgstr "Підпис довший за 1024 символи."
+
+msgid "Telegram did not accept the picture as a photo. Send it uncompressed, as a file."
+msgstr "Telegram не прийняв картинку як фото. Надішліть її без стиснення, як файл."
+
+msgid "Telegram did not accept the file."
+msgstr "Telegram не прийняв файл."
+
+msgid "You can't send files like this in this chat."
+msgstr "У цьому чаті не можна надсилати такі файли."
+
+msgid "Sending: {}"
+msgstr "Надсилання: {}"
+
+msgid "Sending: {} of {}"
+msgstr "Надсилання: {} з {}"
+
+msgid "{n} file"
+msgid_plural "{n} files"
+msgstr[0] "{n} файл"
+msgstr[1] "{n} файли"
+msgstr[2] "{n} файлів"
+
+msgid "You created the group «{}»"
+msgstr "Ви створили групу «{}»"
+
+msgid "{} created the group «{}»"
+msgstr "{} створив(ла) групу «{}»"
+
+msgid "You changed the group name to «{}»"
+msgstr "Ви змінили назву на «{}»"
+
+msgid "{} changed the group name to «{}»"
+msgstr "{} змінив(ла) назву на «{}»"
+
+msgid "You updated the group photo"
+msgstr "Ви оновили фото"
+
+msgid "{} updated the group photo"
+msgstr "{} оновив(ла) фото"
+
+msgid "You removed the group photo"
+msgstr "Ви видалили фото"
+
+msgid "{} removed the group photo"
+msgstr "{} видалив(ла) фото"
+
+msgid "You joined the group"
+msgstr "Ви вступили до групи"
+
+msgid "{} joined the group"
+msgstr "{} вступив(ла) до групи"
+
+msgid "You added members"
+msgstr "Ви додали учасників"
+
+msgid "{} added members"
+msgstr "{} додав(ла) учасників"
+
+msgid "You left the group"
+msgstr "Ви залишили групу"
+
+msgid "{} left the group"
+msgstr "{} залишив(ла) групу"
+
+msgid "You removed a member"
+msgstr "Ви виключили учасника"
+
+msgid "{} removed a member"
+msgstr "{} виключив(ла) учасника"
+
+msgid "You joined via an invite link"
+msgstr "Ви вступили за посиланням-запрошенням"
+
+msgid "{} joined via an invite link"
+msgstr "{} вступив(ла) за посиланням-запрошенням"
+
+msgid "You were accepted into the group"
+msgstr "Вас прийнято до групи"
+
+msgid "{} was accepted into the group"
+msgstr "{} прийнято до групи"
+
+msgid "You pinned a message"
+msgstr "Ви закріпили повідомлення"
+
+msgid "{} pinned a message"
+msgstr "{} закріпив(ла) повідомлення"
+
+msgid "You are now on Telegram"
+msgstr "Ви тепер у Telegram"
+
+msgid "{} is now on Telegram"
+msgstr "{} тепер у Telegram"
+
+msgid "You took a screenshot"
+msgstr "Ви зробили знімок екрана"
+
+msgid "{} took a screenshot"
+msgstr "{} зробив(ла) знімок екрана"
+
+msgid "Channel «{}» created"
+msgstr "Створено канал «{}»"
+
+msgid "The group was upgraded to a supergroup"
+msgstr "Групу перетворено на супергрупу"
+
+msgid "History cleared"
+msgstr "Історію очищено"
+
+msgid "Outgoing video call"
+msgstr "Вихідний відеодзвінок"
+
+msgid "Incoming video call"
+msgstr "Вхідний відеодзвінок"
+
+msgid "Outgoing call"
+msgstr "Вихідний дзвінок"
+
+msgid "Incoming call"
+msgstr "Вхідний дзвінок"
+
+msgid "Video chat"
+msgstr "Відеочат"
+
+msgid "Topic «{}» created"
+msgstr "Створено тему «{}»"
+
+msgid "Service message"
+msgstr "Службове повідомлення"
+
+msgid "Someone"
+msgstr "Хтось"
+
+msgid "New message"
+msgstr "Нове повідомлення"
+
+msgid "bot"
+msgstr "бот"
+
+msgid "Private chat"
+msgstr "Приватний чат"
+
+msgid "Channel"
+msgstr "Канал"
+
+msgid "Group"
+msgstr "Група"
+
+msgid "Phone"
+msgstr "Телефон"
+
+msgid "Link"
+msgstr "Посилання"
+
+msgid "Username"
+msgstr "Ім'я користувача"
+
+msgid "Birthday"
+msgstr "День народження"
+
+msgid "Description"
+msgstr "Опис"
+
+msgid "Bio"
+msgstr "Про себе"
+
+msgid "Common groups"
+msgstr "Спільні групи"
+
+msgid "Invite link"
+msgstr "Запрошувальне посилання"
+
+msgid "{}, {} online"
+msgstr "{}, {} в мережі"
+
+msgid "{n} subscriber"
+msgid_plural "{n} subscribers"
+msgstr[0] "{n} підписник"
+msgstr[1] "{n} підписники"
+msgstr[2] "{n} підписників"
+
+msgid "{n} member"
+msgid_plural "{n} members"
+msgstr[0] "{n} учасник"
+msgstr[1] "{n} учасники"
+msgstr[2] "{n} учасників"
+
+msgid "{n} common group"
+msgid_plural "{n} common groups"
+msgstr[0] "{n} спільна група"
+msgstr[1] "{n} спільні групи"
+msgstr[2] "{n} спільних груп"
+
+msgid "Copy Link"
+msgstr "Копіювати посилання"
+
+msgid "Copy: {}"
+msgstr "Копіювати: {}"
+
+msgid "Open"
+msgstr "Відкрити"
+
+msgid "Unpin"
+msgstr "Відкріпити"
+
+msgid "Pin"
+msgstr "Закріпити"
+
+msgid "Mark as Read"
+msgstr "Позначити як прочитане"
+
+msgid "Mark as Unread"
+msgstr "Позначити як непрочитане"
+
+msgid "Unarchive"
+msgstr "З архіву"
+
+msgid "Archive"
+msgstr "В архів"
+
+msgid "Unmute"
+msgstr "Увімкнути сповіщення"
+
+msgid "Mute"
+msgstr "Вимкнути сповіщення"
+
+msgid "Clear History"
+msgstr "Очистити історію"
+
+msgid "Leave Group"
+msgstr "Покинути групу"
+
+msgid "Leave Channel"
+msgstr "Покинути канал"
+
+msgid "Delete Chat"
+msgstr "Видалити чат"
+
+msgid "Reply"
+msgstr "Відповісти"
+
+msgid "Copy Image"
+msgstr "Копіювати зображення"
+
+msgid "Copy Text"
+msgstr "Копіювати текст"
+
+msgid "Select Text"
+msgstr "Виділити текст"
+
+msgid "Edit"
+msgstr "Редагувати"
+
+msgid "Forward"
+msgstr "Переслати"
+
+msgid "Select"
+msgstr "Вибрати"
+
+msgid "Delete"
+msgstr "Видалити"
+
+msgid "Copy Frame"
+msgstr "Копіювати кадр"
+
+msgid "Show in Folder"
+msgstr "Показати в теці"
+
+msgid "Save"
+msgstr "Зберегти"
+
+msgid "Copy Caption"
+msgstr "Копіювати підпис"
+
+msgid "{} of {}"
+msgstr "{} з {}"
+
+msgid "Loading… {}"
+msgstr "Завантаження… {}"
+
+msgid "Frame copied"
+msgstr "Кадр скопійовано"
+
+msgid "Could not copy the frame"
+msgstr "Не вдалося скопіювати кадр"
+
+msgid "Image copied"
+msgstr "Зображення скопійовано"
+
+msgid "Could not copy the image"
+msgstr "Не вдалося скопіювати зображення"
+
+msgid "Copying…"
+msgstr "Копіювання…"
+
+msgid "This video format is not supported yet"
+msgstr "Цей формат відео поки не відтворюється"
+
+msgid "Loading…"
+msgstr "Завантаження…"
+
+msgid "Could not open the image"
+msgstr "Не вдалося відкрити зображення"
+
+msgid "There is no Downloads folder"
+msgstr "Немає теки «Завантаження»"
+
+msgid "Could not save"
+msgstr "Не вдалося зберегти"
+
+msgid "Could not open the player"
+msgstr "Не вдалося відкрити програвач"
+
+msgid "typing…"
+msgstr "друкує…"
+
+msgid "{} is typing…"
+msgstr "{} друкує…"
+
+msgid "recording a voice message…"
+msgstr "записує голосове…"
+
+msgid "{} is recording a voice message…"
+msgstr "{} записує голосове…"
+
+msgid "recording a video message…"
+msgstr "записує відеоповідомлення…"
+
+msgid "{} is recording a video message…"
+msgstr "{} записує відеоповідомлення…"
+
+msgid "sending a video…"
+msgstr "надсилає відео…"
+
+msgid "{} is sending a video…"
+msgstr "{} надсилає відео…"
+
+msgid "sending a photo…"
+msgstr "надсилає фото…"
+
+msgid "{} is sending a photo…"
+msgstr "{} надсилає фото…"
+
+msgid "sending a file…"
+msgstr "надсилає файл…"
+
+msgid "{} is sending a file…"
+msgstr "{} надсилає файл…"
+
+msgid "choosing a sticker…"
+msgstr "обирає стікер…"
+
+msgid "{} is choosing a sticker…"
+msgstr "{} обирає стікер…"
+
+msgid "{} and {} are typing…"
+msgstr "{} і {} друкують…"
+
+msgid "{n} person is typing…"
+msgid_plural "{n} people are typing…"
+msgstr[0] "{n} людина друкує…"
+msgstr[1] "{n} людини друкують…"
+msgstr[2] "{n} людей друкують…"
+
+msgid "{} KB"
+msgstr "{} КБ"
+
+msgid "{} MB"
+msgstr "{} МБ"
+
+msgid "{} GB"
+msgstr "{} ГБ"
+
+msgid "Sign out?"
+msgstr "Вийти з облікового запису?"
+
+msgid "The session and cache on this computer will be deleted."
+msgstr "Сеанс і кеш на цьому комп'ютері буде видалено."
+
+msgid "Sign Out"
+msgstr "Вийти"
+
+msgid "Clear history?"
+msgstr "Очистити історію?"
+
+msgid "Messages in the chat «{}» will be deleted for you. This cannot be undone."
+msgstr "Повідомлення в чаті «{}» буде видалено у вас. Це не можна скасувати."
+
+msgid "Clear"
+msgstr "Очистити"
+
+msgid "Leave group?"
+msgstr "Покинути групу?"
+
+msgid "Leave channel?"
+msgstr "Покинути канал?"
+
+msgid "Delete chat?"
+msgstr "Видалити чат?"
+
+msgid "Leave"
+msgstr "Покинути"
+
+msgid "«{}» will disappear from your chat list."
+msgstr "«{}» зникне зі списку чатів."
+
+msgid "Cache cleared"
+msgstr "Кеш очищено"
+
+msgid "You"
+msgstr "Ви"
+
+msgid "Nothing found"
+msgstr "Нічого не знайдено"
+
+msgid "Found: {}"
+msgstr "Знайдено: {}"
+
+msgid "Searching messages…"
+msgstr "Пошук повідомлень…"
+
+msgid "Done: the chat was added to your list"
+msgstr "Готово: чат додано до списку"
+
+msgid "Checking…"
+msgstr "Перевірка…"
+
+msgid "Version {} is available"
+msgstr "Доступна версія {}"
+
+msgid "You have the latest version"
+msgstr "У вас остання версія"
+
+msgid "Could not check: {}"
+msgstr "Не вдалося перевірити: {}"
+
+msgid "Downloading…"
+msgstr "Завантаження…"
+
+msgid "Downloading… {} of {}"
+msgstr "Завантаження… {} з {}"
+
+msgid "The file is damaged (checksum mismatch), the update was cancelled"
+msgstr "Файл пошкоджено (контрольна сума не збігається), оновлення скасовано"
+
+msgid "The release has no checksums, the update was cancelled"
+msgstr "У релізі немає контрольних сум, оновлення скасовано"
+
+msgid "Could not download: {}"
+msgstr "Не вдалося завантажити: {}"
+
+msgid "Starting the installer…"
+msgstr "Запуск інсталятора…"
+
+msgid "Could not start the installer"
+msgstr "Не вдалося запустити інсталятор"
+
+msgid "Could not replace the AppImage: {}"
+msgstr "Не вдалося замінити AppImage: {}"
+
+msgid "Open the package and install it"
+msgstr "Відкрийте пакет і встановіть його"
+
+msgid "Package downloaded: {}"
+msgstr "Пакет завантажено: {}"
+
+msgid "Drag Oxigram to Applications, then restart"
+msgstr "Перетягніть Oxigram у «Програми», потім перезапустіть"
+
+msgid "Image downloaded: {}"
+msgstr "Образ завантажено: {}"
+
+msgid "Works, Telegram is reachable ({} ms)"
+msgstr "Працює, Telegram доступний ({} мс)"
+
+msgid "Proxy saved"
+msgstr "Проксі збережено"
+
+msgid "Bypass blocking (WebSocket)"
+msgstr "Обхід блокувань (WebSocket)"
+
+msgid "Off"
+msgstr "Вимкнено"
+
+msgid "MTProto proxies are not supported yet: choose SOCKS5 or HTTP."
+msgstr "MTProto-проксі поки не підтримується: виберіть SOCKS5 або HTTP."
+
+msgid "Check the proxy address."
+msgstr "Перевірте адресу проксі."
+
+msgid "The port is a number from 1 to 65535."
+msgstr "Порт — число від 1 до 65535."
+
+msgid "The proxy did not answer within 10 seconds."
+msgstr "Проксі не відповів за 10 секунд."
+
+msgid "Telegram web addresses are unreachable: {}"
+msgstr "Веб-адреси Telegram недоступні: {}"
+
+msgid "The proxy is unreachable: check the address and port."
+msgstr "Проксі недоступний: перевірте адресу і порт."
+
+msgid "The proxy did not accept the username or password."
+msgstr "Проксі не прийняв логін або пароль."
+
+msgid "Could not connect through the proxy: {}"
+msgstr "Не вдалося підключитися через проксі: {}"
+
+msgid "Text copied"
+msgstr "Текст скопійовано"
+
+msgid "Message pinned"
+msgstr "Повідомлення закріплено"
+
+msgid "Reply to {}"
+msgstr "Відповідь: {}"
+
+msgid "Editing"
+msgstr "Редагування"
+
+msgid "Also delete for the other person"
+msgstr "Видалити також у співрозмовника"
+
+msgid "Also delete for everyone"
+msgstr "Видалити також у всіх"
+
+msgid "Delete message?"
+msgstr "Видалити повідомлення?"
+
+msgid "This action cannot be undone."
+msgstr "Цю дію не можна скасувати."
+
+msgid "Could not delete: {}"
+msgstr "Не вдалося видалити: {}"
+
+msgid "Forwarded"
+msgstr "Переслано"
+
+msgid "Delete {n} message?"
+msgid_plural "Delete {n} messages?"
+msgstr[0] "Видалити {n} повідомлення?"
+msgstr[1] "Видалити {n} повідомлення?"
+msgstr[2] "Видалити {n} повідомлень?"
+
+msgid "{} MB of RAM"
+msgstr "{} МБ ОЗП"
+
+msgid "channel"
+msgstr "канал"
+
+msgid "group"
+msgstr "група"
+
+msgid "Subscribe"
+msgstr "Підписатися"
+
+msgid "Join"
+msgstr "Вступити"
+
+msgid "{n} chat"
+msgid_plural "{n} chats"
+msgstr[0] "{n} чат"
+msgstr[1] "{n} чати"
+msgstr[2] "{n} чатів"
+
+msgid "Profile pictures"
+msgstr "Фото на аватарках"
+
+msgid "Without them, a coloured circle with a letter."
+msgstr "Без них — кольорове коло з літерою."
+
+msgid "Load images automatically"
+msgstr "Завантажувати зображення самостійно"
+
+msgid "Without this, an image or a video preview loads on click. Works together with pictures."
+msgstr "Без цього зображення і превʼю відео завантажуються за кліком. Працюватиме разом із зображеннями."
+
+msgid "Play GIFs and stickers"
+msgstr "Відтворювати GIF і стікери"
+
+msgid "Without this, they stay still until you open them. Works together with pictures."
+msgstr "Без цього вони стоять на місці, доки не відкриєш. Працюватиме разом із зображеннями."
+
+msgid "Custom emoji in reactions"
+msgstr "Кастомні емодзі в реакціях"
+
+msgid "The pictures of such reactions; click to add the same one. Without this, a single ✨ with the total count. Works together with reactions."
+msgstr "Зображення таких реакцій, за кліком можна поставити таку саму. Без цього — одна ✨ із загальним числом. Працюватиме разом із реакціями."
+
+msgid "Preload top chats"
+msgstr "Підвантажувати верхні чати"
+
+msgid "The top ten chats open at once, without waiting for the network."
+msgstr "Десять верхніх чатів відкриваються одразу, без очікування мережі."
+
+msgid "GPU rendering"
+msgstr "Відмальовування на відеокарті"
+
+msgid "Smoother scrolling and colour emoji, but the OpenGL driver adds about 75 MB of RAM. Applies after a restart."
+msgstr "Плавніша прокрутка і кольорові емодзі, але OpenGL-драйвер додає близько 75 МБ ОЗП. Застосується після перезапуску."
+
+msgid "Turn off all notifications"
+msgstr "Вимкнути всі сповіщення"
+
+msgid "System notifications about new messages are not shown."
+msgstr "Системні сповіщення про нові повідомлення не показуються."
+
+msgid "Start with the system"
+msgstr "Запускати разом із системою"
+
+msgid "Oxigram starts when you sign in to the system and waits in the tray; the window does not open."
+msgstr "Oxigram стартує під час входу в систему і чекає в треї, вікно не відкривається."
+
+msgid "Light theme"
+msgstr "Світла тема"
+
+msgid "A light look instead of the dark one."
+msgstr "Світле оформлення замість темного."
+
+msgid "Check for updates automatically"
+msgstr "Перевіряти оновлення автоматично"
+
+msgid "Once a day, one request to GitHub, through the proxy if one is set."
+msgstr "Раз на день один запит до GitHub, через проксі, якщо його задано."
+
+msgid "Small"
+msgstr "Дрібний"
+
+msgid "Large"
+msgstr "Великий"
+
+msgid "Normal"
+msgstr "Звичайний"
+
+msgid "It cannot be recovered: the encrypted Oxigram data on this computer will be deleted, and you will have to enter the API keys and sign in again. Your Telegram account and chats are not affected; this sign-in stays in the list of active sessions until you end it from another device."
+msgstr "Його не можна відновити: зашифровані дані Oxigram на цьому комп'ютері буде видалено, і доведеться знову ввести ключі API та увійти. Обліковий запис і листування в Telegram не постраждають; цей вхід залишиться в списку активних сеансів, доки його не завершити з іншого пристрою."
+
+msgid "after {} min"
+msgstr "через {} хв"
+
+msgid "after {} h"
+msgstr "через {} год"
+
+msgid "Forgot the passcode?"
+msgstr "Забули код-пароль?"
+
+msgid "Delete Data"
+msgstr "Видалити дані"
+
+msgid "The codes do not match"
+msgstr "Коди не збігаються"
+
+msgid "At least 4 characters are needed"
+msgstr "Потрібно щонайменше 4 символи"
+
+msgid "Encrypting…"
+msgstr "Шифрування…"
+
+msgid "Passcode turned on. The data on disk is encrypted."
+msgstr "Код-пароль увімкнено. Дані на диску зашифровано."
+
+msgid "The new codes do not match"
+msgstr "Нові коди не збігаються"
+
+msgid "Changing the code…"
+msgstr "Зміна коду…"
+
+msgid "Passcode changed"
+msgstr "Код-пароль змінено"
+
+msgid "Decrypting…"
+msgstr "Розшифрування…"
+
+msgid "Passcode turned off"
+msgstr "Код-пароль вимкнено"
+
+msgid "Wrong passcode"
+msgstr "Хибний код-пароль"
+
+msgid "Too many wrong attempts. Wait {} s"
+msgstr "Забагато хибних спроб. Зачекайте {} с"
+
+msgid "The encrypted data is damaged"
+msgstr "Зашифровані дані пошкоджено"
+
+msgid "Save As…"
+msgstr "Зберегти як…"
+
+msgid "Save As"
+msgstr "Зберегти як"
+
+msgid "Could not open the file"
+msgstr "Не вдалося відкрити файл"
+
+msgid "This reaction is not available in this chat."
+msgstr "У цьому чаті така реакція недоступна."
+
+msgid "This reaction needs Telegram Premium."
+msgstr "Для цієї реакції потрібен Telegram Premium."
+
+msgid "The reaction is already set."
+msgstr "Реакція вже стоїть."
+
+msgid "The reaction was not set: {}"
+msgstr "Реакцію не поставлено: {}"
+
+msgid "Link copied"
+msgstr "Посилання скопійовано"
+
+msgid "Open the link?"
+msgstr "Відкрити посилання?"
+
+msgid "This link cannot be opened"
+msgstr "Це посилання не можна відкрити"
+
+msgid "Could not open the browser"
+msgstr "Не вдалося відкрити браузер"
+
+msgid "Turn On All Notifications"
+msgstr "Увімкнути всі сповіщення"
+
+msgid "Turn Off All Notifications"
+msgstr "Вимкнути всі сповіщення"
+
+msgid "{} unread"
+msgstr "{} непрочитаних"
+
+msgid "Open Oxigram"
+msgstr "Відкрити Oxigram"
+
+msgid "Lock"
+msgstr "Заблокувати"
+
+msgid "Quit"
+msgstr "Вихід"
+
+msgid "Message"
+msgstr "Повідомлення"
+
+msgid "Message deleted"
+msgstr "Повідомлення видалено"
+
+msgid "All Chats"
+msgstr "Усі чати"
+
+msgid "No name"
+msgstr "Без імені"
+
+msgid "No contacts"
+msgstr "Контактів немає"
+
+msgid "Could not play"
+msgstr "Не вдалося відтворити"
+

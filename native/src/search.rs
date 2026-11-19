@@ -10,6 +10,7 @@ use std::time::Duration;
 use oxigram_core::actions::{self, FoundChat, FoundMessage};
 use oxigram_core::chats;
 use oxigram_core::store::chats::{DialogRow, MessageRow};
+use oxigram_core::{tr, trn};
 use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::{App, AppWindow, DialogItem, SearchHit, format, request_avatar, run, tg, with_app};
@@ -183,7 +184,7 @@ pub fn wire(ui: &AppWindow) {
 fn snippet(m: &MessageRow) -> String {
     let flat = m.text.split_whitespace().collect::<Vec<_>>().join(" ");
     if flat.is_empty() {
-        return format::kind_label(&m.kind).unwrap_or("Вложение").to_owned();
+        return format::kind_label(&m.kind).unwrap_or_else(|| tr!("Attachment"));
     }
     let shown = format::preview_text(&flat);
     shown.chars().take(200).collect()
@@ -191,7 +192,7 @@ fn snippet(m: &MessageRow) -> String {
 
 fn hit_row(app: &App, peer: i64, m: &MessageRow) -> SearchHit {
     let who = if m.outgoing {
-        "Вы".to_owned()
+        tr!("You")
     } else if !m.sender_name.is_empty() {
         m.sender_name.clone()
     } else {
@@ -239,7 +240,7 @@ fn chat_search(text: SharedString, now: bool) {
                     Ok(rows) => {
                         let hits: Vec<SearchHit> = rows.iter().map(|m| hit_row(app, peer, m)).collect();
                         ui.set_search_count(
-                            if rows.is_empty() { "Ничего не найдено".to_owned() } else { format!("Найдено: {}", rows.len()) }
+                            if rows.is_empty() { tr!("Nothing found") } else { tr!("Found: {}", rows.len()) }
                                 .into(),
                         );
                         app.search.hit_model.set_vec(hits);
@@ -275,7 +276,7 @@ fn pick(index: usize) {
         let id = app.search.results.get(index)?.id;
         app.search.current = Some(index);
         if let Some(ui) = app.ui.upgrade() {
-            ui.set_search_count(format!("{} из {}", index + 1, app.search.results.len()).into());
+            ui.set_search_count(tr!("{} of {}", index + 1, app.search.results.len()).into());
             ui.set_search_list_open(false);
         }
         Some((app.chat?, id, app.generation))
@@ -382,11 +383,11 @@ fn global_search(text: SharedString) {
         app.search.clear_found();
         if let Some(ui) = app.ui.upgrade() {
             let note = if query.is_empty() {
-                ""
+                String::new()
             } else if short {
-                if app.shown.is_empty() { "Ничего не найдено" } else { "" }
+                if app.shown.is_empty() { tr!("Nothing found") } else { String::new() }
             } else {
-                "Поиск сообщений…"
+                tr!("Searching messages…")
             };
             ui.set_found_note(note.into());
         }
@@ -443,7 +444,7 @@ fn join() {
                 }
                 app.refresh_dialogs();
             });
-            crate::menus::toast("Готово: чат добавлен в список");
+            crate::menus::toast(tr!("Done: the chat was added to your list"));
         }
         Err(err) => crate::menus::toast(&format::error(&err)),
     });
@@ -483,7 +484,7 @@ fn stranger_row(id: i64, kind: &str, title: &str, photo_id: Option<String>) -> D
 
 fn found_item(app: &App, peer: i64, kind: &str, title: &str, preview: String, date: i64) -> DialogItem {
     let saved = kind == "saved";
-    let title = if saved { "Избранное" } else if title.is_empty() { "Без названия" } else { title };
+    let title = &if saved { tr!("Saved Messages") } else if title.is_empty() { tr!("Untitled") } else { title.to_owned() };
     let photo = app.avatars.get(&peer);
     DialogItem {
         initial: format::initial(title).into(),
@@ -499,7 +500,7 @@ fn found_item(app: &App, peer: i64, kind: &str, title: &str, preview: String, da
     }
 }
 
-/// "@name · 12 345 подписчиков" under a found chat.
+/// "@name · 12,345 subscribers" under a found chat.
 fn found_line(chat: &FoundChat) -> String {
     let mut parts = Vec::new();
     if let Some(name) = &chat.username {
@@ -507,27 +508,13 @@ fn found_line(chat: &FoundChat) -> String {
     }
     if let Some(n) = chat.members.filter(|n| *n > 0) {
         let n = i64::from(n);
-        let word = if chat.kind == "channel" {
-            format::plural(n, "подписчик", "подписчика", "подписчиков")
+        parts.push(if chat.kind == "channel" {
+            trn!("{n} subscriber", "{n} subscribers", n)
         } else {
-            format::plural(n, "участник", "участника", "участников")
-        };
-        parts.push(format!("{} {word}", group_digits(n)));
+            trn!("{n} member", "{n} members", n)
+        });
     }
     parts.join(" · ")
-}
-
-/// 12345 → "12 345".
-fn group_digits(n: i64) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
-            out.push('\u{00A0}');
-        }
-        out.push(c);
-    }
-    out
 }
 
 fn show_found(app: &mut App, messages: Vec<FoundMessage>, chats: Vec<FoundChat>) {
@@ -562,7 +549,7 @@ fn show_found(app: &mut App, messages: Vec<FoundMessage>, chats: Vec<FoundChat>)
     let nothing = items.is_empty() && app.search.chat_peers.is_empty() && app.shown.is_empty();
     app.search.message_model.set_vec(items);
     if let Some(ui) = app.ui.upgrade() {
-        ui.set_found_note(if nothing { "Ничего не найдено" } else { "" }.into());
+        ui.set_found_note(if nothing { tr!("Nothing found") } else { String::new() }.into());
     }
 }
 
@@ -573,6 +560,7 @@ mod tests {
 
     #[test]
     fn found_lines() {
+        crate::i18n::install();
         let chat = |kind: &str, username: Option<&str>, members: Option<i32>| FoundChat {
             id: 1,
             kind: kind.into(),
@@ -582,8 +570,8 @@ mod tests {
             members,
             joinable: true,
         };
-        assert_eq!(found_line(&chat("channel", Some("news"), Some(12345))), "@news · 12\u{a0}345 подписчиков");
-        assert_eq!(found_line(&chat("group", None, Some(3))), "3 участника");
+        assert_eq!(found_line(&chat("channel", Some("news"), Some(12345))), "@news · 12,345 subscribers");
+        assert_eq!(found_line(&chat("group", None, Some(3))), "3 members");
         assert_eq!(found_line(&chat("user", Some("ann"), None)), "@ann");
     }
 
@@ -592,7 +580,7 @@ mod tests {
         assert_eq!(username_of("@durov").as_deref(), Some("durov"));
         assert_eq!(username_of(" t.me/some_chan/12 ").as_deref(), Some("some_chan"));
         assert_eq!(username_of("https://t.me/abc?start=1").as_deref(), Some("abc"));
-        assert_eq!(username_of("привет"), None);
+        assert_eq!(username_of("hello"), None);
         assert_eq!(username_of("@ab"), None);
         assert_eq!(username_of("t.me/+inviteHash"), None);
     }

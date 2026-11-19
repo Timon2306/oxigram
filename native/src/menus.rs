@@ -9,6 +9,7 @@ use oxigram_core::chats;
 use oxigram_core::error::UiError;
 use oxigram_core::store::chats::DialogRow;
 use oxigram_core::tg::Me;
+use oxigram_core::tr;
 use slint::ComponentHandle;
 
 use crate::{AppWindow, format, open_chat, run, show_state, tg, ui, with_app};
@@ -51,13 +52,13 @@ pub fn wire(window: &AppWindow) {
         if let Some(ui) = ui() {
             ui.set_cache_text(format_size(tg().cache_size()).into());
         }
-        toast("Кэш очищен");
+        toast(tr!("Cache cleared"));
     });
     window.on_ask_sign_out(|| {
         confirm(
-            "Выйти из аккаунта?",
-            "Сессия и кэш на этом компьютере будут удалены.",
-            "Выйти",
+            &tr!("Sign out?"),
+            &tr!("The session and cache on this computer will be deleted."),
+            &tr!("Sign Out"),
             "",
             |_| sign_out(),
         );
@@ -66,10 +67,10 @@ pub fn wire(window: &AppWindow) {
 
 /// Shows a short note at the bottom; it goes away on its own unless a newer
 /// note has replaced it by then.
-pub fn toast(text: &str) {
+pub fn toast(text: impl AsRef<str>) {
     let Some(ui) = ui() else { return };
-    ui.set_toast(text.into());
-    let text = text.to_owned();
+    let text = text.as_ref().to_owned();
+    ui.set_toast(text.as_str().into());
     let weak = ui.as_weak();
     slint::Timer::single_shot(TOAST_FOR, move || {
         if let Some(ui) = weak.upgrade()
@@ -157,16 +158,16 @@ fn load_me_photo(id: i64, photo_id: String, window: &AppWindow) {
     );
 }
 
-/// "12,3 МБ", "512 КБ".
+/// "12.3 MB", "512 KB".
 pub(crate) fn format_size(bytes: u64) -> String {
     const KB: f64 = 1024.0;
     let b = bytes as f64;
     if b >= KB * KB * KB {
-        format!("{:.1} ГБ", b / (KB * KB * KB)).replace('.', ",")
+        tr!("{} GB", format::decimal(format!("{:.1}", b / (KB * KB * KB))))
     } else if b >= KB * KB {
-        format!("{:.1} МБ", b / (KB * KB)).replace('.', ",")
+        tr!("{} MB", format::decimal(format!("{:.1}", b / (KB * KB))))
     } else {
-        format!("{} КБ", (b / KB).round() as u64)
+        tr!("{} KB", (b / KB).round() as u64)
     }
 }
 
@@ -226,9 +227,9 @@ pub(crate) fn dialog_action(peer: i64, name: &str) {
             move || update(peer, |d| d.muted = !muted),
         ),
         "clear" => confirm(
-            "Очистить историю?",
-            &format!("Сообщения в чате «{title}» будут удалены у вас. Это нельзя отменить."),
-            "Очистить",
+            &tr!("Clear history?"),
+            &tr!("Messages in the chat «{}» will be deleted for you. This cannot be undone.", title),
+            &tr!("Clear"),
             "",
             move |_| {
                 act(async move { actions::clear_history(tg(), peer).await }, move || {
@@ -243,14 +244,14 @@ pub(crate) fn dialog_action(peer: i64, name: &str) {
         ),
         "delete" => {
             let (heading, ok) = match kind.as_str() {
-                "group" => ("Покинуть группу?", "Покинуть"),
-                "channel" => ("Покинуть канал?", "Покинуть"),
-                _ => ("Удалить чат?", "Удалить"),
+                "group" => (tr!("Leave group?"), tr!("Leave")),
+                "channel" => (tr!("Leave channel?"), tr!("Leave")),
+                _ => (tr!("Delete chat?"), tr!("Delete")),
             };
             confirm(
-                heading,
-                &format!("«{title}» пропадёт из списка чатов."),
-                ok,
+                &heading,
+                &tr!("«{}» will disappear from your chat list.", title),
+                &ok,
                 "",
                 move |_| {
                     act(async move { actions::delete_chat(tg(), peer).await }, move || {
@@ -322,8 +323,8 @@ mod tests {
 
     #[test]
     fn sizes_read_naturally() {
-        assert_eq!(format_size(0), "0 КБ");
-        assert_eq!(format_size(512 * 1024), "512 КБ");
-        assert_eq!(format_size(12_897_484), "12,3 МБ");
+        assert_eq!(format_size(0), "0 KB");
+        assert_eq!(format_size(512 * 1024), "512 KB");
+        assert_eq!(format_size(12_897_484), "12.3 MB");
     }
 }

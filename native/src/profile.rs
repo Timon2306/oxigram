@@ -5,14 +5,12 @@
 use oxigram_core::chats::{self, PeerInfo};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
+use oxigram_core::{tr, trn};
+
 use crate::{AppWindow, ProfileLine, format, run, tg, ui, with_app};
 
 /// The column's avatar is drawn at this size, in logical pixels.
 const PHOTO_PX: f32 = 120.0;
-
-const MONTHS: [&str; 12] = [
-    "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря",
-];
 
 pub fn wire(window: &AppWindow) {
     window.on_open_info(|| {
@@ -133,44 +131,32 @@ fn load_photo(peer: i64, photo_id: String, generation: u64) {
 /// What is known before the profile arrives.
 fn basic_subtitle(dialog: &oxigram_core::store::chats::DialogRow) -> String {
     match dialog.kind.as_str() {
-        "saved" => "Избранное".to_owned(),
-        "user" if dialog.bot => "бот".to_owned(),
+        "saved" => tr!("Saved Messages"),
+        "user" if dialog.bot => tr!("bot"),
         "user" => {
             let seen = format::presence_text(dialog.presence.as_ref());
-            if seen.is_empty() { "Личный чат".to_owned() } else { seen }
+            if seen.is_empty() { tr!("Private chat") } else { seen }
         }
-        "channel" => "Канал".to_owned(),
-        _ => "Группа".to_owned(),
+        "channel" => tr!("Channel"),
+        _ => tr!("Group"),
     }
 }
 
 fn subtitle(info: &PeerInfo, bot: bool, seen: String) -> String {
-    let count = |n: i32| -> String {
-        let digits = n.to_string();
-        // Thousands separated by a no-break space, as `toLocaleString("ru")`.
-        let mut out = String::new();
-        for (i, ch) in digits.chars().enumerate() {
-            if i > 0 && (digits.len() - i) % 3 == 0 {
-                out.push('\u{a0}');
-            }
-            out.push(ch);
-        }
-        out
-    };
     match info.kind.as_str() {
-        "saved" => "Избранное".to_owned(),
-        "user" if bot => "бот".to_owned(),
-        "user" if seen.is_empty() => "Личный чат".to_owned(),
+        "saved" => tr!("Saved Messages"),
+        "user" if bot => tr!("bot"),
+        "user" if seen.is_empty() => tr!("Private chat"),
         "user" => seen,
         kind => match info.members {
-            None => if kind == "channel" { "Канал" } else { "Группа" }.to_owned(),
+            None => if kind == "channel" { tr!("Channel") } else { tr!("Group") },
             Some(n) if kind == "channel" => {
-                format!("{} {}", count(n), format::plural(n.into(), "подписчик", "подписчика", "подписчиков"))
+                trn!("{n} subscriber", "{n} subscribers", n)
             }
             Some(n) => {
-                let text = format!("{} {}", count(n), format::plural(n.into(), "участник", "участника", "участников"));
+                let text = trn!("{n} member", "{n} members", n);
                 match info.online.filter(|o| *o > 0) {
-                    Some(online) => format!("{text}, {} в сети", count(online)),
+                    Some(online) => tr!("{}, {} online", text, format::number(online.into())),
                     None => text,
                 }
             }
@@ -181,11 +167,11 @@ fn subtitle(info: &PeerInfo, bot: bool, seen: String) -> String {
 fn birthday(value: &str) -> String {
     let mut parts = value.split('.');
     let (Some(day), Some(month)) = (parts.next(), parts.next()) else { return value.to_owned() };
-    let name = month.parse::<usize>().ok().and_then(|m| MONTHS.get(m.wrapping_sub(1)));
-    match (day.parse::<u32>(), name) {
-        (Ok(day), Some(name)) => match parts.next() {
-            Some(year) => format!("{day} {name} {year}"),
-            None => format!("{day} {name}"),
+    let month = month.parse::<u32>().ok().filter(|m| (1..=12).contains(m));
+    match (day.parse::<u32>(), month) {
+        (Ok(day), Some(month)) => match parts.next().and_then(|y| y.parse::<i32>().ok()) {
+            Some(year) => format::month_day(month - 1, day, Some(year)),
+            None => format::month_day(month - 1, day, None),
         },
         _ => value.to_owned(),
     }
@@ -197,25 +183,25 @@ fn lines(info: &PeerInfo) -> Vec<ProfileLine> {
     let mut rows = Vec::new();
     if let Some(phone) = info.phone.as_deref().filter(|p| !p.is_empty()) {
         let phone = phone.trim_start_matches('+');
-        rows.push(line(format!("+{phone}"), "Телефон"));
+        rows.push(line(format!("+{phone}"), &tr!("Phone")));
     }
     if let Some(name) = info.username.as_deref().filter(|u| !u.is_empty()) {
-        rows.push(line(format!("@{name}"), if group_like { "Ссылка" } else { "Имя пользователя" }));
+        rows.push(line(format!("@{name}"), &if group_like { tr!("Link") } else { tr!("Username") }));
     }
     if let Some(day) = info.birthday.as_deref().filter(|b| !b.is_empty()) {
-        rows.push(line(birthday(day), "День рождения"));
+        rows.push(line(birthday(day), &tr!("Birthday")));
     }
     if !info.about.trim().is_empty() {
-        rows.push(line(info.about.trim().to_owned(), if group_like { "Описание" } else { "О себе" }));
+        rows.push(line(info.about.trim().to_owned(), &if group_like { tr!("Description") } else { tr!("Bio") }));
     }
     if let Some(n) = info.common_chats.filter(|n| *n > 0) {
         rows.push(line(
-            format!("{n} {}", format::plural(n.into(), "общая группа", "общие группы", "общих групп")),
-            "Общие группы",
+            trn!("{n} common group", "{n} common groups", n),
+            &tr!("Common groups"),
         ));
     }
     if let Some(link) = info.invite_link.as_deref().filter(|l| !l.is_empty()) {
-        rows.push(line(link.to_owned(), "Ссылка-приглашение"));
+        rows.push(line(link.to_owned(), &tr!("Invite link")));
     }
     rows
 }
@@ -225,9 +211,9 @@ mod tests {
     use super::birthday;
 
     #[test]
-    fn birthdays_read_in_russian() {
-        assert_eq!(birthday("13.11"), "13 ноября");
-        assert_eq!(birthday("05.01.1990"), "5 января 1990");
+    fn birthdays_read_as_dates() {
+        assert_eq!(birthday("13.11"), "November 13");
+        assert_eq!(birthday("05.01.1990"), "January 5, 1990");
         assert_eq!(birthday("junk"), "junk");
     }
 }
