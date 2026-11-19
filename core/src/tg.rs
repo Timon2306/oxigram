@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use grammers_client::client::{DialogIter, LoginToken, PasswordToken};
+use grammers_client::client::{DialogIter, PasswordToken};
 use grammers_client::sender::{AutoSleep, ConnectionParams, SenderPool};
 use grammers_client::{Client, SignInError};
 use grammers_session::updates::UpdatesLike;
@@ -50,14 +50,20 @@ pub enum UiState {
     Locked,
     NeedKeys,
     NeedPhone,
-    NeedCode { phone: String },
+    /// The code went out; how (app, SMS, call…) and whether it can be sent
+    /// another way.
+    NeedCode { sent: crate::login::CodeSent },
+    /// Signing in by QR code: the code as path commands in a size×size box.
+    NeedQr { path: String, size: i32 },
     NeedPassword { hint: Option<String> },
     Ready { me: Me },
 }
 
 enum Login {
     Idle,
-    CodeSent { token: LoginToken, phone: String },
+    CodeSent { hash: String, sent: crate::login::CodeSent },
+    /// Showing a QR code for this tg://login link.
+    Qr { url: String },
     PasswordNeeded(PasswordToken),
 }
 
@@ -228,39 +234,80 @@ impl Telegram {
         }
 
         let mut inner = self.inner.lock().await;
-        let api_hash = match &inner.keys {
-            Some(keys) => keys.api_hash.clone(),
+        let (api_id, api_hash) = match &inner.keys {
+            Some(keys) => (keys.api_id, keys.api_hash.clone()),
             None => return Ok(UiState::NeedKeys),
         };
-        let client = self.connect(&mut inner)?.client.clone();
-        let token = client.request_login_code(&phone, &api_hash).await?;
-        inner.login = Login::CodeSent {
-            token,
-            phone: phone.clone(),
+        let connection = self.connect(&mut inner)?;
+        let (client, session) = (connection.client.clone(), Arc::clone(&connection.session));
+        let (hash, sent) = crate::login::send_code(&client, &session, &phone, api_id, &api_hash).await?;
+        inner.login = Login::CodeSent { hash, sent: sent.clone() };
+        Ok(UiState::NeedCode { sent })
+    }
+
+    /// "Send the code another way" (auth.resendCode).
+    pub async fn resend_code(&self) -> Result<UiState, UiError> {
+        let mut inner = self.inner.lock().await;
+        let Login::CodeSent { hash, sent } = &inner.login else {
+            return Err(wrong_stage());
         };
-        Ok(UiState::NeedCode { phone })
+        let (hash, phone) = (hash.clone(), sent.phone.clone());
+        let client = self.connect(&mut inner)?.client.clone();
+        let (hash, sent) = crate::login::resend_code(&client, &phone, &hash).await?;
+        inner.login = Login::CodeSent { hash, sent: sent.clone() };
+        Ok(UiState::NeedCode { sent })
+    }
+
+    /// Signing in by QR code: asked again every few seconds while the code
+    /// is on screen; the code (new when the token changed), or the next step
+    /// once it was scanned.
+    pub async fn qr_login(&self) -> Result<UiState, UiError> {
+        let mut inner = self.inner.lock().await;
+        let (api_id, api_hash) = match &inner.keys {
+            Some(keys) => (keys.api_id, keys.api_hash.clone()),
+            None => return Ok(UiState::NeedKeys),
+        };
+        if matches!(inner.login, Login::PasswordNeeded(_)) {
+            return self.current(&mut inner).await;
+        }
+        let connection = self.connect(&mut inner)?;
+        let (client, session) = (connection.client.clone(), Arc::clone(&connection.session));
+        match crate::login::qr(&client, &session, api_id, &api_hash).await? {
+            crate::login::Qr::Show { url, .. } => {
+                inner.login = Login::Qr { url };
+                self.current(&mut inner).await
+            }
+            crate::login::Qr::Done(crate::login::Signed::In) => {
+                inner.login = Login::Idle;
+                self.current(&mut inner).await
+            }
+            crate::login::Qr::Done(crate::login::Signed::Password(token)) => {
+                let hint = token.hint().map(str::to_owned);
+                inner.login = Login::PasswordNeeded(token);
+                Ok(UiState::NeedPassword { hint })
+            }
+        }
     }
 
     pub async fn submit_code(&self, code: &str) -> Result<UiState, UiError> {
         let mut inner = self.inner.lock().await;
-        let Login::CodeSent { token, phone } = std::mem::replace(&mut inner.login, Login::Idle)
-        else {
+        let Login::CodeSent { hash, sent } = std::mem::replace(&mut inner.login, Login::Idle) else {
             return Err(wrong_stage());
         };
-        let client = self.connect(&mut inner)?.client.clone();
+        let connection = self.connect(&mut inner)?;
+        let (client, session) = (connection.client.clone(), Arc::clone(&connection.session));
 
-        match client.sign_in(&token, code.trim()).await {
-            Ok(_) => self.current(&mut inner).await,
-            Err(SignInError::PasswordRequired(password_token)) => {
+        match crate::login::sign_in(&client, &session, &sent.phone, &hash, code.trim()).await {
+            Ok(crate::login::Signed::In) => self.current(&mut inner).await,
+            Ok(crate::login::Signed::Password(password_token)) => {
                 let hint = password_token.hint().map(str::to_owned);
                 inner.login = Login::PasswordNeeded(password_token);
                 Ok(UiState::NeedPassword { hint })
             }
             Err(err) => {
-                let err = UiError::from(err);
                 // An expired code cannot be retried; anything else can.
                 if err.code != "PHONE_CODE_EXPIRED" {
-                    inner.login = Login::CodeSent { token, phone };
+                    inner.login = Login::CodeSent { hash, sent };
                 }
                 Err(err)
             }
@@ -312,10 +359,12 @@ impl Telegram {
             return Ok(UiState::NeedKeys);
         }
         match &inner.login {
-            Login::CodeSent { phone, .. } => {
-                return Ok(UiState::NeedCode {
-                    phone: phone.clone(),
-                });
+            Login::CodeSent { sent, .. } => {
+                return Ok(UiState::NeedCode { sent: sent.clone() });
+            }
+            Login::Qr { url } => {
+                let (path, size) = crate::login::qr_path(url).unwrap_or_default();
+                return Ok(UiState::NeedQr { path, size });
             }
             Login::PasswordNeeded(token) => {
                 return Ok(UiState::NeedPassword {

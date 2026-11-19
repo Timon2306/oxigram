@@ -8,6 +8,7 @@ pub mod chats;
 pub mod config;
 pub mod error;
 pub mod i18n;
+pub mod login;
 pub mod markup;
 pub mod media;
 pub mod mem;
