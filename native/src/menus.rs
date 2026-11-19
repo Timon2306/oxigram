@@ -283,38 +283,31 @@ pub(crate) fn dialog_action(peer: i64, name: &str) {
 
 fn sign_out() {
     run(async { tg().sign_out().await }, |result| match result {
-        Ok(state) => {
-            with_app(|app| {
-                app.dialogs.clear();
-                app.shown.clear();
-                app.dialog_model.clear();
-                app.avatars.clear();
-                app.avatar_order.clear();
-                app.avatar_pending.clear();
-                app.chat = None;
-                app.generation += 1;
-                app.dialogs_done = false;
-                app.dialogs_loading = false;
-                app.me_id = 0;
-                app.me_photo_id = None;
-                crate::drafts::clear();
-                crate::folders::clear();
-                crate::contacts::clear();
-                app.set_messages(Vec::new());
-                if let Some(ui) = app.ui.upgrade() {
-                    ui.set_chat_open(false);
-                    ui.set_settings_open(false);
-                    ui.set_drawer_open(false);
-                    ui.set_me_has_photo(false);
-                    // `show_state` attaches the live events again on the next login.
-                    ui.set_stage("loading".into());
-                }
-            });
-            tg().ui.set_active_chat(None);
-            show_state(Ok(state));
-        }
+        Ok(state) => signed_out(state),
         Err(err) => toast(&format::error(&err)),
     });
+}
+
+/// After a sign-out (here, or the session ended elsewhere): the window
+/// forgets the account and shows the sign-in, without a restart.
+pub(crate) fn signed_out(state: oxigram_core::tg::UiState) {
+    // Chats, messages, pictures, search, profile, viewer, drafts.
+    crate::forget_view();
+    crate::drafts::clear();
+    crate::folders::clear();
+    crate::contacts::clear();
+    with_app(|app| {
+        app.me_id = 0;
+        app.me_photo_id = None;
+        if let Some(ui) = app.ui.upgrade() {
+            ui.set_me_has_photo(false);
+            ui.set_me_name("".into());
+            // `show_state` attaches the live events again on the next login.
+            ui.set_stage("loading".into());
+        }
+    });
+    tg().ui.set_active_chat(None);
+    show_state(Ok(state));
 }
 
 #[cfg(test)]

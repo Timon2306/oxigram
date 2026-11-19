@@ -1102,6 +1102,24 @@ impl App {
     }
 
     fn chat_error(&self, err: &UiError) {
+        // The session was ended (here or from another device): back to the
+        // sign-in instead of an empty window.
+        if oxigram_core::tg::session_gone(&err.code) {
+            // Several requests fail at once: one sign-out is enough.
+            static FORGETTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if !FORGETTING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                slint::Timer::single_shot(Duration::ZERO, || {
+                    run(async { tg().forget_local_account().await }, |state| {
+                        FORGETTING.store(false, std::sync::atomic::Ordering::SeqCst);
+                        match state {
+                            Ok(state) => menus::signed_out(state),
+                            Err(err) => menus::toast(format::error(&err)),
+                        }
+                    });
+                });
+            }
+            return;
+        }
         if let Some(ui) = self.ui.upgrade() {
             ui.set_chat_error(format::error(err).into());
         }

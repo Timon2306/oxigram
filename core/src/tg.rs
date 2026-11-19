@@ -342,9 +342,22 @@ impl Telegram {
         let mut inner = self.inner.lock().await;
         if let Some(connection) = &inner.connection {
             // Only forget the session locally once Telegram has revoked it,
-            // otherwise it would stay active with no way to reach it.
-            connection.client.sign_out().await?;
+            // otherwise it would stay active with no way to reach it. A
+            // session Telegram already dropped is forgotten all the same.
+            if let Err(err) = connection.client.sign_out().await {
+                let err = UiError::from(err);
+                if !session_gone(&err.code) {
+                    return Err(err);
+                }
+            }
         }
+        self.forget_account(&mut inner).await?;
+        self.current(&mut inner).await
+    }
+
+    /// Forgets the account here only (the session was ended elsewhere).
+    pub async fn forget_local_account(&self) -> Result<UiState, UiError> {
+        let mut inner = self.inner.lock().await;
         self.forget_account(&mut inner).await?;
         self.current(&mut inner).await
     }
@@ -525,11 +538,11 @@ impl Telegram {
             None => Arc::new(self.open_session()?.1),
         };
         session.wipe().map_err(UiError::internal)?;
-        // Cached pictures belong to the account too.
-        match std::fs::remove_dir_all(&self.cache_dir) {
-            Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(err.into()),
-            _ => Ok(()),
-        }
+        inner.login = Login::Idle;
+        // Cached pictures belong to the account too. Best effort: a file in
+        // use (a video still open) must not leave the window signed in.
+        self.clear_cache();
+        Ok(())
     }
 }
 
@@ -860,6 +873,14 @@ impl Telegram {
         }
         walk(&self.cache_dir);
     }
+}
+
+/// Telegram no longer knows this session (signed out or ended elsewhere).
+pub fn session_gone(code: &str) -> bool {
+    matches!(
+        code,
+        "AUTH_KEY_UNREGISTERED" | "AUTH_KEY_INVALID" | "SESSION_REVOKED" | "SESSION_EXPIRED" | "USER_DEACTIVATED" | "NOT_AUTHORIZED"
+    )
 }
 
 fn wrong_stage() -> UiError {
