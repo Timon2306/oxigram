@@ -18,6 +18,10 @@ jobs:
       fail-fast: false
       matrix:
         image: ["alt:p10", "alt:p11", "debian:bullseye", "fedora:39"]
+        # "minimal": the bare container; "desktop": plus the libraries any
+        # desktop has (ALSA, FriBidi, GTK 3), to tell "missing in a minimal
+        # container" from "missing on a real desktop".
+        libs: ["minimal", "desktop"]
     runs-on: ubuntu-latest
     container: ${{ matrix.image }}
     steps:
@@ -27,12 +31,36 @@ jobs:
           if command -v apt-get >/dev/null && [ -f /etc/altlinux-release ]; then
             apt-get update && apt-get install -y wget xvfb-run xorg-xvfb file glibc-utils || apt-get install -y wget xvfb file
           elif command -v apt-get >/dev/null; then
-            apt-get update && apt-get install -y wget xvfb xauth file
+            if grep -q bullseye /etc/os-release; then
+              # Bullseye is end of life: its packages moved to archive.debian.org.
+              rm -f /etc/apt/sources.list.d/*
+              printf '%s\n' \
+                'deb http://archive.debian.org/debian bullseye main' \
+                'deb http://archive.debian.org/debian bullseye-updates main' \
+                'deb http://archive.debian.org/debian-security bullseye-security main' \
+                > /etc/apt/sources.list
+              apt-get -o Acquire::Check-Valid-Until=false update
+            else
+              apt-get update
+            fi
+            apt-get install -y wget xvfb xauth file
           else
             dnf install -y wget xorg-x11-server-Xvfb xorg-x11-xauth file which
           fi
           cat /etc/os-release | head -3
           ldd --version | head -1
+
+      - name: Desktop libraries
+        if: matrix.libs == 'desktop'
+        shell: sh
+        run: |
+          if [ -f /etc/altlinux-release ]; then
+            apt-get install -y libalsa libfribidi libgtk+3
+          elif command -v apt-get >/dev/null; then
+            apt-get install -y libasound2 libfribidi0 libgtk-3-0
+          else
+            dnf install -y alsa-lib fribidi gtk3
+          fi
 
       - name: Download
         shell: sh
