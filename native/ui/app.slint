@@ -1834,7 +1834,19 @@ component MessageView inherits VerticalLayout {
 }
 
 component LoginCard inherits Rectangle {
+    // Wrapped texts get the card's inner width: inside nested layouts Slint
+    // measured them as one line, and the card came out too short.
+    property <length> text-width: min(380px, root.width - 48px) - 48px;
     in property <string> stage;
+    // The code step: where the code went; "send another way" (empty: none)
+    in property <string> code-hint;
+    in property <string> resend-text;
+    in property <bool> resend-ready;
+    callback resend-code();
+    // The QR step: the code as path commands in a qr-size box
+    in property <string> qr-path;
+    in property <int> qr-size: 1;
+    callback qr-start();
     // The phone step: the chosen country, the number's mask, the list.
     in property <string> phone-flag;
     in property <string> phone-dial;
@@ -1882,7 +1894,7 @@ component LoginCard inherits Rectangle {
                     padding: 24px;
                     spacing: 14px;
                     Text {
-                        text: root.stage == "keys" ? @tr("Telegram API keys") : root.stage == "phone" ? @tr("Sign in to Telegram") : root.stage == "code" ? @tr("Confirmation code") : root.stage == "password" ? @tr("Cloud password") : root.stage == "locked" ? @tr("Oxigram is locked") : "Oxigram";
+                        text: root.stage == "keys" ? @tr("Telegram API keys") : root.stage == "phone" ? @tr("Sign in to Telegram") : root.stage == "code" ? @tr("Confirmation code") : root.stage == "password" ? @tr("Cloud password") : root.stage == "locked" ? @tr("Oxigram is locked") : root.stage == "qr" ? @tr("Sign in with a QR code") : "Oxigram";
                         color: Theme.text;
                         font-size: 18px;
                         font-weight: 600;
@@ -1900,6 +1912,7 @@ component LoginCard inherits Rectangle {
                             text: @tr("Oxigram works only with your own keys. Get an api_id and api_hash at my.telegram.org → API development tools.");
                             color: Theme.dim;
                             wrap: word-wrap;
+                            width: root.text-width;
                             font-size: 14px;
                         }
 
@@ -2037,6 +2050,15 @@ component LoginCard inherits Rectangle {
 
                         Button {
                             kind: "link";
+                            text: @tr("Sign in with a QR code");
+                            enabled: !root.busy;
+                            clicked => {
+                                root.qr-start();
+                            }
+                        }
+
+                        Button {
+                            kind: "link";
                             text: @tr("Other API keys");
                             enabled: !root.busy;
                             clicked => {
@@ -2057,9 +2079,10 @@ component LoginCard inherits Rectangle {
                     if root.stage == "code": VerticalLayout {
                         spacing: 14px;
                         Text {
-                            text: @tr("Code sent to {} — to the Telegram app on another device or by SMS.", root.phone);
+                            text: root.code-hint;
                             color: Theme.dim;
                             wrap: word-wrap;
+                            width: root.text-width;
                             font-size: 14px;
                         }
 
@@ -2091,9 +2114,57 @@ component LoginCard inherits Rectangle {
                             }
                         }
 
+                        if root.resend-text != "": Button {
+                            kind: "link";
+                            text: root.resend-text;
+                            enabled: root.resend-ready && !root.busy;
+                            clicked => {
+                                root.resend-code();
+                            }
+                        }
+
                         Button {
                             kind: "link";
                             text: @tr("Different number");
+                            enabled: !root.busy;
+                            clicked => {
+                                root.back-to-phone();
+                            }
+                        }
+                    }
+
+                    if root.stage == "qr": VerticalLayout {
+                        spacing: 14px;
+                        HorizontalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 220px;
+                                height: 220px;
+                                border-radius: 12px;
+                                background: white;
+                                Path {
+                                    width: parent.width;
+                                    height: parent.height;
+                                    viewbox-width: root.qr-size;
+                                    viewbox-height: root.qr-size;
+                                    commands: root.qr-path;
+                                    fill: black;
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: @tr("On your phone, open Telegram → Settings → Devices → Link Desktop Device, and point the camera at this code.");
+                            color: Theme.dim;
+                            font-size: 14px;
+                            wrap: word-wrap;
+                            width: root.text-width;
+                            horizontal-alignment: center;
+                        }
+
+                        Button {
+                            kind: "link";
+                            text: @tr("Sign in with a phone number");
                             enabled: !root.busy;
                             clicked => {
                                 root.back-to-phone();
@@ -2150,6 +2221,7 @@ component LoginCard inherits Rectangle {
                                 color: Theme.dim;
                                 font-size: 13px;
                                 wrap: word-wrap;
+                                width: root.text-width;
                             }
 
                             password-field := Field {
@@ -2186,6 +2258,7 @@ component LoginCard inherits Rectangle {
                         text: root.error;
                         color: Theme.danger;
                         wrap: word-wrap;
+                        width: root.text-width;
                         font-size: 14px;
                     }
                     if root.keys-rejected: Button {
@@ -3136,6 +3209,14 @@ component SettingsPanel inherits Rectangle {
 
 export component AppWindow inherits Window {
     in property <string> window-title: "Oxigram";
+    // Sign-in: where the code went, resending it, the QR code
+    in property <string> code-hint;
+    in property <string> resend-text;
+    in property <bool> resend-ready;
+    callback resend-code();
+    in property <string> qr-path;
+    in property <int> qr-size: 1;
+    callback qr-start();
     // The phone step's country (see phone.rs)
     in property <string> phone-flag;
     in property <string> phone-dial;
@@ -3715,6 +3796,17 @@ export component AppWindow inherits Window {
 
     if root.stage != "ready": LoginCard {
         stage: root.stage;
+        code-hint: root.code-hint;
+        resend-text: root.resend-text;
+        resend-ready: root.resend-ready;
+        resend-code => {
+            root.resend-code();
+        }
+        qr-path: root.qr-path;
+        qr-size: root.qr-size;
+        qr-start => {
+            root.qr-start();
+        }
         phone-flag: root.phone-flag;
         phone-dial: root.phone-dial;
         phone-mask: root.phone-mask;

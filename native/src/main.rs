@@ -35,6 +35,7 @@ mod search;
 mod select;
 mod sending;
 mod settings;
+mod signin;
 mod single;
 mod tray;
 mod typing;
@@ -314,6 +315,7 @@ fn main() {
     update::wire(&ui);
     passcode::wire(&ui);
     phone::wire(&ui);
+    signin::wire(&ui);
     messages::wire(&ui);
     search::wire(&ui);
     sending::wire(&ui);
@@ -507,6 +509,17 @@ pub(crate) fn login_step(step: impl Future<Output = Result<UiState, UiError>> + 
     run(step, show_state);
 }
 
+/// A QR poll: a new code or the next step; errors only when it is not a
+/// passing network hiccup.
+pub(crate) fn show_state_quiet(result: Result<UiState, UiError>) {
+    match result {
+        Ok(state) => show_state(Ok(state)),
+        // A passing network hiccup or a flood wait: the next poll retries.
+        Err(err) if err.code == "NETWORK" || err.wait_seconds.is_some() => {}
+        Err(err) => show_state(Err(err)),
+    }
+}
+
 fn show_state(result: Result<UiState, UiError>) {
     let Some(ui) = ui() else { return };
     ui.set_busy(false);
@@ -540,9 +553,13 @@ fn show_state(result: Result<UiState, UiError>) {
         }
         UiState::NeedKeys => "keys",
         UiState::NeedPhone => "phone",
-        UiState::NeedCode { phone } => {
-            ui.set_login_phone(phone.into());
+        UiState::NeedCode { sent } => {
+            signin::show_code(&ui, &sent);
             "code"
+        }
+        UiState::NeedQr { path, size } => {
+            signin::show_qr(&ui, &path, size);
+            "qr"
         }
         UiState::NeedPassword { hint } => {
             ui.set_login_hint(hint.unwrap_or_default().into());
@@ -559,6 +576,9 @@ fn show_state(result: Result<UiState, UiError>) {
             "ready"
         }
     };
+    if stage != "qr" {
+        signin::left_qr();
+    }
     ui.set_stage(stage.into());
 }
 

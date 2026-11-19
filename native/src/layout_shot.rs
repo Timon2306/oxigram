@@ -171,6 +171,17 @@ fn layout_shot() {
     ui.set_error("Неверный код-пароль".into());
     save(&window, 1100, 800, &dir.join("shot-locked.png"));
 
+    // Sign-in: the code step, the QR step.
+    ui.set_stage("code".into());
+    ui.set_code_hint("The code was sent to the Telegram app on your other device (+380 67 123 45 67): look in the chat with Telegram.".into());
+    ui.set_resend_text("Send the code by SMS (0:42)".into());
+    save(&window, 1100, 800, &dir.join("shot-code.png"));
+    let (path, size) = oxigram_core::login::qr_path("tg://login?token=AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA").unwrap();
+    ui.set_qr_path(path.into());
+    ui.set_qr_size(size);
+    ui.set_stage("qr".into());
+    save(&window, 1100, 800, &dir.join("shot-qr.png"));
+
     // Each language: the chat with the profile, the general settings, the
     // phone step with the country list.
     ui.set_error("".into());

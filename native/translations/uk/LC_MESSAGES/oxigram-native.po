@@ -2088,3 +2088,48 @@ msgstr "Скопійовано"
 
 msgid "This button works only in the Telegram app"
 msgstr "Ця кнопка працює лише в застосунку Telegram"
+
+msgid "The code was sent to the Telegram app on your other device ({}): look in the chat with Telegram."
+msgstr "Код надіслано в застосунок Telegram на іншому вашому пристрої ({}): дивіться чат «Telegram»."
+
+msgid "Telegram will call {} and dictate the code."
+msgstr "Telegram зателефонує на {} і продиктує код."
+
+msgid "Telegram will call {}: the code is the last digits of the calling number."
+msgstr "Telegram зателефонує на {}: код — останні цифри номера, що телефонує."
+
+msgid "The code was sent to your e-mail {}."
+msgstr "Код надіслано на пошту {}."
+
+msgid "Telegram asks to set up a login e-mail first: do it in the official app, then try again."
+msgstr "Telegram просить спершу вказати пошту для входу: зробіть це в офіційному застосунку й спробуйте знову."
+
+msgid "The code was sent to your number on Fragment: {}"
+msgstr "Код надіслано на ваш номер у Fragment: {}"
+
+msgid "The code was sent by SMS to {}."
+msgstr "Код надіслано SMS на {}."
+
+msgid "Send the code by SMS"
+msgstr "Надіслати код SMS"
+
+msgid "Call me with the code"
+msgstr "Зателефонувати з кодом"
+
+msgid "Get the code by a call"
+msgstr "Отримати код дзвінком"
+
+msgid "Send the code via Fragment"
+msgstr "Надіслати код через Fragment"
+
+msgid "Send the code another way"
+msgstr "Надіслати код інакше"
+
+msgid "Sign in with a QR code"
+msgstr "Увійти за QR-кодом"
+
+msgid "Sign in with a phone number"
+msgstr "Увійти за номером телефону"
+
+msgid "On your phone, open Telegram → Settings → Devices → Link Desktop Device, and point the camera at this code."
+msgstr "На телефоні відкрийте Telegram → Налаштування → Пристрої → Під’єднати пристрій і наведіть камеру на цей код."
