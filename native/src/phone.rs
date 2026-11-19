@@ -17,7 +17,7 @@ thread_local! {
 }
 
 fn name(country: &'static Country) -> String {
-    oxigram_core::i18n::tr(country.name)
+    crate::i18n::tr(country.name)
 }
 
 pub fn wire(window: &AppWindow) {

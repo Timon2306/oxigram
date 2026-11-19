@@ -116,10 +116,6 @@ impl Catalog {
     pub fn get(&self, id: &str) -> Option<&Vec<String>> {
         self.entries.get(id)
     }
-
-    pub fn ids(&self) -> impl Iterator<Item = &String> {
-        self.entries.keys()
-    }
 }
 
 /// Russian and Ukrainian plural forms: 1, 2-4, 5+ (21 is "one", 11 is "many").

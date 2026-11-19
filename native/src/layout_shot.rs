@@ -161,4 +161,37 @@ fn layout_shot() {
     ui.set_stage("locked".into());
     ui.set_error("Неверный код-пароль".into());
     save(&window, 1100, 800, &dir.join("shot-locked.png"));
+
+    // Each language: the chat with the profile, the general settings, the
+    // phone step with the country list.
+    ui.set_error("".into());
+    for code in ["en", "ru", "uk"] {
+        crate::i18n::set_language(code);
+        ui.set_stage("ready".into());
+        ui.set_info_open(true);
+        save(&window, 1100, 800, &dir.join(format!("shot-lang-{code}-chat.png")));
+        ui.set_info_open(false);
+        ui.set_settings_page("general".into());
+        ui.set_settings_open(true);
+        save(&window, 1100, 800, &dir.join(format!("shot-lang-{code}-settings.png")));
+        ui.set_settings_page("main".into());
+        save(&window, 1100, 800, &dir.join(format!("shot-lang-{code}-settings-main.png")));
+        ui.set_settings_open(false);
+        ui.set_stage("phone".into());
+        crate::phone::set_country(&ui, crate::countries::by_iso("UA"));
+        save(&window, 1100, 800, &dir.join(format!("shot-lang-{code}-phone.png")));
+        let items: Vec<crate::CountryItem> = crate::countries::all()
+            .iter()
+            .take(12)
+            .map(|c| crate::CountryItem {
+                flag: crate::countries::flag(c.iso).into(),
+                name: oxigram_core::i18n::tr(c.name).into(),
+                dial: format!("+{}", c.dial).into(),
+            })
+            .collect();
+        ui.set_country_items(ModelRc::new(VecModel::from(items)));
+        ui.set_country_open(true);
+        save(&window, 1100, 800, &dir.join(format!("shot-lang-{code}-countries.png")));
+        ui.set_country_open(false);
+    }
 }
