@@ -34,6 +34,14 @@ export struct SaverOption {
     note-lines: int,
 }
 
+// A country of the phone login's list.
+export struct CountryItem {
+    flag: string,
+    name: string,
+    // "+7"
+    dial: string,
+}
+
 export struct DialogItem {
     title: string,
     initial: string,
@@ -332,8 +340,14 @@ component Field inherits Rectangle {
     in property <bool> enabled: true;
     in-out property <string> text <=> input.text;
     callback accepted(string);
+    callback edited(string);
     public function grab-focus() {
         input.focus();
+    }
+    // Replaces the text and puts the cursor after it (`bytes` = its UTF-8 length).
+    public function set-text-end(text: string, bytes: int) {
+        input.text = text;
+        input.set-selection-offsets(bytes, bytes);
     }
     height: 40px;
     border-radius: 8px;
@@ -361,6 +375,9 @@ component Field inherits Rectangle {
         selection-background-color: #4a7bb7;
         accepted => {
             root.accepted(self.text);
+        }
+        edited => {
+            root.edited(self.text);
         }
     }
 }
@@ -1759,6 +1776,21 @@ component MessageView inherits VerticalLayout {
 
 component LoginCard inherits Rectangle {
     in property <string> stage;
+    // The phone step: the chosen country, the number's mask, the list.
+    in property <string> phone-flag;
+    in property <string> phone-dial;
+    in property <string> phone-mask;
+    in property <string> phone-country;
+    // Set from Rust (formatting while typing); `phone-text-serial` changes
+    // each time so the field takes it.
+    in property <string> phone-text;
+    in property <int> phone-text-bytes;
+    in property <int> phone-text-serial;
+    in-out property <bool> country-open;
+    in property <[CountryItem]> country-items;
+    callback phone-edited(string);
+    callback country-filter(string);
+    callback country-pick(int);
     // The lock screen ("locked")
     callback unlock(string);
     callback forgot-passcode();
@@ -1873,21 +1905,66 @@ component LoginCard inherits Rectangle {
                         spacing: 14px;
                         VerticalLayout {
                             spacing: 5px;
+                            // Rust formats the number while it is typed.
+                            property <int> serial: root.phone-text-serial;
+                            changed serial => {
+                                phone-field.set-text-end(root.phone-text, root.phone-text-bytes);
+                            }
                             Text {
-                                text: @tr("Phone number in international format");
+                                text: @tr("Phone number");
                                 color: Theme.dim;
                                 font-size: 13px;
                             }
 
-                            phone-field := Field {
-                                placeholder: "+7 900 000 00 00";
-                                enabled: !root.busy;
-                                init => {
-                                    self.grab-focus();
+                            HorizontalLayout {
+                                spacing: 8px;
+                                // The country: flag and code; a click opens the list.
+                                Rectangle {
+                                    width: 104px;
+                                    height: 40px;
+                                    border-radius: 8px;
+                                    background: country-touch.has-hover ? Theme.hover : Theme.input;
+                                    border-width: 1px;
+                                    border-color: Theme.border;
+                                    country-touch := TouchArea {
+                                        mouse-cursor: pointer;
+                                        enabled: !root.busy;
+                                        clicked => {
+                                            root.country-filter("");
+                                            root.country-open = true;
+                                        }
+                                    }
+                                    Text {
+                                        x: 10px;
+                                        width: parent.width - 20px;
+                                        height: parent.height;
+                                        text: root.phone-dial != "" ? root.phone-flag + "  " + root.phone-dial : @tr("Code");
+                                        color: root.phone-dial != "" ? Theme.text : Theme.dim;
+                                        font-size: 15px;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
                                 }
-                                accepted => {
-                                    root.request-code(self.text);
+
+                                phone-field := Field {
+                                    placeholder: root.phone-mask != "" ? root.phone-mask : "+0 000 000 0000";
+                                    enabled: !root.busy;
+                                    init => {
+                                        self.grab-focus();
+                                    }
+                                    edited(text) => {
+                                        root.phone-edited(text);
+                                    }
+                                    accepted => {
+                                        root.request-code(self.text);
+                                    }
                                 }
+                            }
+
+                            if root.phone-country != "": Text {
+                                text: root.phone-country;
+                                color: Theme.dim;
+                                font-size: 12px;
                             }
                         }
 
@@ -2057,6 +2134,96 @@ component LoginCard inherits Rectangle {
                         text: @tr("Re-enter keys");
                         clicked => {
                             root.change-keys();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- The country list (phone step)
+    if root.country-open: Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: #00000073;
+        TouchArea {
+            clicked => {
+                root.country-open = false;
+            }
+        }
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: max(16px, (parent.height - self.height) / 2);
+            width: min(380px, parent.width - 32px);
+            height: min(520px, parent.height - 32px);
+            border-radius: 12px;
+            background: Theme.raised;
+            drop-shadow-blur: 20px;
+            drop-shadow-color: #00000066;
+            TouchArea { }
+            VerticalLayout {
+                padding: 14px;
+                spacing: 10px;
+                Text {
+                    text: @tr("Country");
+                    color: Theme.text;
+                    font-size: 17px;
+                    font-weight: 600;
+                }
+
+                country-search := Field {
+                    placeholder: @tr("Search by name or code");
+                    init => {
+                        self.grab-focus();
+                    }
+                    edited(text) => {
+                        root.country-filter(text);
+                    }
+                    accepted => {
+                        root.country-pick(0);
+                    }
+                }
+
+                ListView {
+                    for item[index] in root.country-items: Rectangle {
+                        height: 40px;
+                        border-radius: 8px;
+                        background: row-touch.has-hover ? Theme.hover : transparent;
+                        row-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.country-pick(index);
+                            }
+                        }
+                        Text {
+                            x: 10px;
+                            width: 28px;
+                            height: parent.height;
+                            text: item.flag;
+                            font-size: 18px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            x: 44px;
+                            width: parent.width - 44px - 70px;
+                            height: parent.height;
+                            text: item.name;
+                            color: Theme.text;
+                            font-size: 15px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            x: parent.width - 70px;
+                            width: 60px;
+                            height: parent.height;
+                            text: item.dial;
+                            color: Theme.dim;
+                            font-size: 14px;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
                         }
                     }
                 }
@@ -2910,6 +3077,19 @@ component SettingsPanel inherits Rectangle {
 
 export component AppWindow inherits Window {
     in property <string> window-title: "Oxigram";
+    // The phone step's country (see phone.rs)
+    in property <string> phone-flag;
+    in property <string> phone-dial;
+    in property <string> phone-mask;
+    in property <string> phone-country;
+    in property <string> phone-text;
+    in property <int> phone-text-bytes;
+    in property <int> phone-text-serial;
+    in-out property <bool> country-open;
+    in property <[CountryItem]> country-items;
+    callback phone-edited(string);
+    callback country-filter(string);
+    callback country-pick(int);
     // The interface language's label in the settings
     in property <string> language-label;
     callback cycle-language();
@@ -3474,6 +3654,24 @@ export component AppWindow inherits Window {
 
     if root.stage != "ready": LoginCard {
         stage: root.stage;
+        phone-flag: root.phone-flag;
+        phone-dial: root.phone-dial;
+        phone-mask: root.phone-mask;
+        phone-country: root.phone-country;
+        phone-text: root.phone-text;
+        phone-text-bytes: root.phone-text-bytes;
+        phone-text-serial: root.phone-text-serial;
+        country-open <=> root.country-open;
+        country-items: root.country-items;
+        phone-edited(text) => {
+            root.phone-edited(text);
+        }
+        country-filter(text) => {
+            root.country-filter(text);
+        }
+        country-pick(index) => {
+            root.country-pick(index);
+        }
         phone: root.login-phone;
         hint: root.login-hint;
         error: root.error;
