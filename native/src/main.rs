@@ -16,6 +16,7 @@ mod context_menu;
 mod drafts;
 mod files;
 mod folders;
+mod countries;
 mod format;
 mod i18n;
 mod links;
@@ -25,6 +26,7 @@ mod pictures;
 mod replies;
 mod notify;
 mod passcode;
+mod phone;
 mod profile;
 mod proxy;
 mod reactions;
@@ -310,6 +312,7 @@ fn main() {
     settings::wire(&ui);
     update::wire(&ui);
     passcode::wire(&ui);
+    phone::wire(&ui);
     messages::wire(&ui);
     search::wire(&ui);
     sending::wire(&ui);
@@ -427,6 +430,7 @@ pub(crate) fn relabel() {
         settings::fill(&ui);
         proxy::show_summary(&ui);
         passcode::refresh(&ui);
+        phone::relabel(&ui);
     }
 }
 
@@ -476,7 +480,8 @@ fn wire_login(ui: &AppWindow) {
         login_step(async move { tg().save_keys(id, &hash).await });
     });
     ui.on_request_code(|phone| {
-        let phone = phone.to_string();
+        // "+<country code><number>" from the country picker and the field.
+        let phone = phone::full_number(&phone);
         login_step(async move { tg().request_code(&phone).await });
     });
     ui.on_submit_code(|code| {

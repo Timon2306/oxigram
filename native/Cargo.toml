@@ -93,6 +93,9 @@ gstreamer-app = { version = "0.25", optional = true }
 gstreamer-video = { version = "0.25", optional = true }
 
 [features]
+# Never enabled: marks the country names in countries.rs for the
+# translation check (src/i18n.rs scans the sources for tr!).
+i18n_marks = []
 default = ["gpu"]
 # OpenGL rendering through femtovg. Built in by default so one binary has both
 # renderers; which one runs is chosen at start-up from the "GPU rendering"

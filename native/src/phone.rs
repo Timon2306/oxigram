@@ -53,6 +53,11 @@ pub fn wire(window: &AppWindow) {
     });
 }
 
+/// After a language change: the country's name in the new language.
+pub fn relabel(ui: &AppWindow) {
+    set_country(ui, CURRENT.with(Cell::get));
+}
+
 /// Shows a country (flag, code, mask, name) — after a language change too.
 pub fn set_country(ui: &AppWindow, country: Option<&'static Country>) {
     CURRENT.with(|c| c.set(country));

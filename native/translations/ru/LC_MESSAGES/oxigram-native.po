@@ -2046,3 +2046,12 @@ msgstr "Контактов нет"
 
 msgid "Could not play"
 msgstr "Не удалось воспроизвести"
+
+msgid "Country"
+msgstr "Страна"
+
+msgid "Phone number"
+msgstr "Номер телефона"
+
+msgid "Search by name or code"
+msgstr "Поиск по названию или коду"
