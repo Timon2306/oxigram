@@ -180,6 +180,26 @@ Up to version 0.1 Oxigram drew its window with a WebView (Tauri + Svelte); since
 
 </details>
 
+## Translations
+
+The interface is in English, Russian and Ukrainian; it follows the system's
+language, or the choice in **Settings → General → Language**, and switches
+at once.
+
+To add a language:
+
+1. Copy `native/translations/ru/LC_MESSAGES/oxigram-native.po` to
+   `native/translations/<code>/LC_MESSAGES/oxigram-native.po` (`<code>` is
+   the language's code: `de`, `pl`, `kk`…).
+2. Set `Language:` and `Plural-Forms:` in its header (see the
+   [gettext list](https://www.gnu.org/software/gettext/manual/html_node/Plural-forms.html)),
+   then put your translation in every `msgstr` (keep `{}` and `{n}`).
+   [Poedit](https://poedit.net) opens the file as it is.
+3. Add the language to `LANGUAGES` and `resolve` in `native/src/i18n.rs` and
+   the plural rule to `plural_index`.
+4. `cargo test -p oxigram-native i18n` checks that every text is translated;
+   then open a pull request.
+
 ## Playing fair
 
 Oxigram is an unofficial client built on the Telegram API and is not

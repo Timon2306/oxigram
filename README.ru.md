@@ -182,6 +182,25 @@ native/              программа: окно на Slint и его част�
 
 </details>
 
+## Переводы
+
+Интерфейс на английском, русском и украинском: язык берётся из системы или
+из **Настройки → Общие → Язык** и переключается сразу.
+
+Как добавить язык:
+
+1. Скопируйте `native/translations/ru/LC_MESSAGES/oxigram-native.po` в
+   `native/translations/<код>/LC_MESSAGES/oxigram-native.po` (`<код>` —
+   код языка: `de`, `pl`, `kk`…).
+2. Укажите `Language:` и `Plural-Forms:` в заголовке (см.
+   [список gettext](https://www.gnu.org/software/gettext/manual/html_node/Plural-forms.html))
+   и переведите каждый `msgstr`, сохраняя `{}` и `{n}`. Файл открывается в
+   [Poedit](https://poedit.net) как есть.
+3. Добавьте язык в `LANGUAGES` и `resolve` в `native/src/i18n.rs`, а правило
+   множественного числа в `plural_index`.
+4. `cargo test -p oxigram-native i18n` проверит, что переведено всё, затем
+   откройте pull request.
+
 ## Честная игра
 
 Oxigram — неофициальный клиент на Telegram API, не связанный с Telegram. Он
