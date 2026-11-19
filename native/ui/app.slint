@@ -42,6 +42,19 @@ export struct CountryItem {
     dial: string,
 }
 
+// An inline button under a message, and a row of them.
+export struct KeyButton {
+    text: string,
+    // Opens an address (marked with an arrow)
+    link: bool,
+    row: int,
+    col: int,
+}
+
+export struct ButtonRow {
+    items: [KeyButton],
+}
+
 export struct DialogItem {
     title: string,
     initial: string,
@@ -182,6 +195,8 @@ export struct MessageItem {
     can-edit: bool,
     // The post in Telegram, for what Oxigram cannot draw (`media` says what)
     media-link: string,
+    // Inline buttons (bots, channels)
+    buttons: [ButtonRow],
     // Pictures: one, or an album grid
     cells: [MediaCell],
     media-w: length,
@@ -1420,6 +1435,8 @@ component MessageView inherits VerticalLayout {
     callback open-link(string);
     // A click on the quote of a reply: the answered message.
     callback open-reply(int);
+    // An inline button: message id, row, column.
+    callback press-button(int, int, int);
     callback react(int, string);
     callback want-emoji(string);
     // Selection mode: a click on the bubble picks it instead of acting.
@@ -1464,7 +1481,7 @@ component MessageView inherits VerticalLayout {
             property <length> meta-w: meta-probe.preferred-width + 10px;
             // A short single line keeps the time on the same line, as Telegram does.
             property <bool> inline: !root.m.multiline && root.m.text != "" && measure.preferred-width + self.meta-w <= self.max-text;
-            property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width, react-probe.preferred-width, root.m.track > 0 ? 230px : 0px, root.m.files.length > 0 ? 260px : 0px, root.m.reply ? min(260px, max(reply-who-probe.preferred-width, reply-text-probe.preferred-width) + 14px) : 0px);
+            property <length> content: max(self.inline ? measure.preferred-width + self.meta-w : min(measure.preferred-width, self.max-text), meta-probe.preferred-width, sender.preferred-width, kind.preferred-width, react-probe.preferred-width, root.m.track > 0 ? 230px : 0px, root.m.files.length > 0 ? 260px : 0px, root.m.buttons.length > 0 ? 240px : 0px, root.m.reply ? min(260px, max(reply-who-probe.preferred-width, reply-text-probe.preferred-width) + 14px) : 0px);
             width: self.has-media ? self.mw + 2 * self.mpad : self.wide ? root.max-bubble : min(root.max-bubble, self.content + 2 * self.pad-x + 1px);
             background: self.bare ? transparent : root.m.outgoing ? Theme.bubble-out : Theme.bubble-in;
             border-top-left-radius: 18px;
@@ -1745,6 +1762,38 @@ component MessageView inherits VerticalLayout {
                     link-clicked(link) => {
                         if (!root.select-mode) {
                             root.open-link(link);
+                        }
+                    }
+                }
+                // Inline buttons, row by row.
+                for row in root.m.buttons: HorizontalLayout {
+                    spacing: 4px;
+                    for b in row.items: Rectangle {
+                        height: 34px;
+                        horizontal-stretch: 1;
+                        border-radius: 8px;
+                        background: key-touch.has-hover ? #ffffff2e : #ffffff17;
+                        key-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                if (root.select-mode) {
+                                    root.pick(root.m.id);
+                                } else {
+                                    root.press-button(root.m.id, b.row, b.col);
+                                }
+                            }
+                        }
+                        Text {
+                            x: 8px;
+                            width: parent.width - 16px;
+                            height: parent.height;
+                            text: b.link ? b.text + " ↗" : b.text;
+                            color: root.m.outgoing ? Theme.text-out : Theme.accent;
+                            font-size: 14px * Theme.scale;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            overflow: elide;
                         }
                     }
                 }
@@ -3552,6 +3601,8 @@ export component AppWindow inherits Window {
     callback open-link(string);
     // The quote of a reply: jump to the answered message
     callback open-reply(int);
+    // Inline buttons under messages
+    callback press-button(int, int, int);
     callback viewer-close();
     callback viewer-save();
     callback viewer-menu(length, length);
@@ -4399,6 +4450,9 @@ export component AppWindow inherits Window {
                                     }
                                     open-reply(id) => {
                                         root.open-reply(id);
+                                    }
+                                    press-button(id, r, c) => {
+                                        root.press-button(id, r, c);
                                     }
                                     react(message, key) => {
                                         root.react(message, key);

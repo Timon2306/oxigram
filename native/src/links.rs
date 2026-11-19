@@ -206,6 +206,12 @@ fn escape_target(target: &str) -> String {
     out
 }
 
+/// Asks before opening an address the user has not seen (hidden links,
+/// inline buttons, bot answers).
+pub fn confirm_url(url: &str) {
+    open(&format!("oxi-hidden:{url}"));
+}
+
 /// A click on a link.
 fn open(target: &str) {
     if let Some(url) = target.strip_prefix("oxi-hidden:") {

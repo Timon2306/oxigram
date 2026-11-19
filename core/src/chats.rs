@@ -1136,6 +1136,7 @@ pub fn message_row(message: &Message, peer_id: i64) -> MessageRow {
         duration: info.duration,
         waveform: info.waveform,
         track: info.track,
+        buttons: buttons(message),
         grouped_id: message.grouped_id().map(|id| id.to_string()),
         reply_to_id: message.reply_to_message_id(),
         entities: if message.action().is_some() {
@@ -1156,6 +1157,39 @@ pub fn message_row(message: &Message, peer_id: i64) -> MessageRow {
 
 pub fn dialog_id(id: PeerId) -> i64 {
     id.bot_api_dialog_id().unwrap_or_default()
+}
+
+/// The inline keyboard of a message, row by row.
+fn buttons(message: &Message) -> Vec<Vec<cache::InlineButton>> {
+    use tl::enums::InlineButtonType as T;
+    let Some(tl::enums::ReplyMarkup::ReplyInlineMarkup(markup)) = message.reply_markup() else {
+        return Vec::new();
+    };
+    markup
+        .rows
+        .into_iter()
+        .map(|row| {
+            let tl::enums::KeyboardInlineButtonRow::Row(row) = row;
+            row.buttons
+                .into_iter()
+                .map(|button| {
+                    let tl::enums::KeyboardInlineButton::Button(button) = button;
+                    let (kind, value) = match button.r#type {
+                        T::Url(t) => ("url", t.url),
+                        T::UrlAuth(t) => ("url", t.url),
+                        T::WebView(t) => ("url", t.url),
+                        T::Callback(t) if !t.requires_password => {
+                            ("callback", t.data.iter().map(|b| format!("{b:02x}")).collect())
+                        }
+                        T::Copy(t) => ("copy", t.copy_text),
+                        T::UserProfile(t) => ("user", t.user_id.to_string()),
+                        _ => ("other", String::new()),
+                    };
+                    cache::InlineButton { text: button.text, kind: kind.to_owned(), value }
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// One-line text for the dialog list; "[kind]" when only the kind describes it.

@@ -955,6 +955,7 @@ mod tests {
             duration: 65,
             waveform: Vec::new(),
             track: String::new(),
+            buttons: Vec::new(),
             grouped_id: None,
             reactions: Vec::new(),
             reply_to_id: None,

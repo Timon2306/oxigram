@@ -11,6 +11,7 @@
 
 mod audio;
 mod autostart;
+mod buttons;
 mod contacts;
 mod context_menu;
 mod drafts;
@@ -320,6 +321,7 @@ fn main() {
     pictures::wire(&ui);
     files::wire(&ui);
     links::wire(&ui);
+    buttons::wire(&ui);
     let weak = ui.as_weak();
     ui.on_latin_shortcut(move |text| {
         let Some(latin) = latin_shortcut(&text) else { return false };
@@ -1275,6 +1277,7 @@ impl App {
             text: text.into(),
             media: label.into(),
             media_link: media_link.into(),
+            buttons: buttons::rows(m),
             track: track.kind,
             track_title: track.title.into(),
             track_total: track.total.into(),

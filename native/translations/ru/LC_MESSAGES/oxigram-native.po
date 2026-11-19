@@ -2082,3 +2082,9 @@ msgstr "{} — откройте в приложении Telegram"
 
 msgid "{} — open in Telegram"
 msgstr "{} — открыть в Telegram"
+
+msgid "Copied"
+msgstr "Скопировано"
+
+msgid "This button works only in the Telegram app"
+msgstr "Эта кнопка работает только в приложении Telegram"

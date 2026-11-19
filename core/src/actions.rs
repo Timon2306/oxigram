@@ -719,6 +719,33 @@ pub async fn search_peers(tg: &Telegram, query: &str, limit: i32) -> Result<Vec<
     Ok(out)
 }
 
+/// What a bot answered to a pressed callback button.
+pub struct ButtonAnswer {
+    pub message: Option<String>,
+    /// Show `message` as a dialog rather than a toast.
+    pub alert: bool,
+    pub url: Option<String>,
+}
+
+/// Presses a callback button (`data` in hex) of a message.
+pub async fn press_button(tg: &Telegram, peer_id: i64, message_id: i32, data: &str) -> Result<ButtonAnswer, UiError> {
+    let data: Vec<u8> = (0..data.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(data.get(i..i + 2)?, 16).ok())
+        .collect();
+    let handles = tg.handles().await?;
+    let peer = resolve_peer(&handles, peer_id).await?;
+    let request = tl::functions::messages::GetBotCallbackAnswer {
+        game: false,
+        peer: peer.into(),
+        msg_id: message_id,
+        data: Some(data),
+        password: None,
+    };
+    let tl::enums::messages::BotCallbackAnswer::Answer(answer) = handles.client.invoke(&request).await?;
+    Ok(ButtonAnswer { message: answer.message.filter(|m| !m.is_empty()), alert: answer.alert, url: answer.url })
+}
+
 /// Joins a public channel or supergroup ("Подписаться" / "Вступить").
 pub async fn join_channel(tg: &Telegram, peer_id: i64) -> Result<(), UiError> {
     let handles = tg.handles().await?;

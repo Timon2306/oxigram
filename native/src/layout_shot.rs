@@ -78,6 +78,15 @@ fn layout_shot() {
             tail: true,
             media: if i == 5 { "Фото".into() } else { "".into() },
             linked: i == 1,
+            buttons: if i == 2 {
+                let key = |text: &str, link: bool, row: i32, col: i32| crate::KeyButton { text: text.into(), link, row, col };
+                ModelRc::new(VecModel::from(vec![
+                    crate::ButtonRow { items: ModelRc::new(VecModel::from(vec![key("Купить", false, 0, 0), key("Сайт", true, 0, 1)])) },
+                    crate::ButtonRow { items: ModelRc::new(VecModel::from(vec![key("Подробнее о магазине", false, 1, 0)])) },
+                ]))
+            } else {
+                Default::default()
+            },
             reply: i >= 2,
             reply_who: if i == 3 { "Вы".into() } else { "Иван Петров".into() },
             reply_text: "Текст сообщения, на которое ответили, длинный, чтобы обрезаться в одну строку".into(),

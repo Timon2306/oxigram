@@ -97,6 +97,22 @@ pub struct MessageRow {
     pub entities: Vec<Entity>,
     /// The link preview under the text.
     pub web: Option<WebPreview>,
+    /// Inline buttons under the message (bots, channels), row by row. Not
+    /// cached either (see `waveform`); fresh history brings them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub buttons: Vec<Vec<InlineButton>>,
+}
+
+/// An inline button.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InlineButton {
+    pub text: String,
+    /// "url", "callback" (value: the data in hex), "copy" (value: the
+    /// text), "user" (value: the user's ID), or "other" (value empty: works
+    /// only in Telegram's own apps).
+    pub kind: String,
+    pub value: String,
 }
 
 /// One span of formatting or a link inside a message text.
@@ -487,6 +503,7 @@ pub fn load_messages(
                 duration: row.get(19)?,
                 waveform: Vec::new(),
                 track: String::new(),
+                buttons: Vec::new(),
             })
         },
     )?
@@ -545,6 +562,7 @@ mod tests {
             duration: 0,
             waveform: Vec::new(),
             track: String::new(),
+            buttons: Vec::new(),
         }
     }
 
