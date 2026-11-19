@@ -88,6 +88,28 @@ pub fn day(unix: i64) -> String {
     }
 }
 
+/// A number with the language's thousands separator: 12,345 / 12 345.
+pub fn number(n: i64) -> String {
+    let digits = n.unsigned_abs().to_string();
+    let separator = if crate::i18n::current() == "en" { ',' } else { '\u{00A0}' };
+    let mut out = String::new();
+    if n < 0 {
+        out.push('-');
+    }
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(separator);
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// The decimal separator of the language ("1.5 MB" / "1,5 МБ").
+pub fn decimal(text: String) -> String {
+    if crate::i18n::current() == "en" { text } else { text.replace('.', ",") }
+}
+
 pub fn plural<'a>(n: i64, one: &'a str, few: &'a str, many: &'a str) -> &'a str {
     let (tens, ones) = (n % 100, n % 10);
     if (11..=14).contains(&tens) {

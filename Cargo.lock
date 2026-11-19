@@ -4691,6 +4691,7 @@ dependencies = [
  "slint",
  "slint-build",
  "symphonia",
+ "sys-locale",
  "tauri-winres",
  "tauri-winrt-notification",
  "tokio",

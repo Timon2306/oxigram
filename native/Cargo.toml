@@ -48,6 +48,8 @@ cpal = "0.16"
 # and one shared library less keeps the Linux build starting on more systems.
 tray-icon = { version = "0.24", default-features = false, features = ["gtk"] }
 notify-rust = "4.19"
+# The system's language, for the interface's default language.
+sys-locale = "0.3"
 
 # In-app video on Windows 8+ (Media Foundation's media engine, WIC frames).
 [target.'cfg(windows)'.dependencies]

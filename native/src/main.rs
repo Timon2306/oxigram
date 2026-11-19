@@ -17,6 +17,7 @@ mod drafts;
 mod files;
 mod folders;
 mod format;
+mod i18n;
 mod links;
 mod menus;
 mod messages;
@@ -228,6 +229,9 @@ fn main() {
 
     select_renderer();
     let ui = AppWindow::new().expect("window");
+    // The language: the saved choice, or the system's.
+    i18n::install();
+    i18n::set_language(&settings::Settings::load().language);
     let dialog_model = Rc::new(VecModel::default());
     let message_model = Rc::new(VecModel::default());
     ui.set_dialogs(ModelRc::from(dialog_model.clone()));
@@ -406,6 +410,23 @@ fn main() {
         }
     }
     slint::run_event_loop_until_quit().expect("event loop");
+}
+
+/// After the language changed: rebuilds what Rust wrote into the window.
+pub(crate) fn relabel() {
+    with_app(|app| {
+        app.refresh_dialogs();
+        let items: Vec<MessageItem> = (0..app.messages.len()).map(|i| app.item(i)).collect();
+        app.message_model.set_vec(items);
+        if let Some(ui) = app.ui.upgrade() {
+            app.show_chat_rights(&ui);
+        }
+    });
+    if let Some(ui) = ui() {
+        settings::fill(&ui);
+        proxy::show_summary(&ui);
+        passcode::refresh(&ui);
+    }
 }
 
 /// Forgets what the window shows of the account (on lock): chats, messages,

@@ -64,6 +64,8 @@ pub struct Settings {
     /// Minutes of idle time before the passcode locks the app (0 = never).
     #[serde(rename = "autoLock")]
     pub auto_lock: u32,
+    /// "" (the system's), "en", "ru" or "uk".
+    pub language: String,
 }
 
 impl Default for Settings {
@@ -82,6 +84,7 @@ impl Default for Settings {
             auto_update: true,
             update_checked: 0,
             auto_lock: 60,
+            language: String::new(),
         }
     }
 }
@@ -198,8 +201,36 @@ fn group(key: &str) -> &'static str {
     }
 }
 
+/// "Как в системе" or the language's own name.
+pub fn language_label(setting: &str) -> String {
+    match crate::i18n::LANGUAGES.iter().find(|(code, _)| *code == setting) {
+        Some((_, name)) => (*name).to_owned(),
+        None => oxigram_core::tr!("As in the system"),
+    }
+}
+
+/// "Язык": the system's → English → Русский → Українська → the system's.
+fn cycle_language() {
+    let order = ["", "en", "ru", "uk"];
+    let Some(setting) = with_app(|app| {
+        let at = order.iter().position(|c| *c == app.settings.language).unwrap_or(0);
+        app.settings.language = order[(at + 1) % order.len()].to_owned();
+        app.settings.save();
+        app.settings.language.clone()
+    }) else {
+        return;
+    };
+    crate::i18n::set_language(&setting);
+    if let Some(ui) = ui() {
+        ui.set_language_label(language_label(&setting).into());
+    }
+    crate::relabel();
+}
+
 pub fn wire(window: &AppWindow) {
     window.on_cycle_text_size(cycle_text_size);
+    window.on_cycle_language(cycle_language);
+    window.set_language_label(language_label(&Settings::load().language).into());
     apply_look(window);
     // "Экономия памяти" in the burger menu opens the settings on that page.
     window.on_open_saver(|| {

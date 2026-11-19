@@ -2349,6 +2349,9 @@ component SettingsCard inherits Rectangle {
 
 component SettingsPanel inherits Rectangle {
     in-out property <string> page: "main";
+    // "Язык": the current choice
+    in property <string> language-label;
+    callback cycle-language();
     // "Код-пароль"
     in property <bool> passcode-on;
     in property <string> passcode-status;
@@ -2743,6 +2746,15 @@ component SettingsPanel inherits Rectangle {
 
             if root.page == "general": SettingsCard {
                 SettingsRow {
+                    label: @tr("Language");
+                    value: root.language-label;
+                    tint: #4a90d9;
+                    icon: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18";
+                    clicked => {
+                        root.cycle-language();
+                    }
+                }
+                SettingsRow {
                     label: "Размер текста";
                     value: root.text-size;
                     tint: #f0a33a;
@@ -2898,6 +2910,9 @@ component SettingsPanel inherits Rectangle {
 
 export component AppWindow inherits Window {
     in property <string> window-title: "Oxigram";
+    // The interface language's label in the settings
+    in property <string> language-label;
+    callback cycle-language();
     // The local passcode
     in property <bool> passcode-on;
     in property <string> passcode-status;
@@ -4797,6 +4812,10 @@ export component AppWindow inherits Window {
         options: root.saver-options;
         cache-text: root.cache-text;
         version: root.version;
+        language-label: root.language-label;
+        cycle-language => {
+            root.cycle-language();
+        }
         update-version: root.update-version;
         update-status: root.update-status;
         update-busy: root.update-busy;
