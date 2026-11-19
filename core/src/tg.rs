@@ -352,6 +352,7 @@ impl Telegram {
             }
         }
         self.forget_account(&mut inner).await?;
+        self.drop_passcode()?;
         self.current(&mut inner).await
     }
 
@@ -359,7 +360,26 @@ impl Telegram {
     pub async fn forget_local_account(&self) -> Result<UiState, UiError> {
         let mut inner = self.inner.lock().await;
         self.forget_account(&mut inner).await?;
+        self.drop_passcode()?;
         self.current(&mut inner).await
+    }
+
+    /// After a sign-out the passcode goes with the account's data; the API
+    /// keys stay (as a plain file again).
+    fn drop_passcode(&self) -> Result<(), UiError> {
+        if !self.passcode_on() {
+            return Ok(());
+        }
+        if let Some(key) = self.key()
+            && let Some(keys) = self.sealed_keys(&key)?
+        {
+            config::save_keys(&self.config_dir, &keys)?;
+        }
+        for path in [vault::path(&self.config_dir), self.config_dir.join(KEYS_SEALED), self.data_dir.join(DB_SEALED)] {
+            vault::shred(&path);
+        }
+        self.set_key(None);
+        Ok(())
     }
 
     /// Resolves the screen to show, connecting and asking Telegram whether
@@ -982,6 +1002,47 @@ mod tests {
         let db = store::open(data_dir.join(DB_FILE)).unwrap();
         let rows = store::chats::load_dialogs(&db.lock().unwrap()).unwrap();
         assert_eq!(rows[0].title, "very-secret-title");
+        drop(db);
+        drop(telegram);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Signing out leaves nothing of the account: no session keys, chats,
+    /// messages or pictures; the API keys stay.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn sign_out_forgets_the_account() {
+        let dir = std::env::temp_dir().join(format!("oxigram-signout-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (config_dir, data_dir, cache_dir) = (dir.join("config"), dir.join("data"), dir.join("cache"));
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(cache_dir.join("avatars")).unwrap();
+        std::fs::write(cache_dir.join("avatars").join("a.jpg"), b"picture").unwrap();
+        let keys = ApiKeys::parse(1, "0123456789abcdef0123456789abcdef").unwrap();
+        config::save_keys(&config_dir, &keys).unwrap();
+        {
+            let db = store::open(data_dir.join(DB_FILE)).unwrap();
+            let mut conn = db.lock().unwrap();
+            store::chats::save_dialogs(&mut conn, 0, &[dialog("very-secret-title")]).unwrap();
+            conn.execute("INSERT INTO dc_option VALUES (2, '149.154.167.51:443', '[::]:443', ?1)", [vec![7u8; 256]]).unwrap();
+        }
+
+        let telegram = Telegram::new(config_dir.clone(), data_dir.clone(), cache_dir.clone());
+        {
+            let mut inner = telegram.inner.lock().await;
+            telegram.forget_account(&mut inner).await.unwrap();
+        }
+        telegram.drop_passcode().unwrap();
+        let (db, _) = telegram.open_session().unwrap();
+        {
+            let conn = db.lock().unwrap();
+            let count = |table: &str| -> i64 { conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap() };
+            assert_eq!(count("dialogs"), 0);
+            assert_eq!(count("messages"), 0);
+            assert_eq!(count("dc_option"), 0);
+        }
+        assert!(!file_has(&data_dir, b"very-secret-title"));
+        assert!(!cache_dir.join("avatars").join("a.jpg").exists());
+        assert!(config::load_keys(&config_dir) == Some(keys));
         drop(db);
         drop(telegram);
         let _ = std::fs::remove_dir_all(&dir);

@@ -124,6 +124,13 @@ impl SqliteSession {
              DELETE FROM messages;
              COMMIT;",
         )?;
+        // Rewrites the file and empties the WAL: deleted chats and keys must
+        // not stay readable in free pages.
+        {
+            let conn = self.conn()?;
+            conn.execute_batch("VACUUM")?;
+            let _ = conn.pragma_update(None, "wal_checkpoint", "TRUNCATE");
+        }
         let mut cache = self.cache()?;
         cache.home_dc = DEFAULT_DC;
         cache.dc_options.clear();
