@@ -1,0 +1,65 @@
+name: AppImage check
+
+# Manual only: starts the AppImage of a published release inside other Linux
+# distributions (no display: a virtual X server) and prints why it fails.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. v0.3.0
+        required: true
+        default: v0.3.0
+
+jobs:
+  run:
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["alt:p10", "alt:p11", "debian:bullseye", "fedora:39"]
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    steps:
+      - name: Tools
+        shell: sh
+        run: |
+          if command -v apt-get >/dev/null && [ -f /etc/altlinux-release ]; then
+            apt-get update && apt-get install -y wget xvfb-run xorg-xvfb file glibc-utils || apt-get install -y wget xvfb file
+          elif command -v apt-get >/dev/null; then
+            apt-get update && apt-get install -y wget xvfb xauth file
+          else
+            dnf install -y wget xorg-x11-server-Xvfb xorg-x11-xauth file which
+          fi
+          cat /etc/os-release | head -3
+          ldd --version | head -1
+
+      - name: Download
+        shell: sh
+        run: |
+          wget -q "https://github.com/Timon2306/oxigram/releases/download/${{ inputs.tag }}/$(wget -qO- https://api.github.com/repos/Timon2306/oxigram/releases/tags/${{ inputs.tag }} | grep -o '"name": *"[^"]*AppImage"' | cut -d'"' -f4)" -O oxigram.AppImage
+          chmod +x oxigram.AppImage
+          ls -l oxigram.AppImage
+
+      - name: Libraries
+        shell: sh
+        run: |
+          ./oxigram.AppImage --appimage-extract >/dev/null
+          bin=$(find squashfs-root -type f -name 'oxigram*' -perm -u+x | grep -v AppRun | head -1)
+          echo "binary: $bin"
+          file "$bin"
+          echo "--- missing libraries:"
+          LD_LIBRARY_PATH=squashfs-root/usr/lib ldd "$bin" | grep -i "not found" || echo "(none)"
+          echo "--- glibc symbols needed:"
+          objdump -T "$bin" 2>/dev/null | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -3 || true
+
+      - name: Start
+        shell: sh
+        run: |
+          export APPIMAGE_EXTRACT_AND_RUN=1 RUST_BACKTRACE=1
+          if command -v xvfb-run >/dev/null; then
+            timeout 20 xvfb-run -a ./oxigram.AppImage; code=$?
+          else
+            Xvfb :99 & sleep 2; DISPLAY=:99 timeout 20 ./oxigram.AppImage; code=$?
+          fi
+          echo "exit code: $code (124 = still running after 20 s, i.e. it started)"
