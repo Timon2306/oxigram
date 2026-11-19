@@ -2055,3 +2055,30 @@ msgstr "Номер телефона"
 
 msgid "Search by name or code"
 msgstr "Поиск по названию или коду"
+
+msgid "Paid post"
+msgstr "Платный пост"
+
+msgid "Story"
+msgstr "История"
+
+msgid "Giveaway"
+msgstr "Розыгрыш"
+
+msgid "Invoice"
+msgstr "Счёт"
+
+msgid "Game"
+msgstr "Игра"
+
+msgid "Checklist"
+msgstr "Чек-лист"
+
+msgid "Unsupported message"
+msgstr "Неподдерживаемое сообщение"
+
+msgid "{} — open it in the Telegram app"
+msgstr "{} — откройте в приложении Telegram"
+
+msgid "{} — open in Telegram"
+msgstr "{} — открыть в Telegram"

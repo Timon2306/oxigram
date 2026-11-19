@@ -69,11 +69,57 @@ impl MediaInfo {
     }
 }
 
+/// The raw media of a message.
+fn raw_media(message: &Message) -> Option<tl::enums::MessageMedia> {
+    match &message.raw {
+        tl::enums::Message::Message(m) => m.media.clone(),
+        _ => None,
+    }
+}
+
+/// The media to show and download: grammers' own, or the photo / video
+/// inside paid media when Telegram sent it (free or already bought).
+pub fn media_of(message: &Message) -> Option<Media> {
+    if let Some(media) = message.media() {
+        return Some(media);
+    }
+    match raw_media(message)? {
+        tl::enums::MessageMedia::PaidMedia(paid) => paid.extended_media.into_iter().find_map(|extended| match extended {
+            tl::enums::MessageExtendedMedia::Media(inner) => Media::from_raw(inner.media),
+            tl::enums::MessageExtendedMedia::Preview(_) => None,
+        }),
+        _ => None,
+    }
+}
+
+/// What a message whose media grammers does not know holds: "paid",
+/// "story", "giveaway", "invoice", "game", "todo", "unsupported"; `None`
+/// when it holds no media at all.
+fn other_kind(message: &Message) -> Option<&'static str> {
+    use tl::enums::MessageMedia as M;
+    Some(match raw_media(message)? {
+        M::Empty | M::WebPage(_) => return None,
+        M::PaidMedia(_) => "paid",
+        M::Story(_) => "story",
+        M::Giveaway(_) | M::GiveawayResults(_) => "giveaway",
+        M::Invoice(_) => "invoice",
+        M::Game(_) => "game",
+        M::ToDo(_) => "todo",
+        _ => "unsupported",
+    })
+}
+
 pub fn describe(message: &Message) -> MediaInfo {
     if message.action().is_some() {
         return MediaInfo::plain("service");
     }
-    match message.media() {
+    let media = media_of(message);
+    if media.is_none()
+        && let Some(kind) = other_kind(message)
+    {
+        return MediaInfo::plain(kind);
+    }
+    match media {
         // A link preview is still an ordinary text message.
         None | Some(Media::WebPage(_)) => MediaInfo::plain("text"),
         Some(Media::Photo(photo)) => MediaInfo {

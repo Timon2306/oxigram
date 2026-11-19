@@ -1245,6 +1245,17 @@ impl App {
             .find(|p| !pictures::has_picture(p) && !audio::is_track(p) && !files::is_file(p))
             .and_then(|p| format::kind_label(&p.kind))
             .unwrap_or_default();
+        // What Oxigram cannot draw (paid posts, stories, giveaways…): say so,
+        // and offer the post in Telegram instead of an empty bubble.
+        let foreign = format::is_foreign(&m.kind);
+        let media_link = if foreign { format::post_link(m.peer_id, m.id).unwrap_or_default() } else { String::new() };
+        let label = if !foreign {
+            label
+        } else if media_link.is_empty() {
+            oxigram_core::tr!("{} — open it in the Telegram app", label)
+        } else {
+            oxigram_core::tr!("{} — open in Telegram", label)
+        };
         let reaction_rows = self.reaction_rows(&parts);
         // Links only for a single message's text (an album caption keeps plain text).
         let rich = if parts.len() == 1 {
@@ -1263,6 +1274,7 @@ impl App {
             multiline: text.contains('\n'),
             text: text.into(),
             media: label.into(),
+            media_link: media_link.into(),
             track: track.kind,
             track_title: track.title.into(),
             track_total: track.total.into(),

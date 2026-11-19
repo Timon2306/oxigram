@@ -181,8 +181,27 @@ pub fn kind_label(kind: &str) -> Option<String> {
         "poll" => tr!("Poll"),
         "location" => tr!("Location"),
         "dice" => tr!("Dice"),
+        "paid" => tr!("Paid post"),
+        "story" => tr!("Story"),
+        "giveaway" => tr!("Giveaway"),
+        "invoice" => tr!("Invoice"),
+        "game" => tr!("Game"),
+        "todo" => tr!("Checklist"),
+        "unsupported" => tr!("Unsupported message"),
         _ => tr!("Attachment"),
     })
+}
+
+/// Kinds Oxigram cannot draw: the bubble offers the post in Telegram.
+pub fn is_foreign(kind: &str) -> bool {
+    matches!(kind, "paid" | "story" | "giveaway" | "invoice" | "game" | "todo" | "unsupported")
+}
+
+/// The post's address in Telegram (channels and supergroups only):
+/// t.me/c/<channel>/<message>.
+pub fn post_link(peer_id: i64, message_id: i32) -> Option<String> {
+    let channel = -peer_id - 1_000_000_000_000;
+    (channel > 0).then(|| format!("https://t.me/c/{channel}/{message_id}"))
 }
 
 /// Dialog previews arrive as "[kind]" when the message has no text.
@@ -191,6 +210,10 @@ pub fn preview_text(text: &str) -> String {
     let kind = line.strip_prefix('[').and_then(|rest| rest.strip_suffix(']'));
     // Only "[photo]"-style markers; "[text in brackets]" stays text.
     if let Some(kind) = kind.filter(|k| !k.is_empty() && k.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')) {
+        // A post with nothing the list can show (older caches wrote "[text]").
+        if kind == "text" {
+            return tr!("Message");
+        }
         if let Some(label) = kind_label(kind) {
             return label;
         }

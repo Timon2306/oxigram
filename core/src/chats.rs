@@ -358,7 +358,7 @@ pub async fn message_file(
         .flatten()
         .ok_or_else(no_picture)?;
     let ext = media::describe(&message).file_ext.ok_or_else(no_picture)?;
-    let media = message.media().ok_or_else(no_picture)?;
+    let media = media::media_of(&message).ok_or_else(no_picture)?;
 
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(format!("{peer_id}_{message_id}.{ext}"));
@@ -495,7 +495,7 @@ pub async fn save_file(
         .next()
         .flatten()
         .ok_or_else(no_file)?;
-    let media = message.media().ok_or_else(no_file)?;
+    let media = media::media_of(&message).ok_or_else(no_file)?;
     if media::is_ephemeral(&media) {
         return Err(UiError::new(
             "MEDIA_EPHEMERAL",

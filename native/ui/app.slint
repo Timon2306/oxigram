@@ -180,6 +180,8 @@ export struct MessageItem {
     multiline: bool,
     // Own text message: "Изменить" in its menu
     can-edit: bool,
+    // The post in Telegram, for what Oxigram cannot draw (`media` says what)
+    media-link: string,
     // Pictures: one, or an album grid
     cells: [MediaCell],
     media-w: length,
@@ -1664,6 +1666,14 @@ component MessageView inherits VerticalLayout {
                     }
                 }
                 if root.m.media != "": Text {
+                    TouchArea {
+                        enabled: root.m.media-link != "" && !root.select-mode;
+                        mouse-cursor: self.enabled ? pointer : default;
+                        clicked => {
+                            root.open-link(root.m.media-link);
+                        }
+                    }
+                    wrap: word-wrap;
                     text: root.m.media;
                     color: root.m.outgoing ? #a9d4ff : Theme.accent;
                     font-size: 14px * Theme.scale;
