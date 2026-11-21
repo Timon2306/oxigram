@@ -230,6 +230,9 @@ pub fn message_preview(message: &MessageRow) -> String {
 }
 
 pub fn error(err: &UiError) -> String {
+    // A session that is not signed in any more sends the window back to the
+    // sign-in (wherever the error is shown).
+    crate::menus::session_lost(&err.code);
     if let Some(seconds) = err.wait_seconds {
         let wait = if seconds < 60 {
             tr!("{} s", seconds)

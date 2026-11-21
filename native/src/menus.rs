@@ -288,6 +288,52 @@ fn sign_out() {
     });
 }
 
+/// An error saying this session is not signed in: the window goes back to
+/// the sign-in instead of showing what it had (true when handled).
+/// Revoked sessions are forgotten here at once; "not signed in" first asks
+/// Telegram, and only a session that really is not authorized is dropped.
+pub(crate) fn session_lost(code: &str) -> bool {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static CHECKING: AtomicBool = AtomicBool::new(false);
+    let gone = oxigram_core::tg::session_gone(code);
+    if !gone && code != "NOT_AUTHORIZED" {
+        return false;
+    }
+    // Several requests fail at once: one check is enough.
+    if CHECKING.swap(true, Ordering::SeqCst) {
+        return true;
+    }
+    slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+        run(
+            async move {
+                if !gone {
+                    match tg().state().await {
+                        // Still signed in, or no answer (offline): keep everything.
+                        Ok(state @ oxigram_core::tg::UiState::Ready { .. }) => return Ok(Some(state)),
+                        Err(err) => return Err(err),
+                        Ok(_) => {}
+                    }
+                }
+                tg().forget_local_account().await.map(|_| None)
+            },
+            |result| {
+                CHECKING.store(false, Ordering::SeqCst);
+                match result {
+                    // Still signed in after all: nothing to do.
+                    Ok(Some(_)) => {}
+                    Ok(None) => {
+                        let state = oxigram_core::tg::UiState::NeedPhone;
+                        signed_out(state);
+                    }
+                    // Offline: nothing is dropped; the next request tries again.
+                    Err(_) => {}
+                }
+            },
+        );
+    });
+    true
+}
+
 /// After a sign-out (here, or the session ended elsewhere): the window
 /// forgets the account and shows the sign-in, without a restart.
 pub(crate) fn signed_out(state: oxigram_core::tg::UiState) {
