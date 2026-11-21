@@ -45,12 +45,18 @@ jobs:
           - os: macos-latest
             name: macos-apple-silicon
             target: aarch64-apple-darwin
+            # Apple Silicon Macs start at macOS 11.
+            macos-min: "11.0"
             features: ""
             formats: dmg
             glob: "*.dmg"
           - os: macos-latest
             name: macos-intel
             target: x86_64-apple-darwin
+            # Intel Macs from High Sierra on: AVFoundation's player and video
+            # output (10.8), NSUserNotification (10.8), winit and Rust's std
+            # (10.12) all exist there.
+            macos-min: "10.13"
             features: ""
             formats: dmg
             glob: "*.dmg"
@@ -71,7 +77,17 @@ jobs:
         run: cargo install cargo-packager --locked
 
       - name: Build
+        env:
+          # Links (and builds the C parts: SQLite, ring) for the oldest macOS
+          # the installer accepts; ignored elsewhere.
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macos-min }}
         run: cargo build --release --locked -p oxigram-native --target ${{ matrix.target }} ${{ matrix.features }}
+
+      # The packager's macOS minimum is one setting for both Mac builds.
+      - name: macOS minimum for the installer
+        if: runner.os == 'macOS'
+        shell: bash
+        run: sed -i '' 's/^minimum-system-version = .*/minimum-system-version = "${{ matrix.macos-min }}"/' native/Cargo.toml
 
       # Packages the binary built above (target/release) into target/packager.
       - name: Package
@@ -206,8 +222,8 @@ jobs:
             - `oxigram-windows-arm64-…-setup.exe` — Windows 11 на ARM (Snapdragon, Surface Pro X)
             - `oxigram-linux-x64-….deb` — Ubuntu, Debian, Mint (Ubuntu 20.04 / Debian 11 и новее)
             - `oxigram-linux-x64-….AppImage` — другие дистрибутивы (`chmod +x`, затем запустить); нужен glibc 2.31+ (ALT p10, Fedora 33 и новее)
-            - `oxigram-macos-apple-silicon-….dmg` — Mac на M1/M2/M3/M4
-            - `oxigram-macos-intel-….dmg` — Mac на Intel
+            - `oxigram-macos-apple-silicon-….dmg` — Mac на M1/M2/M3/M4 (macOS 11+)
+            - `oxigram-macos-intel-….dmg` — Mac на Intel (macOS 10.13 High Sierra и новее)
 
             Сборки без цифровой подписи:
             - Windows: если SmartScreen предупреждает — «Подробнее» → «Выполнить в любом случае».

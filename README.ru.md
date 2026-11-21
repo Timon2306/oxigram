@@ -94,8 +94,8 @@ Rust сам говорит с серверами Telegram по MTProto и сам
 | `oxigram-windows-arm64-…-setup.exe` | Windows 11 на ARM |
 | `oxigram-linux-x64-….deb` | Ubuntu 20.04+, Debian 11+, Mint |
 | `oxigram-linux-x64-….AppImage` | другие дистрибутивы (glibc 2.31+: ALT p10, Fedora 33 и новее) |
-| `oxigram-macos-apple-silicon-….dmg` | Mac на M1/M2/M3/M4 |
-| `oxigram-macos-intel-….dmg` | Mac на Intel |
+| `oxigram-macos-apple-silicon-….dmg` | Mac на M1/M2/M3/M4 (macOS 11+) |
+| `oxigram-macos-intel-….dmg` | Mac на Intel (macOS 10.13 High Sierra+) |
 
 Сборки без цифровой подписи. В Windows, если SmartScreen предупреждает:
 **Подробнее → Выполнить в любом случае**. В macOS при первом запуске: правый

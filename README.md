@@ -93,8 +93,8 @@ Installers are attached to the [releases](https://github.com/Timon2306/oxigram/r
 | `oxigram-windows-arm64-…-setup.exe` | Windows 11 on ARM |
 | `oxigram-linux-x64-….deb` | Ubuntu 20.04+, Debian 11+, Mint |
 | `oxigram-linux-x64-….AppImage` | other distributions (glibc 2.31+: ALT p10, Fedora 33 and newer) |
-| `oxigram-macos-apple-silicon-….dmg` | Mac with M1/M2/M3/M4 |
-| `oxigram-macos-intel-….dmg` | Mac with Intel |
+| `oxigram-macos-apple-silicon-….dmg` | Mac with M1/M2/M3/M4 (macOS 11+) |
+| `oxigram-macos-intel-….dmg` | Mac with Intel (macOS 10.13 High Sierra+) |
 
 The builds are not code-signed. On Windows, if SmartScreen warns, choose
 **More info → Run anyway**. On macOS, right-click Oxigram → **Open** the
