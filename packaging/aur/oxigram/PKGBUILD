@@ -1,0 +1,57 @@
+# Maintainer: Timon2306 <https://github.com/Timon2306>
+pkgname=oxigram
+pkgver=0.3.0
+pkgrel=1
+pkgdesc="Native Telegram desktop client in Rust that runs in a few MB of RAM"
+arch=('x86_64' 'aarch64')
+url="https://github.com/Timon2306/oxigram"
+license=('MIT')
+depends=('gtk3' 'libayatana-appindicator' 'alsa-lib' 'libxkbcommon' 'fontconfig' 'dbus'
+         'gstreamer' 'gst-plugins-base-libs' 'hicolor-icon-theme')
+makedepends=('cargo' 'pkgconf' 'xdotool' 'wayland')
+optdepends=('gst-plugins-good: more video formats'
+            'gst-libav: H.264 and other common codecs for video')
+conflicts=('oxigram-bin')
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('28ad53ca941a8d3f7e24a112ba3b4ec73a3017b52d2f839bc81b087fcee47be5')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release -p oxigram-native --features gstreamer
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen --release -p oxigram-core -p oxigram-native --features oxigram-native/gstreamer
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/oxigram-native "$pkgdir/usr/bin/oxigram-native"
+  install -Dm644 native/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/oxigram-native.png"
+  install -Dm644 native/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/oxigram-native.png"
+  install -Dm644 native/icons/64x64.png "$pkgdir/usr/share/icons/hicolor/64x64/apps/oxigram-native.png"
+  install -Dm644 native/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/oxigram-native.png"
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/oxigram-native.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Oxigram
+Comment=Telegram client with a native window
+Exec=oxigram-native
+Icon=oxigram-native
+Terminal=false
+Type=Application
+Categories=Network;InstantMessaging;
+StartupWMClass=oxigram-native
+DESKTOP
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

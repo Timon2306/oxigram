@@ -1,0 +1,28 @@
+# Maintainer: Timon2306 <https://github.com/Timon2306>
+pkgname=oxigram-bin
+_pkgname=oxigram
+pkgver=0.3.0
+pkgrel=1
+pkgdesc="Native Telegram desktop client in Rust that runs in a few MB of RAM (prebuilt)"
+arch=('x86_64')
+url="https://github.com/Timon2306/oxigram"
+license=('MIT')
+depends=('gtk3' 'libayatana-appindicator' 'alsa-lib' 'libxkbcommon' 'fontconfig' 'dbus'
+         'gstreamer' 'gst-plugins-base-libs' 'hicolor-icon-theme')
+optdepends=('gst-plugins-good: more video formats'
+            'gst-libav: H.264 and other common codecs for video')
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+source=("$_pkgname-$pkgver.deb::$url/releases/download/v$pkgver/oxigram-linux-x64-oxigram-native_${pkgver}_amd64.deb"
+        "LICENSE-$pkgver::https://raw.githubusercontent.com/Timon2306/oxigram/v$pkgver/LICENSE")
+sha256sums=('60d5e3493fae2bee41d190c782de79b71038e680cf31622293bbc77ff955bc56'
+            'SKIP')
+
+package() {
+  bsdtar -xf data.tar.gz -C "$pkgdir"
+  # The .deb names the 256 px icon folder "256x256@2"; Arch's theme wants 256x256.
+  if [ -d "$pkgdir/usr/share/icons/hicolor/256x256@2" ]; then
+    mv "$pkgdir/usr/share/icons/hicolor/256x256@2" "$pkgdir/usr/share/icons/hicolor/256x256"
+  fi
+  install -Dm644 "LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

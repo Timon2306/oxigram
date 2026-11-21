@@ -1,0 +1,32 @@
+name: AUR check
+
+# Manual only: builds the two AUR packages from packaging/aur in an Arch
+# Linux container, to check the PKGBUILDs before they go to the AUR.
+on:
+  workflow_dispatch:
+
+jobs:
+  makepkg:
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ["oxigram-bin", "oxigram"]
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build with makepkg
+        run: |
+          pacman -Syu --noconfirm --needed git
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+          cp -r packaging/aur/${{ matrix.package }} /home/builder/pkg
+          chown -R builder /home/builder/pkg
+          cd /home/builder/pkg
+          sudo -u builder makepkg --syncdeps --noconfirm
+          sudo -u builder makepkg --printsrcinfo > .SRCINFO
+          cat .SRCINFO
+          pacman -Qip *.pkg.tar.zst
+          pacman -Qlp *.pkg.tar.zst
