@@ -602,7 +602,7 @@ fn open(id: i32) {
                 crate::menus::toast("Этот формат видео пока не воспроизводится");
             }
         }
-        "photo" if row.playable => show(id, peer, row.file_size, Shown::Original),
+        "photo" | "document" if row.playable => show(id, peer, row.file_size, Shown::Original),
         // A file with a preview, or a self-destructing photo: the preview is
         // all there is to show.
         _ => show(id, peer, 0, Shown::Thumbnail),
@@ -622,10 +622,16 @@ enum Shown {
 fn show(id: i32, peer: i64, size: i64, shown: Shown) {
     let token = VIEWER_TOKEN.fetch_add(1, Ordering::Relaxed) + 1;
     let Some(window) = ui() else { return };
-    // The window's size in device pixels: the most a picture is drawn at.
+    // The box the viewer draws the picture in, in device pixels (the window
+    // minus the margins in app.slint). Decoding to exactly this size keeps the
+    // GPU renderer from rescaling, which makes the picture soft.
     let (max_w, max_h) = {
         let size = window.window().size();
-        (size.width.max(1), size.height.max(1))
+        let scale = window.window().scale_factor();
+        let bottom = if shown == Shown::Player { 128.0 } else { 84.0 };
+        let w = (size.width as f32 - 56.0 * scale).round().max(1.0) as u32;
+        let h = (size.height as f32 - bottom * scale).round().max(1.0) as u32;
+        (w, h)
     };
     with_app(|app| {
         app.viewer = Some(Viewer { id, token, file: None, saved: None, player: None });

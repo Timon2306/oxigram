@@ -295,6 +295,11 @@ fn document_info(media: &tl::types::MessageMediaDocument) -> MediaInfo {
         ("voice" | "audio", "audio/ogg") => Some("ogg"),
         ("audio", "audio/mpeg") => Some("mp3"),
         ("audio", "audio/mp4" | "audio/x-m4a") => Some("m4a"),
+        // An image sent as a file (a screenshot, say): the viewer opens the
+        // original, not the small preview.
+        ("document", "image/png") => Some("png"),
+        ("document", "image/jpeg") => Some("jpg"),
+        ("document", "image/webp") => Some("webp"),
         _ => None,
     };
 
