@@ -602,7 +602,7 @@ fn open(id: i32) {
                 crate::menus::toast("Этот формат видео пока не воспроизводится");
             }
         }
-        "photo" if row.playable => show(id, peer, row.file_size, Shown::Original),
+        "photo" | "document" if row.playable => show(id, peer, row.file_size, Shown::Original),
         // A file with a preview, or a self-destructing photo: the preview is
         // all there is to show.
         _ => show(id, peer, 0, Shown::Thumbnail),
