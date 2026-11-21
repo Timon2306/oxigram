@@ -66,7 +66,7 @@ pub fn item(m: &MessageRow) -> FileItem {
     });
     let size = match (state, total) {
         (1, 0) => format!("{} …", crate::menus::format_size(bytes)),
-        (1, _) => format!("{} из {}", crate::menus::format_size(bytes), crate::menus::format_size(total)),
+        (1, _) => format!("{} of {}", crate::menus::format_size(bytes), crate::menus::format_size(total)),
         (_, 0) => String::new(),
         _ => crate::menus::format_size(total),
     };
@@ -83,7 +83,7 @@ pub fn item(m: &MessageRow) -> FileItem {
 /// The file's own name, or "Файл".
 fn display_name(m: &MessageRow) -> String {
     let name = m.file_name.trim();
-    if name.is_empty() { "Файл".to_owned() } else { name.to_owned() }
+    if name.is_empty() { "File".to_owned() } else { name.to_owned() }
 }
 
 /// "PDF", "ZIP"… (at most 4 letters), or an empty string.
@@ -153,7 +153,7 @@ fn click(id: i32) {
         return;
     }
     let Some(dir) = default_dir() else {
-        crate::menus::toast("Нет папки «Загрузки»");
+        crate::menus::toast("No Downloads folder");
         return;
     };
     start(&row, dir, None);
@@ -232,9 +232,9 @@ pub fn menu_entries(m: &MessageRow) -> Vec<crate::MenuEntry> {
         return items;
     }
     if finished_path((m.peer_id, m.id)).is_some_and(|p| p.is_file()) {
-        items.push(entry("file-reveal", "Показать в папке", crate::context_menu::OPEN));
+        items.push(entry("file-reveal", "Show in folder", crate::context_menu::OPEN));
     }
-    items.push(entry("file-save-as", "Сохранить как…", SAVE));
+    items.push(entry("file-save-as", "Save as…", SAVE));
     items
 }
 
@@ -265,7 +265,7 @@ fn save_as(row: MessageRow) {
     } else {
         safe_name(&row.file_name)
     };
-    let mut dialog = rfd::AsyncFileDialog::new().set_title("Сохранить как").set_file_name(&default);
+    let mut dialog = rfd::AsyncFileDialog::new().set_title("Save as").set_file_name(&default);
     if let Some(dir) = dirs::download_dir() {
         dialog = dialog.set_directory(dir);
     }
@@ -316,7 +316,7 @@ fn open(path: &Path) {
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = std::process::Command::new("xdg-open").arg(path).spawn().map(drop).map_err(drop);
     if result.is_err() {
-        crate::menus::toast("Не удалось открыть файл");
+        crate::menus::toast("Couldn't open the file");
     }
 }
 

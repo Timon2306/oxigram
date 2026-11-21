@@ -1,10 +1,8 @@
-//! "печатает…": who is typing where. Display only; the user's own typing
+//! "typing…": who is typing where. Display only; the user's own typing
 //! status is sent (or not) elsewhere, exactly as before.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-
-use crate::format;
 
 /// An entry lives this long unless the same status arrives again.
 pub const TTL: Duration = Duration::from_secs(6);
@@ -83,17 +81,17 @@ impl Typing {
         if list.len() == 1 {
             let e = &list[0];
             return Some(match name(e.user) {
-                Some(n) => format!("{} {}", first_word(&n), action_text(e.action)),
+                Some(n) => format!("{} is {}", first_word(&n), action_text(e.action)),
                 None => action_text(e.action).to_owned(),
             });
         }
         let names: Vec<String> =
             list.iter().filter_map(|e| name(e.user)).map(|n| first_word(&n).to_owned()).collect();
         if list.len() == 2 && names.len() == 2 {
-            return Some(format!("{} и {} печатают…", names[0], names[1]));
+            return Some(format!("{} and {} are typing…", names[0], names[1]));
         }
         let n = list.len() as i64;
-        Some(format!("{n} {} печатают…", format::plural(n, "человек", "человека", "человек")))
+        Some(format!("{n} people are typing…"))
     }
 }
 
@@ -101,16 +99,16 @@ fn first_word(name: &str) -> &str {
     name.split_whitespace().next().unwrap_or(name)
 }
 
-/// "печатает…", "записывает голосовое…" and so on (as the Tauri build).
+/// "typing…", "recording a voice message…" and so on (as the Tauri build).
 pub fn action_text(action: &str) -> &'static str {
     match action {
-        "voice" => "записывает голосовое…",
-        "round" => "записывает видеосообщение…",
-        "video" => "отправляет видео…",
-        "photo" => "отправляет фото…",
-        "file" => "отправляет файл…",
-        "sticker" => "выбирает стикер…",
-        _ => "печатает…",
+        "voice" => "recording a voice message…",
+        "round" => "recording a video message…",
+        "video" => "sending a video…",
+        "photo" => "sending a photo…",
+        "file" => "sending a file…",
+        "sticker" => "choosing a sticker…",
+        _ => "typing…",
     }
 }
 
@@ -120,8 +118,8 @@ mod tests {
 
     fn names(id: i64) -> Option<String> {
         match id {
-            1 => Some("Иван Петров".into()),
-            2 => Some("Мария".into()),
+            1 => Some("John Smith".into()),
+            2 => Some("Maria".into()),
             _ => None,
         }
     }
@@ -130,14 +128,14 @@ mod tests {
     fn private_and_group_wording() {
         let (mut t, now) = (Typing::default(), Instant::now());
         t.update(10, 1, "typing", now);
-        assert_eq!(t.line(10, true, names).unwrap(), "печатает…");
-        assert_eq!(t.line(10, false, names).unwrap(), "Иван печатает…");
+        assert_eq!(t.line(10, true, names).unwrap(), "typing…");
+        assert_eq!(t.line(10, false, names).unwrap(), "John is typing…");
         t.update(10, 3, "voice", now);
-        assert_eq!(t.line(10, false, names).unwrap(), "2 человека печатают…");
+        assert_eq!(t.line(10, false, names).unwrap(), "2 people are typing…");
         t.update(10, 2, "typing", now);
-        assert_eq!(t.line(10, false, names).unwrap(), "3 человека печатают…");
+        assert_eq!(t.line(10, false, names).unwrap(), "3 people are typing…");
         t.remove(10, 3);
-        assert_eq!(t.line(10, false, names).unwrap(), "Иван и Мария печатают…");
+        assert_eq!(t.line(10, false, names).unwrap(), "John and Maria are typing…");
         assert!(t.line(11, false, names).is_none());
     }
 
@@ -145,9 +143,9 @@ mod tests {
     fn actions_and_unknown_name() {
         let (mut t, now) = (Typing::default(), Instant::now());
         t.update(10, 9, "photo", now);
-        assert_eq!(t.line(10, false, names).unwrap(), "отправляет фото…");
+        assert_eq!(t.line(10, false, names).unwrap(), "sending a photo…");
         t.update(10, 9, "sticker", now);
-        assert_eq!(t.line(10, false, names).unwrap(), "выбирает стикер…");
+        assert_eq!(t.line(10, false, names).unwrap(), "choosing a sticker…");
     }
 
     #[test]

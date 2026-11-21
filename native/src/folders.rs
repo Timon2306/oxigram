@@ -14,7 +14,7 @@ const FILE: &str = "native-folder";
 
 struct State {
     list: Vec<Folder>,
-    /// 0 is "Все чаты".
+    /// 0 is "All chats".
     active: i32,
 }
 
@@ -62,7 +62,7 @@ pub fn in_folder(dialog: &DialogRow, folder: &Folder) -> bool {
     }
 }
 
-/// The folder whose chats the list shows now; none for "Все чаты" (or when
+/// The folder whose chats the list shows now; none for "All chats" (or when
 /// the remembered folder no longer exists).
 fn with_active<R>(f: impl FnOnce(Option<&Folder>) -> R) -> R {
     STATE.with(|state| {
@@ -79,7 +79,7 @@ pub fn keep(dialog: &DialogRow) -> bool {
     })
 }
 
-/// "Все чаты" is the one showing, so the archive row belongs to the list.
+/// "All chats" is the one showing, so the archive row belongs to the list.
 pub fn is_all() -> bool {
     with_active(|folder| folder.is_none())
 }
@@ -93,7 +93,7 @@ pub fn refresh_tabs(ui: &AppWindow, dialogs: &[DialogRow]) {
             return Vec::new();
         }
         let current = state.list.iter().any(|f| f.id == state.active);
-        let mut tabs = vec![FolderTab { title: "Все чаты".into(), unread: 0, on: !current }];
+        let mut tabs = vec![FolderTab { title: "All chats".into(), unread: 0, on: !current }];
         for folder in &state.list {
             let unread = dialogs
                 .iter()
@@ -154,7 +154,7 @@ mod tests {
     fn folder() -> Folder {
         Folder {
             id: 2,
-            title: "Работа".into(),
+            title: "Work".into(),
             emoticon: None,
             contacts: true,
             non_contacts: false,

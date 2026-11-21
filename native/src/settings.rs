@@ -128,47 +128,47 @@ impl Settings {
     pub fn options(&self) -> Vec<SaverOption> {
         let mut copy = self.clone();
         let rows = [
-            ("avatars", "Фото на аватарках", "Без них — цветной кружок с буквой."),
+            ("avatars", "Profile photos", "Without them, a colored circle with a letter."),
             (
                 "autoloadImages",
-                "Загружать картинки сами",
-                "Без этого картинка и превью видео грузятся по клику. Заработает вместе с картинками.",
+                "Load images automatically",
+                "Without this, images and video previews load on click. Works together with images.",
             ),
             (
                 "autoplayGifs",
-                "Проигрывать GIF и стикеры",
-                "Без этого они стоят на месте, пока не откроешь. Заработает вместе с картинками.",
+                "Play GIFs and stickers",
+                "Without this, they stay still until you open them. Works together with images.",
             ),
             (
                 "customEmoji",
-                "Кастомные эмодзи в реакциях",
-                "Картинки таких реакций, по клику можно поставить такую же. Без этого — одна ✨ с общим числом. Заработает вместе с реакциями.",
+                "Custom emoji in reactions",
+                "Images of such reactions; click to add the same one. Without this, a single ✨ with the total count. Works together with reactions.",
             ),
             (
                 "prefetchChats",
-                "Подгружать верхние чаты",
-                "Десять верхних чатов открываются сразу, без ожидания сети.",
+                "Preload top chats",
+                "The top ten chats open instantly, without waiting for the network.",
             ),
             (
                 "gpuRender",
-                "Отрисовка на видеокарте",
-                "Плавнее прокрутка и цветные эмодзи, но OpenGL-драйвер добавляет около 75 МБ ОЗУ. Применится после перезапуска.",
+                "GPU rendering",
+                "Smoother scrolling and color emoji, but the OpenGL driver adds about 75 MB of RAM. Applies after a restart.",
             ),
             (
                 "muteAll",
-                "Выключить все уведомления",
-                "Системные уведомления о новых сообщениях не показываются.",
+                "Turn off all notifications",
+                "System notifications about new messages are not shown.",
             ),
             (
                 "autostart",
-                "Запускать вместе с системой",
-                "Oxigram стартует при входе в систему и ждёт в трее, окно не открывается.",
+                "Launch at system startup",
+                "Oxigram starts at login and waits in the tray; the window doesn't open.",
             ),
-            ("lightTheme", "Светлая тема", "Светлое оформление вместо тёмного."),
+            ("lightTheme", "Light theme", "Light appearance instead of dark."),
             (
                 "autoUpdate",
-                "Проверять обновления автоматически",
-                "Раз в день один запрос к GitHub, через прокси, если он задан.",
+                "Check for updates automatically",
+                "One request a day to GitHub, through the proxy if one is set.",
             ),
         ];
         rows.into_iter()
@@ -258,9 +258,9 @@ fn scale(size: &str) -> f32 {
 
 fn size_label(size: &str) -> &'static str {
     match size {
-        "small" => "Мелкий",
-        "large" => "Крупный",
-        _ => "Обычный",
+        "small" => "Small",
+        "large" => "Large",
+        _ => "Normal",
     }
 }
 

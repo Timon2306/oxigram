@@ -40,7 +40,7 @@ thread_local! {
 }
 
 fn item(entry: &Entry, photo: Option<&slint::Image>) -> ContactItem {
-    let title = if entry.title.is_empty() { "Без имени".to_owned() } else { entry.title.clone() };
+    let title = if entry.title.is_empty() { "No name".to_owned() } else { entry.title.clone() };
     ContactItem {
         initial: format::initial(&title).into(),
         title: title.into(),
@@ -72,11 +72,11 @@ fn refresh() {
         let note = if !state.error.is_empty() {
             state.error.clone()
         } else if !state.loaded {
-            "Загрузка…".to_owned()
+            "Loading…".to_owned()
         } else if !needle.is_empty() {
-            "Ничего не найдено".to_owned()
+            "Nothing found".to_owned()
         } else {
-            "Контактов нет".to_owned()
+            "No contacts".to_owned()
         };
         (state.model.clone(), items, note)
     });

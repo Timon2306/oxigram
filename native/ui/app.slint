@@ -509,12 +509,12 @@ component DialogRow inherits Rectangle {
                     horizontal-stretch: 1;
                     spacing: 0;
                     if root.item.draft: Text {
-                        text: "Черновик: ";
+                        text: "Draft: ";
                         color: root.item.active ? white : Theme.danger;
                         font-size: 15px;
                     }
                     Text {
-                        text: (root.item.you ? "Вы: " : "") + root.item.preview;
+                        text: (root.item.you ? "You: " : "") + root.item.preview;
                         color: root.item.typing && !root.item.active ? Theme.accent : root.soft;
                         font-size: 15px;
                         overflow: elide;
@@ -573,7 +573,7 @@ component ArchiveRow inherits Rectangle {
             alignment: center;
             spacing: 3px;
             Text {
-                text: "Архив";
+                text: "Archive";
                 color: Theme.text;
                 font-weight: 600;
                 font-size: 15px;
@@ -792,7 +792,7 @@ component ContactsWindow inherits Rectangle {
                 padding-left: 18px;
                 padding-right: 10px;
                 Text {
-                    text: "Контакты";
+                    text: "Contacts";
                     color: Theme.text;
                     font-size: 18px;
                     font-weight: 600;
@@ -838,7 +838,7 @@ component ContactsWindow inherits Rectangle {
                     if search.text == "": Text {
                         x: 14px;
                         height: parent.height;
-                        text: "Поиск";
+                        text: "Search";
                         color: Theme.dim;
                         vertical-alignment: center;
                     }
@@ -915,7 +915,7 @@ component Meta inherits HorizontalLayout {
     spacing: 3px;
     property <color> tint: root.on-media ? white : root.m.outgoing ? #ffffff99 : Theme.dim;
     Text {
-        text: (root.m.edited ? "изменено " : "") + root.m.time;
+        text: (root.m.edited ? "edited " : "") + root.m.time;
         color: root.tint;
         font-size: 11px;
         vertical-alignment: bottom;
@@ -1027,7 +1027,7 @@ component MediaBox inherits Rectangle {
         if c.state == 3 || c.state == 4: Text {
             width: parent.width;
             height: parent.height;
-            text: c.state == 3 ? "Не удалось загрузить" : "Показать";
+            text: c.state == 3 ? "Couldn't load" : "Show";
             color: Theme.dim;
             font-size: 12px;
             wrap: word-wrap;
@@ -1788,14 +1788,14 @@ component LoginCard inherits Rectangle {
                     padding: 24px;
                     spacing: 14px;
                     Text {
-                        text: root.stage == "keys" ? "Ключи Telegram API" : root.stage == "phone" ? "Вход в Telegram" : root.stage == "code" ? "Код подтверждения" : root.stage == "password" ? "Облачный пароль" : "Oxigram";
+                        text: root.stage == "keys" ? "Telegram API keys" : root.stage == "phone" ? "Log in to Telegram" : root.stage == "code" ? "Confirmation code" : root.stage == "password" ? "Cloud password" : "Oxigram";
                         color: Theme.text;
                         font-size: 18px;
                         font-weight: 600;
                     }
 
                     if root.stage == "loading": Text {
-                        text: "Подключение…";
+                        text: "Connecting…";
                         color: Theme.dim;
                         font-size: 15px;
                     }
@@ -1803,7 +1803,7 @@ component LoginCard inherits Rectangle {
                     if root.stage == "keys": VerticalLayout {
                         spacing: 14px;
                         Text {
-                            text: "Oxigram работает только с вашими ключами. Получите api_id и api_hash на my.telegram.org → API development tools.";
+                            text: "Oxigram works only with your own keys. Get api_id and api_hash at my.telegram.org → API development tools.";
                             color: Theme.dim;
                             wrap: word-wrap;
                             font-size: 14px;
@@ -1838,7 +1838,7 @@ component LoginCard inherits Rectangle {
                             }
 
                             api-hash := Field {
-                                placeholder: "32 символа";
+                                placeholder: "32 characters";
                                 enabled: !root.busy;
                                 accepted => {
                                     root.save-keys(api-id.text, api-hash.text);
@@ -1847,7 +1847,7 @@ component LoginCard inherits Rectangle {
                         }
 
                         Button {
-                            text: root.busy ? "Сохранение…" : "Сохранить";
+                            text: root.busy ? "Saving…" : "Save";
                             enabled: !root.busy;
                             clicked => {
                                 root.save-keys(api-id.text, api-hash.text);
@@ -1858,7 +1858,7 @@ component LoginCard inherits Rectangle {
                         // blocked, the proxy has to come first.
                         Button {
                             kind: "link";
-                            text: "Настроить прокси";
+                            text: "Set up proxy";
                             enabled: !root.busy;
                             clicked => {
                                 root.open-proxy();
@@ -1871,7 +1871,7 @@ component LoginCard inherits Rectangle {
                         VerticalLayout {
                             spacing: 5px;
                             Text {
-                                text: "Номер телефона в международном формате";
+                                text: "Phone number in international format";
                                 color: Theme.dim;
                                 font-size: 13px;
                             }
@@ -1889,7 +1889,7 @@ component LoginCard inherits Rectangle {
                         }
 
                         Button {
-                            text: root.busy ? "Отправка…" : "Получить код";
+                            text: root.busy ? "Sending…" : "Get code";
                             enabled: !root.busy;
                             clicked => {
                                 root.request-code(phone-field.text);
@@ -1898,7 +1898,7 @@ component LoginCard inherits Rectangle {
 
                         Button {
                             kind: "link";
-                            text: "Другие ключи API";
+                            text: "Different API keys";
                             enabled: !root.busy;
                             clicked => {
                                 root.change-keys();
@@ -1907,7 +1907,7 @@ component LoginCard inherits Rectangle {
 
                         Button {
                             kind: "link";
-                            text: "Настроить прокси";
+                            text: "Set up proxy";
                             enabled: !root.busy;
                             clicked => {
                                 root.open-proxy();
@@ -1918,7 +1918,7 @@ component LoginCard inherits Rectangle {
                     if root.stage == "code": VerticalLayout {
                         spacing: 14px;
                         Text {
-                            text: "Код отправлен на " + root.phone + " — в приложение Telegram на другом устройстве или по SMS.";
+                            text: "Code sent to " + root.phone + " — to the Telegram app on another device or by SMS.";
                             color: Theme.dim;
                             wrap: word-wrap;
                             font-size: 14px;
@@ -1927,7 +1927,7 @@ component LoginCard inherits Rectangle {
                         VerticalLayout {
                             spacing: 5px;
                             Text {
-                                text: "Код";
+                                text: "Code";
                                 color: Theme.dim;
                                 font-size: 13px;
                             }
@@ -1945,7 +1945,7 @@ component LoginCard inherits Rectangle {
                         }
 
                         Button {
-                            text: root.busy ? "Проверка…" : "Войти";
+                            text: root.busy ? "Checking…" : "Log in";
                             enabled: !root.busy;
                             clicked => {
                                 root.submit-code(code-field.text);
@@ -1954,7 +1954,7 @@ component LoginCard inherits Rectangle {
 
                         Button {
                             kind: "link";
-                            text: "Другой номер";
+                            text: "Different number";
                             enabled: !root.busy;
                             clicked => {
                                 root.back-to-phone();
@@ -1967,7 +1967,7 @@ component LoginCard inherits Rectangle {
                         VerticalLayout {
                             spacing: 5px;
                             Text {
-                                text: root.hint != "" ? "Пароль (подсказка: " + root.hint + ")" : "Пароль двухэтапной проверки";
+                                text: root.hint != "" ? "Password (hint: " + root.hint + ")" : "Two-step verification password";
                                 color: Theme.dim;
                                 font-size: 13px;
                                 wrap: word-wrap;
@@ -1986,7 +1986,7 @@ component LoginCard inherits Rectangle {
                         }
 
                         Button {
-                            text: root.busy ? "Проверка…" : "Войти";
+                            text: root.busy ? "Checking…" : "Log in";
                             enabled: !root.busy;
                             clicked => {
                                 root.submit-password(password-field.text);
@@ -1995,7 +1995,7 @@ component LoginCard inherits Rectangle {
 
                         Button {
                             kind: "link";
-                            text: "Начать заново";
+                            text: "Start over";
                             enabled: !root.busy;
                             clicked => {
                                 root.back-to-phone();
@@ -2011,7 +2011,7 @@ component LoginCard inherits Rectangle {
                     }
                     if root.keys-rejected: Button {
                         kind: "ghost";
-                        text: "Ввести ключи заново";
+                        text: "Re-enter keys";
                         clicked => {
                             root.change-keys();
                         }
@@ -2383,7 +2383,7 @@ component SettingsPanel inherits Rectangle {
             }
 
             Text {
-                text: root.page == "notifications" ? "Уведомления" : root.page == "data" ? "Данные и память" : root.page == "general" ? "Общие" : root.page == "about" ? "О программе" : "Настройки";
+                text: root.page == "notifications" ? "Notifications" : root.page == "data" ? "Data and storage" : root.page == "general" ? "General" : root.page == "about" ? "About" : "Settings";
                 color: Theme.text;
                 font-size: 18px;
                 font-weight: 600;
@@ -2441,7 +2441,7 @@ component SettingsPanel inherits Rectangle {
                 }
 
                 Text {
-                    text: "в сети";
+                    text: "online";
                     color: Theme.accent;
                     font-size: 13px;
                     horizontal-alignment: center;
@@ -2451,13 +2451,13 @@ component SettingsPanel inherits Rectangle {
             if root.page == "main" && (root.phone != "" || root.username != ""): SettingsCard {
                 if root.phone != "": InfoRow {
                     value: root.phone;
-                    label: "Телефон";
+                    label: "Phone";
                     tint: #4cb05e;
                     icon: "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z";
                 }
                 if root.username != "": InfoRow {
                     value: root.username;
-                    label: "Имя пользователя";
+                    label: "Username";
                     tint: #3d8fd9;
                     icon: "M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7.1";
                 }
@@ -2465,7 +2465,7 @@ component SettingsPanel inherits Rectangle {
 
             if root.page == "main": SettingsCard {
                 SettingsRow {
-                    label: "Уведомления";
+                    label: "Notifications";
                     tint: #e5534b;
                     icon: "M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2zM10 20a2 2 0 0 0 4 0";
                     clicked => {
@@ -2474,7 +2474,7 @@ component SettingsPanel inherits Rectangle {
                 }
 
                 SettingsRow {
-                    label: "Данные и память";
+                    label: "Data and storage";
                     value: root.cache-text;
                     tint: #4cb05e;
                     icon: "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3";
@@ -2484,7 +2484,7 @@ component SettingsPanel inherits Rectangle {
                 }
 
                 SettingsRow {
-                    label: "Общие";
+                    label: "General";
                     tint: #6f8295;
                     icon: "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1";
                     clicked => {
@@ -2493,7 +2493,7 @@ component SettingsPanel inherits Rectangle {
                 }
 
                 SettingsRow {
-                    label: "Прокси";
+                    label: "Proxy";
                     value: root.proxy-summary;
                     tint: #3d8fd9;
                     icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9M12 3C9.5 5.5 8.2 8.5 8.2 12s1.3 6.5 3.8 9";
@@ -2503,7 +2503,7 @@ component SettingsPanel inherits Rectangle {
                 }
 
                 SettingsRow {
-                    label: "О программе";
+                    label: "About";
                     value: root.version;
                     tint: #8e6bd8;
                     icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5";
@@ -2515,7 +2515,7 @@ component SettingsPanel inherits Rectangle {
 
             if root.page == "main": SettingsCard {
                 SettingsRow {
-                    label: "Выйти из аккаунта";
+                    label: "Log out";
                     danger: true;
                     tint: #e5534b;
                     icon: "M10 4H5v16h5M14 8l4 4-4 4M18 12H9";
@@ -2539,7 +2539,7 @@ component SettingsPanel inherits Rectangle {
 
             if root.page == "general": SettingsCard {
                 SettingsRow {
-                    label: "Размер текста";
+                    label: "Text size";
                     value: root.text-size;
                     tint: #f0a33a;
                     icon: "M4 7V5h10v2M9 5v14M7 19h4M14 12v-1h6v1M17 11v8M16 19h2";
@@ -2555,7 +2555,7 @@ component SettingsPanel inherits Rectangle {
                     spacing: 10px;
                     height: 64px;
                     Text {
-                        text: "Кэш медиа: " + root.cache-text;
+                        text: "Media cache: " + root.cache-text;
                         color: Theme.text;
                         font-size: 15px;
                         vertical-alignment: center;
@@ -2565,7 +2565,7 @@ component SettingsPanel inherits Rectangle {
 
                     Button {
                         kind: "ghost";
-                        text: "Очистить";
+                        text: "Clear";
                         width: 110px;
                         clicked => {
                             root.clear-cache();
@@ -2587,14 +2587,14 @@ component SettingsPanel inherits Rectangle {
                     }
 
                     Text {
-                        text: "Лёгкий клиент Telegram на Rust.";
+                        text: "A lightweight Telegram client in Rust.";
                         color: Theme.dim;
                         font-size: 14px;
                         height: 20px;
                     }
 
                     Text {
-                        text: "Ключи API свои, хранятся только на этом компьютере. Сменить их можно после выхода из аккаунта.";
+                        text: "API keys are your own and stored only on this computer. You can change them after logging out.";
                         color: Theme.dim;
                         font-size: 14px;
                         wrap: word-wrap;
@@ -2621,7 +2621,7 @@ component SettingsPanel inherits Rectangle {
                     }
 
                     Text {
-                        text: root.update-status != "" ? root.update-status : "Обновления";
+                        text: root.update-status != "" ? root.update-status : "Updates";
                         color: root.update-version != "" ? Theme.accent : Theme.dim;
                         font-size: 14px;
                         height: 20px;
@@ -2645,14 +2645,14 @@ component SettingsPanel inherits Rectangle {
                         height: 36px;
                         if root.update-version == "": Button {
                             kind: "ghost";
-                            text: "Проверить обновления";
+                            text: "Check for updates";
                             enabled: !root.update-busy;
                             clicked => {
                                 root.update-check();
                             }
                         }
                         if root.update-version != "": Button {
-                            text: "Обновить";
+                            text: "Update";
                             enabled: !root.update-busy;
                             clicked => {
                                 root.update-install();
@@ -2660,7 +2660,7 @@ component SettingsPanel inherits Rectangle {
                         }
                         if root.update-version != "": Button {
                             kind: "ghost";
-                            text: "Что нового";
+                            text: "What's new";
                             clicked => {
                                 root.update-notes();
                             }
@@ -2668,7 +2668,7 @@ component SettingsPanel inherits Rectangle {
                     }
 
                     Text {
-                        text: "Лицензия MIT © Timon2306";
+                        text: "MIT License © Timon2306";
                         color: Theme.dim;
                         font-size: 14px;
                         height: 20px;
@@ -2827,7 +2827,7 @@ export component AppWindow inherits Window {
     // The widest bubble changed (window resized): reaction rows rewrap.
     callback reaction-width(length);
     // Look and hotkeys
-    in property <string> text-size-label: "Обычный";
+    in property <string> text-size-label: "Normal";
     callback cycle-text-size();
     callback next-chat(bool);
     callback edit-last();
@@ -3120,7 +3120,7 @@ export component AppWindow inherits Window {
     in property <bool> proxy-status-ok;
     in property <bool> proxy-busy;
     // "Выключен" / "SOCKS5 · host:port", in the settings
-    in property <string> proxy-summary: "Выключен";
+    in property <string> proxy-summary: "Off";
 
     // Pictures and the full-window viewer
     callback want-picture(int);
@@ -3359,7 +3359,7 @@ export component AppWindow inherits Window {
                             if search.text == "": Text {
                                 x: 14px;
                                 height: parent.height;
-                                text: root.show-archive ? "Поиск в архиве" : "Поиск";
+                                text: root.show-archive ? "Search in archive" : "Search";
                                 color: Theme.dim;
                                 vertical-alignment: center;
                             }
@@ -3384,7 +3384,7 @@ export component AppWindow inherits Window {
                     background: #4a3a17;
                     height: 26px;
                     Text {
-                        text: "Нет соединения, переподключение…";
+                        text: "No connection, reconnecting…";
                         color: #f1d38a;
                         font-size: 12px;
                     }
@@ -3440,7 +3440,7 @@ export component AppWindow inherits Window {
                         height: 28px;
                         Text {
                             x: 14px;
-                            text: "Чаты";
+                            text: "Chats";
                             color: Theme.accent;
                             font-size: 13px;
                             font-weight: 600;
@@ -3465,7 +3465,7 @@ export component AppWindow inherits Window {
                         height: 28px;
                         Text {
                             x: 14px;
-                            text: "Глобальный поиск";
+                            text: "Global search";
                             color: Theme.accent;
                             font-size: 13px;
                             font-weight: 600;
@@ -3487,7 +3487,7 @@ export component AppWindow inherits Window {
                         height: 28px;
                         Text {
                             x: 14px;
-                            text: "Сообщения";
+                            text: "Messages";
                             color: Theme.accent;
                             font-size: 13px;
                             font-weight: 600;
@@ -3549,7 +3549,7 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     alignment: center;
                     Pill {
-                        text: "Выберите чат";
+                        text: "Select a chat";
                     }
                 }
             }
@@ -3641,7 +3641,7 @@ export component AppWindow inherits Window {
                             padding-bottom: 6px;
                             spacing: 8px;
                             Text {
-                                text: "Выбрано: " + root.selected-count;
+                                text: "Selected: " + root.selected-count;
                                 color: Theme.text;
                                 font-size: 16px;
                                 font-weight: 600;
@@ -3651,7 +3651,7 @@ export component AppWindow inherits Window {
 
                             Button {
                                 kind: "ghost";
-                                text: "Переслать";
+                                text: "Forward";
                                 width: 120px;
                                 clicked => {
                                     root.select-forward();
@@ -3659,7 +3659,7 @@ export component AppWindow inherits Window {
                             }
 
                             if root.select-can-delete: DangerButton {
-                                text: "Удалить";
+                                text: "Delete";
                                 clicked => {
                                     root.select-delete();
                                 }
@@ -3667,7 +3667,7 @@ export component AppWindow inherits Window {
 
                             Button {
                                 kind: "ghost";
-                                text: "Отмена";
+                                text: "Cancel";
                                 width: 100px;
                                 clicked => {
                                     root.select-cancel();
@@ -3697,7 +3697,7 @@ export component AppWindow inherits Window {
                             if search-field.text == "": Text {
                                 x: 14px;
                                 height: parent.height;
-                                text: "Поиск в чате";
+                                text: "Search in chat";
                                 color: Theme.dim;
                                 vertical-alignment: center;
                             }
@@ -4029,7 +4029,7 @@ export component AppWindow inherits Window {
                     }
 
                     Text {
-                        text: root.chat-muted ? "Включить звук" : "Выключить звук";
+                        text: root.chat-muted ? "Unmute" : "Mute";
                         color: Theme.accent;
                         font-weight: 600;
                     }
@@ -4153,7 +4153,7 @@ export component AppWindow inherits Window {
                             if composer.text == "": Text {
                                 x: 14px;
                                 y: 10px;
-                                text: "Сообщение";
+                                text: "Message";
                                 color: Theme.dim;
                             }
                             FocusScope {
@@ -4266,7 +4266,7 @@ export component AppWindow inherits Window {
                         }
 
                         Text {
-                            text: "Информация";
+                            text: "Info";
                             color: Theme.text;
                             font-size: 17px;
                             font-weight: 600;
@@ -4363,7 +4363,7 @@ export component AppWindow inherits Window {
                                 x: 64px;
                                 width: parent.width - 84px;
                                 height: parent.height;
-                                text: "Уведомления: " + (root.chat-muted ? "Выкл." : "Вкл.");
+                                text: "Notifications: " + (root.chat-muted ? "Off" : "On");
                                 color: Theme.text;
                                 font-size: 15px;
                                 vertical-alignment: center;
@@ -4385,7 +4385,7 @@ export component AppWindow inherits Window {
                         if root.info-loading && root.info-error == "" && root.info-lines.length == 0: Rectangle {
                             height: 44px;
                             Text {
-                                text: "Загрузка…";
+                                text: "Loading…";
                                 color: Theme.dim;
                                 font-size: 14px;
                             }
@@ -4485,7 +4485,7 @@ export component AppWindow inherits Window {
             }
 
             DrawerItem {
-                text: "Избранное";
+                text: "Saved Messages";
                 clicked => {
                     root.drawer-open = false;
                     root.open-saved();
@@ -4493,7 +4493,7 @@ export component AppWindow inherits Window {
             }
 
             DrawerItem {
-                text: "Контакты";
+                text: "Contacts";
                 clicked => {
                     root.drawer-open = false;
                     root.open-contacts();
@@ -4501,7 +4501,7 @@ export component AppWindow inherits Window {
             }
 
             DrawerItem {
-                text: "Архив";
+                text: "Archive";
                 clicked => {
                     root.drawer-open = false;
                     root.toggle-archive();
@@ -4509,7 +4509,7 @@ export component AppWindow inherits Window {
             }
 
             DrawerItem {
-                text: "Обновить список чатов";
+                text: "Refresh chat list";
                 clicked => {
                     root.drawer-open = false;
                     root.reload-dialogs();
@@ -4517,7 +4517,7 @@ export component AppWindow inherits Window {
             }
 
             DrawerItem {
-                text: "Экономия памяти";
+                text: "Memory saving";
                 clicked => {
                     root.drawer-open = false;
                     root.open-saver();
@@ -4525,7 +4525,7 @@ export component AppWindow inherits Window {
             }
 
             DrawerItem {
-                text: "Настройки";
+                text: "Settings";
                 clicked => {
                     root.drawer-open = false;
                     root.open-settings();
@@ -4630,7 +4630,7 @@ export component AppWindow inherits Window {
     if root.proxy-open: Modal {
         width: root.width;
         height: root.height;
-        title: "Прокси";
+        title: "Proxy";
         close => {
             root.proxy-open = false;
         }
@@ -4646,7 +4646,7 @@ export component AppWindow inherits Window {
             HorizontalLayout {
                 spacing: 14px;
                 Text {
-                    text: "Подключаться через прокси";
+                    text: "Connect through proxy";
                     color: Theme.text;
                     font-size: 15px;
                     vertical-alignment: center;
@@ -4693,12 +4693,12 @@ export component AppWindow inherits Window {
                     alignment: center;
                     horizontal-stretch: 1;
                     Text {
-                        text: "Обход блокировок (WebSocket)";
+                        text: "Bypass blocking (WebSocket)";
                         color: Theme.text;
                         font-size: 15px;
                     }
                     Text {
-                        text: "Без своего сервера: через Telegram Web";
+                        text: "No server of your own: via Telegram Web";
                         color: Theme.dim;
                         font-size: 12px;
                         overflow: elide;
@@ -4731,7 +4731,7 @@ export component AppWindow inherits Window {
             for kind in [
                 { id: "socks5", label: "SOCKS5", ready: true },
                 { id: "http", label: "HTTP", ready: true },
-                { id: "mtproto", label: "MTProto · скоро", ready: false },
+                { id: "mtproto", label: "MTProto · soon", ready: false },
             ]: Rectangle {
                 height: 32px;
                 horizontal-stretch: 1;
@@ -4764,14 +4764,14 @@ export component AppWindow inherits Window {
             spacing: 10px;
             Field {
                 horizontal-stretch: 3;
-                placeholder: "Адрес, например 127.0.0.1";
+                placeholder: "Address, e.g. 127.0.0.1";
                 enabled: root.proxy-enabled && !root.proxy-busy;
                 text <=> root.proxy-host;
             }
 
             Field {
                 horizontal-stretch: 1;
-                placeholder: "Порт";
+                placeholder: "Port";
                 enabled: root.proxy-enabled && !root.proxy-busy;
                 text <=> root.proxy-port;
             }
@@ -4780,13 +4780,13 @@ export component AppWindow inherits Window {
         if root.proxy-kind != "websocket": HorizontalLayout {
             spacing: 10px;
             Field {
-                placeholder: "Логин (если нужен)";
+                placeholder: "Username (if required)";
                 enabled: root.proxy-enabled && !root.proxy-busy;
                 text <=> root.proxy-user;
             }
 
             Field {
-                placeholder: "Пароль";
+                placeholder: "Password";
                 password: true;
                 enabled: root.proxy-enabled && !root.proxy-busy;
                 text <=> root.proxy-pass;
@@ -4806,7 +4806,7 @@ export component AppWindow inherits Window {
             alignment: end;
             Button {
                 kind: "ghost";
-                text: "Проверить";
+                text: "Check";
                 width: 120px;
                 enabled: root.proxy-enabled && !root.proxy-busy;
                 clicked => {
@@ -4816,7 +4816,7 @@ export component AppWindow inherits Window {
 
             Button {
                 kind: "ghost";
-                text: "Отмена";
+                text: "Cancel";
                 width: 110px;
                 clicked => {
                     root.proxy-open = false;
@@ -4824,7 +4824,7 @@ export component AppWindow inherits Window {
             }
 
             Button {
-                text: "Сохранить";
+                text: "Save";
                 width: 120px;
                 enabled: !root.proxy-busy;
                 clicked => {
@@ -4838,7 +4838,7 @@ export component AppWindow inherits Window {
     if root.forward-open: Modal {
         width: root.width;
         height: root.height;
-        title: "Переслать в…";
+        title: "Forward to…";
         close => {
             root.forward-open = false;
         }
@@ -4849,7 +4849,7 @@ export component AppWindow inherits Window {
             if forward-search.text == "": Text {
                 x: 14px;
                 height: parent.height;
-                text: "Поиск";
+                text: "Search";
                 color: Theme.dim;
                 vertical-alignment: center;
             }
@@ -4883,7 +4883,7 @@ export component AppWindow inherits Window {
             alignment: end;
             Button {
                 kind: "ghost";
-                text: "Отмена";
+                text: "Cancel";
                 width: 110px;
                 clicked => {
                     root.forward-open = false;
@@ -4948,7 +4948,7 @@ export component AppWindow inherits Window {
             alignment: end;
             Button {
                 kind: "ghost";
-                text: "Отмена";
+                text: "Cancel";
                 width: 110px;
                 clicked => {
                     root.confirm-done(false);
@@ -4968,7 +4968,7 @@ export component AppWindow inherits Window {
     if root.send-open: Modal {
         width: root.width;
         height: root.height;
-        title: root.send-count == 1 ? (root.send-single-picture && root.send-compress ? "Отправить фото" : "Отправить файл") : "Отправить " + root.send-count-text;
+        title: root.send-count == 1 ? (root.send-single-picture && root.send-compress ? "Send photo" : "Send file") : "Send " + root.send-count-text;
         close => {
             root.send-cancel();
         }
@@ -5077,7 +5077,7 @@ export component AppWindow inherits Window {
                 }
 
                 Text {
-                    text: root.send-count > 1 ? "Сжать изображения" : "Сжать изображение";
+                    text: root.send-count > 1 ? "Compress images" : "Compress image";
                     color: Theme.text;
                     vertical-alignment: center;
                 }
@@ -5091,7 +5091,7 @@ export component AppWindow inherits Window {
             if caption-field.text == "": Text {
                 x: 14px;
                 height: parent.height;
-                text: "Подпись";
+                text: "Caption";
                 color: Theme.dim;
                 vertical-alignment: center;
             }
@@ -5116,7 +5116,7 @@ export component AppWindow inherits Window {
             spacing: 8px;
             Button {
                 kind: "ghost";
-                text: "Добавить";
+                text: "Add";
                 width: 104px;
                 clicked => {
                     root.attach();
@@ -5129,7 +5129,7 @@ export component AppWindow inherits Window {
 
             Button {
                 kind: "ghost";
-                text: "Отмена";
+                text: "Cancel";
                 width: 90px;
                 clicked => {
                     root.send-cancel();
@@ -5137,7 +5137,7 @@ export component AppWindow inherits Window {
             }
 
             Button {
-                text: "Отправить";
+                text: "Send";
                 width: 110px;
                 clicked => {
                     root.send-go(caption-field.text, root.send-compress);
@@ -5215,7 +5215,7 @@ export component AppWindow inherits Window {
             border-width: 2px;
             border-color: Theme.accent;
             Text {
-                text: "Отпустите файлы, чтобы отправить";
+                text: "Drop files to send";
                 color: Theme.text;
                 font-size: 18px;
                 horizontal-alignment: center;

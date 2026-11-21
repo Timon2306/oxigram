@@ -382,7 +382,7 @@ fn main() {
             let unread: i32 = with_app(|app| app.unread_total()).unwrap_or(0);
             let count = if unread > 0 { format!(" ({unread})") } else { String::new() };
             ui.set_window_title(
-                format!("Oxigram{count} — {} МБ ОЗУ", info.bytes / (1024 * 1024)).into(),
+                format!("Oxigram{count} — {} MB RAM", info.bytes / (1024 * 1024)).into(),
             );
         }
     });
@@ -917,7 +917,7 @@ impl App {
             return;
         }
         let (text, accent) = match dialog.kind.as_str() {
-            "user" if dialog.bot => ("бот".to_owned(), false),
+            "user" if dialog.bot => ("bot".to_owned(), false),
             "user" => (
                 format::presence_text(dialog.presence.as_ref()),
                 format::is_online(dialog.presence.as_ref()),
@@ -927,14 +927,14 @@ impl App {
                 let channel = dialog.kind == "channel";
                 let mut text = match count {
                     Some(n) if channel => {
-                        format!("{n} {}", format::plural(n.into(), "подписчик", "подписчика", "подписчиков"))
+                        format!("{n} {}", format::plural(n.into(), "subscriber", "subscribers", "subscribers"))
                     }
-                    Some(n) => format!("{n} {}", format::plural(n.into(), "участник", "участника", "участников")),
-                    None if channel => "канал".to_owned(),
-                    None => "группа".to_owned(),
+                    Some(n) => format!("{n} {}", format::plural(n.into(), "member", "members", "members")),
+                    None if channel => "channel".to_owned(),
+                    None => "group".to_owned(),
                 };
                 if let Some(online) = online.filter(|n| *n > 0 && !channel) {
-                    text.push_str(&format!(", {online} в сети"));
+                    text.push_str(&format!(", {online} online"));
                 }
                 (text, false)
             }
@@ -1073,7 +1073,7 @@ impl App {
         // A found public chat the user is not in: read it, or join it.
         let join = match (self.chat, dialog) {
             (Some(peer), Some(d)) if self.search.joinable(peer) => {
-                if d.kind == "channel" { "Подписаться" } else { "Вступить" }
+                if d.kind == "channel" { "Subscribe" } else { "Join" }
             }
             _ => "",
         };
@@ -1109,7 +1109,7 @@ impl App {
             folders::refresh_tabs(&ui, &self.dialogs);
             ui.set_archived_count(archived as i32);
             let n = archived as i64;
-            ui.set_archived_label(format!("{n} {}", format::plural(n, "чат", "чата", "чатов")).into());
+            ui.set_archived_label(format!("{n} {}", format::plural(n, "chat", "chats", "chats")).into());
         }
     }
 

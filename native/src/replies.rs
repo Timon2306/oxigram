@@ -34,7 +34,7 @@ impl Replies {
 /// Who wrote `row`, as the quote names them.
 fn who(app: &App, row: &MessageRow) -> String {
     if row.outgoing {
-        return "Вы".to_owned();
+        return "You".to_owned();
     }
     if !row.sender_name.is_empty() {
         return row.sender_name.clone();
@@ -52,7 +52,7 @@ fn line(row: &MessageRow) -> String {
     if row.kind == "document" && !row.file_name.is_empty() {
         return row.file_name.clone();
     }
-    format::kind_label(&row.kind).unwrap_or("Сообщение").to_owned()
+    format::kind_label(&row.kind).unwrap_or("Message").to_owned()
 }
 
 /// The quote of a reply: (who, line), or `None` for a message that answers
@@ -101,7 +101,7 @@ fn fetch() {
             for (id, row) in found {
                 let quote = match row {
                     Some(row) => (who(app, &row), line(&row)),
-                    None => (String::new(), "Сообщение удалено".to_owned()),
+                    None => (String::new(), "Message deleted".to_owned()),
                 };
                 app.replies.known.insert(id, quote);
                 done.insert(id);

@@ -67,7 +67,7 @@ fn check(manual: bool) {
         }
         if manual {
             ui.set_update_busy(true);
-            ui.set_update_status("Проверка…".into());
+            ui.set_update_status("Checking…".into());
         }
     }
     let proxy = tg().proxy();
@@ -85,16 +85,16 @@ fn check(manual: bool) {
             match result {
                 Ok(Some(release)) => {
                     ui.set_update_version(release.version.clone().into());
-                    ui.set_update_status(format!("Доступна версия {}", release.version).into());
+                    ui.set_update_status(format!("Version {} available", release.version).into());
                     FOUND.with(|f| *f.borrow_mut() = Some(release));
                 }
                 Ok(None) => {
                     if manual {
-                        ui.set_update_status("У вас последняя версия".into());
+                        ui.set_update_status("You have the latest version".into());
                     }
                 }
                 // A quiet check stays quiet when GitHub is unreachable.
-                Err(err) if manual => ui.set_update_status(format!("Не удалось проверить: {}", format::error(&err)).into()),
+                Err(err) if manual => ui.set_update_status(format!("Couldn't check: {}", format::error(&err)).into()),
                 Err(_) => {}
             }
         },
@@ -118,7 +118,7 @@ fn install() {
     if let Some(window) = ui() {
         window.set_update_busy(true);
         window.set_update_progress(0.0);
-        window.set_update_status("Скачивание…".into());
+        window.set_update_status("Downloading…".into());
     }
     let dir = std::env::temp_dir().join("oxigram-update");
     let proxy = tg().proxy();
@@ -136,7 +136,7 @@ fn install() {
                         ui.set_update_progress(percent as f32 / 100.0);
                         ui.set_update_status(
                             format!(
-                                "Скачивание… {} из {}",
+                                "Downloading… {} of {}",
                                 crate::menus::format_size(bytes),
                                 crate::menus::format_size(total)
                             )
@@ -153,12 +153,12 @@ fn install() {
             match result {
                 Ok(path) => hand_over(&path),
                 Err(err) if err.code == "UPDATE_CHECKSUM" => {
-                    ui.set_update_status("Файл повреждён (не совпала контрольная сумма), обновление отменено".into())
+                    ui.set_update_status("The file is corrupted (checksum mismatch), update cancelled".into())
                 }
                 Err(err) if err.code == "UPDATE_NO_SUMS" => {
-                    ui.set_update_status("В релизе нет контрольных сумм, обновление отменено".into())
+                    ui.set_update_status("The release has no checksums, update cancelled".into())
                 }
-                Err(err) => ui.set_update_status(format!("Не удалось скачать: {}", format::error(&err)).into()),
+                Err(err) => ui.set_update_status(format!("Couldn't download: {}", format::error(&err)).into()),
             }
         },
     );
@@ -171,10 +171,10 @@ fn hand_over(path: &Path) {
         // The NSIS installer replaces the program; Oxigram quits so its exe
         // is free, and the installer starts it again at the end.
         if open_file(path) {
-            status("Запуск установщика…");
+            status("Starting the installer…");
             let _ = slint::quit_event_loop();
         } else {
-            status("Не удалось запустить установщик");
+            status("Couldn't start the installer");
         }
     }
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -185,20 +185,20 @@ fn hand_over(path: &Path) {
                     let _ = std::process::Command::new(&target).spawn();
                     let _ = slint::quit_event_loop();
                 }
-                Err(err) => status(&format!("Не удалось заменить AppImage: {err}")),
+                Err(err) => status(&format!("Couldn't replace the AppImage: {err}")),
             }
         } else if open_file(path) {
-            status("Откройте пакет и установите его");
+            status("Open the package and install it");
         } else {
-            status(&format!("Пакет скачан: {}", path.display()));
+            status(&format!("Package downloaded: {}", path.display()));
         }
     }
     #[cfg(target_os = "macos")]
     {
         if open_file(path) {
-            status("Перетащите Oxigram в «Программы», затем перезапустите");
+            status("Drag Oxigram to Applications, then restart");
         } else {
-            status(&format!("Образ скачан: {}", path.display()));
+            status(&format!("Image downloaded: {}", path.display()));
         }
     }
 }

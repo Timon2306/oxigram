@@ -266,12 +266,12 @@ fn react(id: i32, key: &str) {
 
 fn error_text(err: &oxigram_core::error::UiError) -> String {
     match err.code.as_str() {
-        "REACTION_INVALID" | "REACTION_EMPTY" => "В этом чате такая реакция недоступна.".to_owned(),
+        "REACTION_INVALID" | "REACTION_EMPTY" => "This reaction is not available in this chat.".to_owned(),
         "PREMIUM_ACCOUNT_REQUIRED" | "REACTIONS_TOO_MANY" => {
-            "Для этой реакции нужен Telegram Premium.".to_owned()
+            "This reaction requires Telegram Premium.".to_owned()
         }
-        "MESSAGE_NOT_MODIFIED" => "Реакция уже стоит.".to_owned(),
-        _ => format!("Реакция не поставлена: {}", format::error(err)),
+        "MESSAGE_NOT_MODIFIED" => "The reaction is already set.".to_owned(),
+        _ => format!("Could not set the reaction: {}", format::error(err)),
     }
 }
 

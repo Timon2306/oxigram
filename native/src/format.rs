@@ -37,9 +37,9 @@ pub fn initial(title: &str) -> String {
 
 pub fn dialog_title(dialog: &DialogRow) -> String {
     if dialog.kind == "saved" {
-        "Избранное".to_owned()
+        "Saved Messages".to_owned()
     } else if dialog.title.is_empty() {
-        "Без названия".to_owned()
+        "Untitled".to_owned()
     } else {
         dialog.title.clone()
     }
@@ -73,18 +73,18 @@ pub fn same_day(a: i64, b: i64) -> bool {
     }
 }
 
-/// "15 ноября", with the year when it is not this one.
+/// "November 15", with the year when it is not this one.
 pub fn day(unix: i64) -> String {
     const MONTHS: [&str; 12] = [
-        "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября",
-        "октября", "ноября", "декабря",
+        "January", "February", "March", "April", "May", "June", "July", "August", "September",
+        "October", "November", "December",
     ];
     let Some(t) = local(unix) else { return String::new() };
     let month = MONTHS[t.month0() as usize];
     if t.year() == Local::now().year() {
-        format!("{} {month}", t.day())
+        format!("{month} {}", t.day())
     } else {
-        format!("{} {month} {}", t.day(), t.year())
+        format!("{month} {}, {}", t.day(), t.year())
     }
 }
 
@@ -110,28 +110,28 @@ pub fn is_online(presence: Option<&Presence>) -> bool {
     presence.is_some_and(|p| p.kind == "online" && p.at > now())
 }
 
-/// "в сети", "был(а) в 14:05", "был(а) недавно"… as Telegram words it.
+/// "online", "last seen at 14:05", "last seen recently"… as Telegram words it.
 pub fn presence_text(presence: Option<&Presence>) -> String {
     let Some(presence) = presence else { return String::new() };
     if is_online(Some(presence)) {
-        return "в сети".to_owned();
+        return "online".to_owned();
     }
     match presence.kind {
-        "recently" => return "был(а) недавно".to_owned(),
-        "week" => return "был(а) на этой неделе".to_owned(),
-        "month" => return "был(а) в этом месяце".to_owned(),
-        "hidden" => return "был(а) давно".to_owned(),
+        "recently" => return "last seen recently".to_owned(),
+        "week" => return "last seen within a week".to_owned(),
+        "month" => return "last seen within a month".to_owned(),
+        "hidden" => return "last seen a long time ago".to_owned(),
         _ => {}
     }
     let ago = now() - presence.at;
     if ago < 60 {
-        return "был(а) только что".to_owned();
+        return "last seen just now".to_owned();
     }
     if ago < 3600 {
         let minutes = ago / 60;
         return format!(
-            "был(а) {minutes} {} назад",
-            plural(minutes, "минуту", "минуты", "минут")
+            "last seen {minutes} {} ago",
+            plural(minutes, "minute", "minutes", "minutes")
         );
     }
     let (Some(seen), today) = (local(presence.at), Local::now().date_naive()) else {
@@ -139,30 +139,30 @@ pub fn presence_text(presence: Option<&Presence>) -> String {
     };
     let time = seen.format("%H:%M");
     if seen.date_naive() == today {
-        format!("был(а) в {time}")
+        format!("last seen today at {time}")
     } else if today.pred_opt() == Some(seen.date_naive()) {
-        format!("был(а) вчера в {time}")
+        format!("last seen yesterday at {time}")
     } else {
-        format!("был(а) {}", seen.format("%d.%m.%y"))
+        format!("last seen {}", seen.format("%d.%m.%y"))
     }
 }
 
 pub fn kind_label(kind: &str) -> Option<&'static str> {
     Some(match kind {
         "text" | "service" => return None,
-        "photo" => "Фото",
-        "sticker" => "Стикер",
-        "document" => "Файл",
-        "video" => "Видео",
+        "photo" => "Photo",
+        "sticker" => "Sticker",
+        "document" => "File",
+        "video" => "Video",
         "gif" => "GIF",
-        "round" => "Видеосообщение",
-        "voice" => "Голосовое сообщение",
-        "audio" => "Аудио",
-        "contact" => "Контакт",
-        "poll" => "Опрос",
-        "location" => "Геопозиция",
-        "dice" => "Кубик",
-        _ => "Вложение",
+        "round" => "Video message",
+        "voice" => "Voice message",
+        "audio" => "Audio",
+        "contact" => "Contact",
+        "poll" => "Poll",
+        "location" => "Location",
+        "dice" => "Dice",
+        _ => "Attachment",
     })
 }
 
@@ -190,38 +190,38 @@ pub fn message_preview(message: &MessageRow) -> String {
 pub fn error(err: &UiError) -> String {
     if let Some(seconds) = err.wait_seconds {
         let wait = if seconds < 60 {
-            format!("{seconds} с")
+            format!("{seconds} s")
         } else if seconds < 3600 {
-            format!("{} мин", seconds.div_ceil(60))
+            format!("{} min", seconds.div_ceil(60))
         } else {
-            format!("{} ч", seconds.div_ceil(3600))
+            format!("{} h", seconds.div_ceil(3600))
         };
-        return format!("Telegram просит подождать {wait} перед следующей попыткой.");
+        return format!("Telegram asks you to wait {wait} before trying again.");
     }
     let known = match err.code.as_str() {
-        "KEYS_INVALID" => "Проверьте ключи: api_id — число, api_hash — 32 символа (0–9, a–f).",
-        "API_ID_INVALID" => "Telegram не принял эти api_id / api_hash. Проверьте их и введите заново.",
-        "API_ID_PUBLISHED_FLOOD" => "Этот api_id ограничен Telegram. Нужен другой ключ.",
-        "PHONE_NUMBER_INVALID" => "Неверный номер телефона. Введите его в международном формате.",
-        "PHONE_NUMBER_BANNED" => "Этот номер заблокирован в Telegram.",
-        "PHONE_NUMBER_FLOOD" => "Слишком много попыток входа с этого номера. Попробуйте позже.",
-        "PHONE_CODE_INVALID" => "Неверный код.",
-        "PHONE_CODE_EXPIRED" => "Код устарел. Запросите новый.",
-        "PHONE_CODE_EMPTY" => "Введите код.",
-        "PASSWORD_INVALID" => "Неверный пароль.",
+        "KEYS_INVALID" => "Check the keys: api_id is a number, api_hash is 32 characters (0-9, a-f).",
+        "API_ID_INVALID" => "Telegram did not accept this api_id / api_hash. Check them and enter them again.",
+        "API_ID_PUBLISHED_FLOOD" => "This api_id is restricted by Telegram. A different key is needed.",
+        "PHONE_NUMBER_INVALID" => "Invalid phone number. Enter it in international format.",
+        "PHONE_NUMBER_BANNED" => "This number is banned in Telegram.",
+        "PHONE_NUMBER_FLOOD" => "Too many sign-in attempts with this number. Try again later.",
+        "PHONE_CODE_INVALID" => "Invalid code.",
+        "PHONE_CODE_EXPIRED" => "The code has expired. Request a new one.",
+        "PHONE_CODE_EMPTY" => "Enter the code.",
+        "PASSWORD_INVALID" => "Invalid password.",
         "SIGN_UP_REQUIRED" => {
-            "Аккаунта с этим номером нет. Зарегистрироваться можно только в официальном приложении Telegram."
+            "There is no account with this number. You can only sign up in the official Telegram app."
         }
-        "NETWORK" => "Нет связи с Telegram. Проверьте интернет и попробуйте ещё раз.",
-        "NOT_AUTHORIZED" => "Вход в аккаунт не выполнен.",
-        "AUTH_KEY_UNREGISTERED" => "Сессия завершена на сервере. Войдите заново.",
-        "PEER_UNKNOWN" => "Этот чат пока недоступен. Обновите список диалогов.",
-        "MESSAGE_EMPTY" => "Сообщение пустое.",
-        "MESSAGE_TOO_LONG" => "Сообщение длиннее 4096 символов.",
-        "CHAT_WRITE_FORBIDDEN" => "В этот чат нельзя писать.",
-        "USER_IS_BLOCKED" => "Пользователь вас заблокировал.",
-        "WRONG_STAGE" => "Этот шаг входа уже неактуален. Начните вход заново.",
-        "ALREADY_RUNNING" => "Oxigram уже запущен с этим аккаунтом. Закройте другое окно (и значок в трее).",
+        "NETWORK" => "Can't reach Telegram. Check your internet connection and try again.",
+        "NOT_AUTHORIZED" => "You are not signed in.",
+        "AUTH_KEY_UNREGISTERED" => "The session was ended on the server. Sign in again.",
+        "PEER_UNKNOWN" => "This chat is not available yet. Refresh the chat list.",
+        "MESSAGE_EMPTY" => "The message is empty.",
+        "MESSAGE_TOO_LONG" => "The message is longer than 4096 characters.",
+        "CHAT_WRITE_FORBIDDEN" => "You can't write in this chat.",
+        "USER_IS_BLOCKED" => "This user has blocked you.",
+        "WRONG_STAGE" => "This sign-in step is no longer valid. Start signing in again.",
+        "ALREADY_RUNNING" => "Oxigram is already running with this account. Close the other window (and the tray icon).",
         _ => return format!("{} ({})", err.message, err.code),
     };
     known.to_owned()
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn previews_name_media() {
-        assert_eq!(preview_text("[photo]"), "Фото");
+        assert_eq!(preview_text("[photo]"), "Photo");
         assert_eq!(preview_text("привет\nкак дела"), "привет");
         assert_eq!(preview_text("[не тип]"), "[не тип]");
     }

@@ -33,12 +33,12 @@ pub fn available() -> bool {
 }
 
 fn mute_label(mute: bool) -> &'static str {
-    if mute { "Включить все уведомления" } else { "Выключить все уведомления" }
+    if mute { "Turn on all notifications" } else { "Turn off all notifications" }
 }
 
 fn tooltip(unread: i32) -> String {
     match unread {
-        n if n > 0 => format!("Oxigram — {n} непрочитанных"),
+        n if n > 0 => format!("Oxigram — {n} unread"),
         _ => "Oxigram".to_owned(),
     }
 }
@@ -57,9 +57,9 @@ impl Tray {
         let (w, h) = image.dimensions();
         let icon = Icon::from_rgba(image.into_raw(), w, h).ok()?;
         let label = notify::mute_all();
-        let open = MenuItem::with_id("open", "Открыть Oxigram", true, None);
+        let open = MenuItem::with_id("open", "Open Oxigram", true, None);
         let mute = MenuItem::with_id("mute", mute_label(label), true, None);
-        let quit = MenuItem::with_id("quit", "Выход", true, None);
+        let quit = MenuItem::with_id("quit", "Quit", true, None);
         let menu = Menu::new();
         menu.append_items(&[&open, &mute, &PredefinedMenuItem::separator(), &quit]).ok()?;
         let icon = TrayIconBuilder::new()
@@ -259,8 +259,8 @@ mod tests {
 
     #[test]
     fn labels_follow_state() {
-        assert_eq!(mute_label(false), "Выключить все уведомления");
-        assert_eq!(mute_label(true), "Включить все уведомления");
+        assert_eq!(mute_label(false), "Turn off all notifications");
+        assert_eq!(mute_label(true), "Turn on all notifications");
         assert_eq!(tooltip(0), "Oxigram");
         assert!(tooltip(3).contains('3'));
     }

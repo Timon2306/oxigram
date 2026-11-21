@@ -27,14 +27,14 @@ pub fn wire(window: &AppWindow) {
         config.enabled = true;
         window.set_proxy_busy(true);
         window.set_proxy_status_ok(false);
-        window.set_proxy_status("Проверка…".into());
+        window.set_proxy_status("Checking…".into());
         run(async move { oxigram_core::proxy::check(&config).await }, |result| {
             let Some(ui) = ui() else { return };
             ui.set_proxy_busy(false);
             match result {
                 Ok(took) => {
                     ui.set_proxy_status_ok(true);
-                    ui.set_proxy_status(format!("Работает, Telegram доступен ({} мс)", took.as_millis()).into());
+                    ui.set_proxy_status(format!("Working, Telegram is reachable ({} ms)", took.as_millis()).into());
                 }
                 Err(err) => ui.set_proxy_status(proxy_error(&err.code, &format::error(&err)).into()),
             }
@@ -56,7 +56,7 @@ pub fn wire(window: &AppWindow) {
                 Ok(()) => {
                     ui.set_proxy_open(false);
                     show_summary(&ui);
-                    crate::menus::toast("Прокси сохранён");
+                    crate::menus::toast("Proxy saved");
                     // Reconnect through the new route (also refreshes the login screen).
                     login_step(async { tg().state().await });
                 }
@@ -70,16 +70,16 @@ pub fn wire(window: &AppWindow) {
     show_summary(window);
 }
 
-/// "Выключен" or "SOCKS5 · host:port" in the settings.
+/// "Disabled" or "SOCKS5 · host:port" in the settings.
 pub fn show_summary(ui: &AppWindow) {
     let config = tg().proxy();
     let text = if config.active() && config.is_websocket() {
-        "Обход блокировок (WebSocket)".to_owned()
+        "Bypass blocking (WebSocket)".to_owned()
     } else if config.active() {
         let kind = if config.kind == "http" { "HTTP" } else { "SOCKS5" };
         format!("{kind} · {}:{}", config.host.trim(), config.port)
     } else {
-        "Выключен".to_owned()
+        "Disabled".to_owned()
     };
     ui.set_proxy_summary(text.into());
 }
@@ -97,16 +97,16 @@ fn from_ui(ui: &AppWindow) -> ProxyConfig {
 
 fn proxy_error(code: &str, fallback: &str) -> String {
     match code {
-        "PROXY_UNSUPPORTED" => "MTProto-прокси пока не поддерживается: выберите SOCKS5 или HTTP.".to_owned(),
-        "PROXY_HOST_INVALID" => "Проверьте адрес прокси.".to_owned(),
-        "PROXY_PORT_INVALID" => "Порт — число от 1 до 65535.".to_owned(),
-        "PROXY_TIMEOUT" => "Прокси не ответил за 10 секунд.".to_owned(),
+        "PROXY_UNSUPPORTED" => "MTProto proxies are not supported yet: choose SOCKS5 or HTTP.".to_owned(),
+        "PROXY_HOST_INVALID" => "Check the proxy address.".to_owned(),
+        "PROXY_PORT_INVALID" => "The port must be a number from 1 to 65535.".to_owned(),
+        "PROXY_TIMEOUT" => "The proxy did not respond within 10 seconds.".to_owned(),
         "PROXY_FAILED" if fallback.contains("WebSocket") || fallback.contains("kws") => {
-            format!("Веб-адреса Telegram недоступны: {fallback}")
+            format!("Telegram web addresses are unreachable: {fallback}")
         }
-        "PROXY_UNREACHABLE" => "Прокси недоступен: проверьте адрес и порт.".to_owned(),
-        "PROXY_AUTH" => "Прокси не принял логин или пароль.".to_owned(),
-        "PROXY_FAILED" => format!("Не удалось подключиться через прокси: {fallback}"),
+        "PROXY_UNREACHABLE" => "The proxy is unreachable: check the address and port.".to_owned(),
+        "PROXY_AUTH" => "The proxy rejected the username or password.".to_owned(),
+        "PROXY_FAILED" => format!("Could not connect through the proxy: {fallback}"),
         _ => fallback.to_owned(),
     }
 }

@@ -73,30 +73,30 @@ pub fn wire(ui: &AppWindow) {
         .flatten();
         let Some(d) = found else { return };
         let mut items = vec![
-            entry("open", "Открыть", OPEN),
-            if d.pinned { entry("pin", "Открепить", UNPIN) } else { entry("pin", "Закрепить", PIN) },
+            entry("open", "Open", OPEN),
+            if d.pinned { entry("pin", "Unpin", UNPIN) } else { entry("pin", "Pin", PIN) },
             if d.unread > 0 {
-                entry("read", "Отметить как прочитанное", READ)
+                entry("read", "Mark as read", READ)
             } else {
-                entry("unread", "Отметить как непрочитанное", UNREAD)
+                entry("unread", "Mark as unread", UNREAD)
             },
-            if d.archived { entry("archive", "Из архива", UNARCHIVE) } else { entry("archive", "В архив", ARCHIVE) },
+            if d.archived { entry("archive", "Unarchive", UNARCHIVE) } else { entry("archive", "Archive", ARCHIVE) },
         ];
         if d.kind != "saved" {
             items.push(if d.muted {
-                entry("mute", "Включить уведомления", UNMUTE)
+                entry("mute", "Unmute", UNMUTE)
             } else {
-                entry("mute", "Выключить уведомления", MUTE)
+                entry("mute", "Mute", MUTE)
             });
         }
         items.push(separator());
         if d.kind != "channel" {
-            items.push(danger("clear", "Очистить историю", CLEAR));
+            items.push(danger("clear", "Clear history", CLEAR));
         }
         items.push(match d.kind.as_str() {
-            "group" => danger("delete", "Покинуть группу", LEAVE),
-            "channel" => danger("delete", "Покинуть канал", LEAVE),
-            _ => danger("delete", "Удалить чат", DELETE),
+            "group" => danger("delete", "Leave group", LEAVE),
+            "channel" => danger("delete", "Leave channel", LEAVE),
+            _ => danger("delete", "Delete chat", DELETE),
         });
         show(items, MenuTarget::Dialog(d.id), x, y);
     });
@@ -112,39 +112,39 @@ pub fn wire(ui: &AppWindow) {
         // A channel read by a subscriber: only reading actions make sense.
         let mut items = Vec::new();
         if can_post {
-            items.push(entry("reply", "Ответить", REPLY));
+            items.push(entry("reply", "Reply", REPLY));
         }
         if m.kind == "photo" && m.playable {
-            items.push(entry("copy-image", "Копировать картинку", COPY));
+            items.push(entry("copy-image", "Copy image", COPY));
         }
         if !m.text.is_empty() {
-            items.push(entry("copy", "Копировать текст", COPY));
-            items.push(entry("select", "Выделить текст", SELECT));
+            items.push(entry("copy", "Copy text", COPY));
+            items.push(entry("select", "Select text", SELECT));
         }
         if can_post && m.outgoing && m.kind == "text" {
-            items.push(entry("edit", "Изменить", EDIT));
+            items.push(entry("edit", "Edit", EDIT));
         }
         if can_post {
-            items.push(entry("pin", "Закрепить", PIN));
+            items.push(entry("pin", "Pin", PIN));
         }
         items.extend(crate::files::menu_entries(&m));
         // One entry per link (up to three), with the address when several.
         let message_links = crate::links::links(&m);
         for (index, link) in message_links.iter().take(3).enumerate() {
             let label = if message_links.len() == 1 {
-                "Копировать ссылку".to_owned()
+                "Copy link".to_owned()
             } else {
                 let short: String = link.copy.chars().take(28).collect();
                 let more = if link.copy.chars().count() > 28 { "…" } else { "" };
-                format!("Копировать: {short}{more}")
+                format!("Copy: {short}{more}")
             };
             items.push(entry(&format!("link-{index}"), &label, COPY));
         }
-        items.push(entry("forward", "Переслать", FORWARD));
-        items.push(entry("choose", "Выбрать", CHOOSE));
+        items.push(entry("forward", "Forward", FORWARD));
+        items.push(entry("choose", "Select", CHOOSE));
         if can_post {
             items.push(separator());
-            items.push(danger("delete", "Удалить", DELETE));
+            items.push(danger("delete", "Delete", DELETE));
         }
         show(items, MenuTarget::Message(id), x, y);
         if let Some(ui) = crate::ui() {

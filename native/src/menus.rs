@@ -51,13 +51,13 @@ pub fn wire(window: &AppWindow) {
         if let Some(ui) = ui() {
             ui.set_cache_text(format_size(tg().cache_size()).into());
         }
-        toast("Кэш очищен");
+        toast("Cache cleared");
     });
     window.on_ask_sign_out(|| {
         confirm(
-            "Выйти из аккаунта?",
-            "Сессия и кэш на этом компьютере будут удалены.",
-            "Выйти",
+            "Log out?",
+            "The session and cache on this computer will be deleted.",
+            "Log out",
             "",
             |_| sign_out(),
         );
@@ -157,16 +157,16 @@ fn load_me_photo(id: i64, photo_id: String, window: &AppWindow) {
     );
 }
 
-/// "12,3 МБ", "512 КБ".
+/// "12.3 MB", "512 KB".
 pub(crate) fn format_size(bytes: u64) -> String {
     const KB: f64 = 1024.0;
     let b = bytes as f64;
     if b >= KB * KB * KB {
-        format!("{:.1} ГБ", b / (KB * KB * KB)).replace('.', ",")
+        format!("{:.1} GB", b / (KB * KB * KB))
     } else if b >= KB * KB {
-        format!("{:.1} МБ", b / (KB * KB)).replace('.', ",")
+        format!("{:.1} MB", b / (KB * KB))
     } else {
-        format!("{} КБ", (b / KB).round() as u64)
+        format!("{} KB", (b / KB).round() as u64)
     }
 }
 
@@ -226,9 +226,9 @@ pub(crate) fn dialog_action(peer: i64, name: &str) {
             move || update(peer, |d| d.muted = !muted),
         ),
         "clear" => confirm(
-            "Очистить историю?",
-            &format!("Сообщения в чате «{title}» будут удалены у вас. Это нельзя отменить."),
-            "Очистить",
+            "Clear history?",
+            &format!("Messages in \"{title}\" will be deleted for you. This cannot be undone."),
+            "Clear",
             "",
             move |_| {
                 act(async move { actions::clear_history(tg(), peer).await }, move || {
@@ -243,13 +243,13 @@ pub(crate) fn dialog_action(peer: i64, name: &str) {
         ),
         "delete" => {
             let (heading, ok) = match kind.as_str() {
-                "group" => ("Покинуть группу?", "Покинуть"),
-                "channel" => ("Покинуть канал?", "Покинуть"),
-                _ => ("Удалить чат?", "Удалить"),
+                "group" => ("Leave group?", "Leave"),
+                "channel" => ("Leave channel?", "Leave"),
+                _ => ("Delete chat?", "Delete"),
             };
             confirm(
                 heading,
-                &format!("«{title}» пропадёт из списка чатов."),
+                &format!("\"{title}\" will disappear from your chat list."),
                 ok,
                 "",
                 move |_| {
@@ -322,8 +322,8 @@ mod tests {
 
     #[test]
     fn sizes_read_naturally() {
-        assert_eq!(format_size(0), "0 КБ");
-        assert_eq!(format_size(512 * 1024), "512 КБ");
-        assert_eq!(format_size(12_897_484), "12,3 МБ");
+        assert_eq!(format_size(0), "0 KB");
+        assert_eq!(format_size(512 * 1024), "512 KB");
+        assert_eq!(format_size(12_897_484), "12.3 MB");
     }
 }

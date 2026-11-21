@@ -151,7 +151,7 @@ impl UiSink {
         // Updates do not always carry the chat's details; the list has its
         // name, and in a private chat the sender is the chat.
         let title = if peer.kind == "saved" {
-            "Избранное".to_owned()
+            "Saved Messages".to_owned()
         } else if !peer.title.is_empty() {
             peer.title.clone()
         } else if let Some(title) = listed_title {
@@ -159,7 +159,7 @@ impl UiSink {
         } else if !sender.is_empty() {
             sender.to_owned()
         } else {
-            "Новое сообщение".to_owned()
+            "New message".to_owned()
         };
         let text = notification_text(message);
         let in_group = peer.kind == "group" || (peer.kind.is_empty() && message.peer_id < 0);
@@ -269,18 +269,18 @@ fn notification_text(message: &MessageRow) -> String {
         return text;
     }
     match message.kind.as_str() {
-        "photo" => "Фотография",
-        "video" => "Видео",
-        "round" => "Видеосообщение",
-        "voice" => "Голосовое сообщение",
-        "audio" => "Аудио",
-        "sticker" => "Стикер",
+        "photo" => "Photo",
+        "video" => "Video",
+        "round" => "Video message",
+        "voice" => "Voice message",
+        "audio" => "Audio",
+        "sticker" => "Sticker",
         "gif" => "GIF",
-        "document" => "Файл",
-        "contact" => "Контакт",
-        "poll" => "Опрос",
-        "location" => "Геопозиция",
-        _ => "Новое сообщение",
+        "document" => "File",
+        "contact" => "Contact",
+        "poll" => "Poll",
+        "location" => "Location",
+        _ => "New message",
     }
     .to_owned()
 }
