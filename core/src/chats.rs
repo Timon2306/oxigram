@@ -48,6 +48,15 @@ pub async fn cached_dialogs(tg: &Telegram) -> Result<Vec<DialogRow>, UiError> {
 
 /// Fetches the next page of dialogs; `reset` starts over from the top.
 pub async fn load_dialogs(tg: &Telegram, reset: bool) -> Result<DialogPage, UiError> {
+    let started = std::time::Instant::now();
+    let page = load_dialogs_page(tg, reset).await;
+    if reset {
+        crate::timing::mark("dialogs: first page (messages.getDialogs)", started);
+    }
+    page
+}
+
+async fn load_dialogs_page(tg: &Telegram, reset: bool) -> Result<DialogPage, UiError> {
     let Handles { client, db, .. } = tg.handles().await?;
     let mut guard = tg.dialog_cursor.lock().await;
     if reset || guard.is_none() {

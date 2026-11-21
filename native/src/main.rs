@@ -149,6 +149,9 @@ struct App {
     selected: Vec<i32>,
     /// Search results and the jump window.
     search: search::State,
+    /// Bumped when the account is forgotten (lock, sign-out), so dialog
+    /// pages still on their way for the old one are dropped.
+    dialogs_epoch: u64,
     /// Quotes of replies to messages that are not loaded.
     replies: replies::Replies,
 }
@@ -279,6 +282,7 @@ fn main() {
             selected: Vec::new(),
             search: search::State::new(&ui),
             replies: replies::Replies::default(),
+            dialogs_epoch: 0,
         })
     });
     let bench = std::env::var_os("OXIGRAM_BENCH").is_some();
@@ -460,6 +464,8 @@ fn forget_view() {
         app.compose = messages::Compose::None;
         app.dialogs_done = false;
         app.dialogs_loading = false;
+        app.dialogs_epoch += 1;
+        app.prefetched = false;
         if let Some(ui) = app.ui.upgrade() {
             app.search.reset(&ui);
             ui.set_chat_open(false);
@@ -644,8 +650,12 @@ fn wire_main(ui: &AppWindow) {
 
 /// Shows the cached list at once, then the first page from Telegram.
 fn load_dialogs() {
-    run(async { chats::cached_dialogs(tg()).await }, |cached| {
+    let epoch = with_app(|app| app.dialogs_epoch).unwrap_or(0);
+    run(async { chats::cached_dialogs(tg()).await }, move |cached| {
         with_app(|app| {
+            if app.dialogs_epoch != epoch {
+                return;
+            }
             if let Ok(rows) = cached {
                 app.dialogs = rows;
                 app.sort_dialogs();
@@ -653,8 +663,11 @@ fn load_dialogs() {
             }
             app.dialogs_loading = true;
         });
-        run(async { chats::load_dialogs(tg(), true).await }, |page| {
+        run(async { chats::load_dialogs(tg(), true).await }, move |page| {
             with_app(|app| {
+                if app.dialogs_epoch != epoch {
+                    return;
+                }
                 app.dialogs_loading = false;
                 match page {
                     Ok(page) => {
@@ -714,8 +727,13 @@ fn more_dialogs() {
     if go != Some(true) {
         return;
     }
-    run(async { chats::load_dialogs(tg(), false).await }, |page| {
+    let epoch = with_app(|app| app.dialogs_epoch).unwrap_or(0);
+    run(async { chats::load_dialogs(tg(), false).await }, move |page| {
         with_app(|app| {
+            // A page for the account before a sign-out: dropped.
+            if app.dialogs_epoch != epoch {
+                return;
+            }
             app.dialogs_loading = false;
             let Ok(page) = page else { return };
             app.dialogs_done = page.done;

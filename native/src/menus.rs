@@ -282,9 +282,30 @@ pub(crate) fn dialog_action(peer: i64, name: &str) {
 }
 
 fn sign_out() {
+    // The window shows the sign-in at once; Telegram is told and the local
+    // data wiped in the background.
+    signed_out(oxigram_core::tg::UiState::NeedPhone);
     run(async { tg().sign_out().await }, |result| match result {
-        Ok(state) => signed_out(state),
-        Err(err) => toast(&format::error(&err)),
+        Ok(state) => {
+            // Only while the sign-in still shows the phone step: the user
+            // may already have moved on (the QR code).
+            let on_phone = || crate::ui().is_some_and(|ui| ui.get_stage() == "phone");
+            if !on_phone() {
+                return;
+            }
+            if matches!(state, oxigram_core::tg::UiState::NeedKeys) {
+                show_state(Ok(state));
+                return;
+            }
+            // Opens the next connection now (its key takes a couple of
+            // seconds), so "Sign in with a QR code" answers at once.
+            run(async { tg().state().await }, move |state| {
+                if on_phone() && let Ok(state) = state {
+                    show_state(Ok(state));
+                }
+            });
+        }
+        Err(err) => toast(format::error(&err)),
     });
 }
 

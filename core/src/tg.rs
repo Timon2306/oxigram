@@ -125,6 +125,17 @@ pub struct Telegram {
 }
 
 const KEYS_SEALED: &str = "keys.enc";
+/// How long sign-out waits for auth.logOut.
+const LOGOUT_WAIT: Duration = Duration::from_secs(2);
+
+/// Marks how long a scope took (OXIGRAM_TIMING).
+struct Timed(&'static str, std::time::Instant);
+
+impl Drop for Timed {
+    fn drop(&mut self) {
+        crate::timing::mark(self.0, self.1);
+    }
+}
 /// The 0.3.1 development format sealed the whole database; read once and
 /// converted to sealed fields.
 const DB_SEALED: &str = "oxigram.db.enc";
@@ -272,7 +283,10 @@ impl Telegram {
         }
         let connection = self.connect(&mut inner)?;
         let (client, session) = (connection.client.clone(), Arc::clone(&connection.session));
-        match crate::login::qr(&client, &session, api_id, &api_hash).await? {
+        let asked = std::time::Instant::now();
+        let qr = crate::login::qr(&client, &session, api_id, &api_hash).await;
+        crate::timing::mark("qr: auth.exportLoginToken", asked);
+        match qr? {
             crate::login::Qr::Show { url, .. } => {
                 inner.login = Login::Qr { url };
                 self.current(&mut inner).await
@@ -339,21 +353,20 @@ impl Telegram {
     }
 
     pub async fn sign_out(&self) -> Result<UiState, UiError> {
+        let started = std::time::Instant::now();
         let mut inner = self.inner.lock().await;
         if let Some(connection) = &inner.connection {
-            // Only forget the session locally once Telegram has revoked it,
-            // otherwise it would stay active with no way to reach it. A
-            // session Telegram already dropped is forgotten all the same.
-            if let Err(err) = connection.client.sign_out().await {
-                let err = UiError::from(err);
-                if !session_gone(&err.code) {
-                    return Err(err);
-                }
-            }
+            // Telegram is asked to end the session, briefly: the account is
+            // forgotten here whether it answers or not (the window already
+            // shows the sign-in).
+            let _ = tokio::time::timeout(LOGOUT_WAIT, connection.client.sign_out()).await;
         }
+        crate::timing::mark("sign-out: auth.logOut", started);
         self.forget_account(&mut inner).await?;
         self.drop_passcode()?;
-        self.current(&mut inner).await
+        crate::timing::mark("sign-out: total", started);
+        // No new connection here: the next sign-in step opens it.
+        Ok(if inner.keys.is_some() { UiState::NeedPhone } else { UiState::NeedKeys })
     }
 
     /// Forgets the account here only (the session was ended elsewhere).
@@ -411,7 +424,10 @@ impl Telegram {
         if let Some(me) = &connection.me {
             return Ok(UiState::Ready { me: me.clone() });
         }
-        if !connection.client.is_authorized().await? {
+        let asked = std::time::Instant::now();
+        let authorized = connection.client.is_authorized().await?;
+        crate::timing::mark("connect: updates.getState (is_authorized)", asked);
+        if !authorized {
             return Ok(UiState::NeedPhone);
         }
         let user = connection.client.get_me().await?;
@@ -496,6 +512,8 @@ impl Telegram {
     }
 
     fn open_session(&self) -> Result<(Db, SqliteSession), UiError> {
+        let started = std::time::Instant::now();
+        let _timing = Timed("connect: open the session", started);
         std::fs::create_dir_all(&self.data_dir)?;
         self.lock_instance()?;
         let db = store::open(self.data_dir.join(DB_FILE))?;
@@ -559,10 +577,23 @@ impl Telegram {
         };
         session.wipe().map_err(UiError::internal)?;
         inner.login = Login::Idle;
-        // Cached pictures belong to the account too. Best effort: a file in
-        // use (a video still open) must not leave the window signed in.
-        self.clear_cache();
+        // Cached pictures belong to the account too. Thousands of files take
+        // long to delete (antivirus), so the folder is moved aside at once
+        // and deleted in the background; a file in use is left for later.
+        self.discard_cache();
         Ok(())
+    }
+
+    /// Moves the media cache aside (instant) and deletes it on a thread.
+    fn discard_cache(&self) {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis());
+        let aside = self.cache_dir.with_file_name(format!("media-old-{stamp}"));
+        let target = if std::fs::rename(&self.cache_dir, &aside).is_ok() { aside } else { self.cache_dir.clone() };
+        std::thread::spawn(move || {
+            let _ = std::fs::remove_dir_all(&target);
+        });
     }
 }
 
