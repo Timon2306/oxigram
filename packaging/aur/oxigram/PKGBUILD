@@ -1,6 +1,6 @@
 # Maintainer: Timon2306 <https://github.com/Timon2306>
 pkgname=oxigram
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc="Native Telegram desktop client in Rust that runs in a few MB of RAM"
 arch=('x86_64' 'aarch64')
@@ -14,7 +14,7 @@ optdepends=('gst-plugins-good: more video formats'
 conflicts=('oxigram-bin')
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('28ad53ca941a8d3f7e24a112ba3b4ec73a3017b52d2f839bc81b087fcee47be5')
+sha256sums=('1abc2d5e4f7491955bcccd2e56793642610122dcf2ee246ef30974abe2f0c165')
 
 prepare() {
   cd "$pkgname-$pkgver"
