@@ -640,16 +640,19 @@ fn show(id: i32, peer: i64, size: i64, shown: Shown) {
     let token = VIEWER_TOKEN.fetch_add(1, Ordering::Relaxed) + 1;
     let Some(window) = ui() else { return };
     // The box the picture is drawn in, in device pixels: decoding to exactly
-    // this leaves the GPU renderer nothing to rescale, which made it soft.
+    // this leaves the renderer nothing to rescale, which made it soft.
+    let scale = window.window().scale_factor();
     let (max_w, max_h) = {
         let size = window.window().size();
-        viewer_box((size.width, size.height), window.window().scale_factor(), shown == Shown::Player)
+        viewer_box((size.width, size.height), scale, shown == Shown::Player)
     };
     with_app(|app| {
         app.viewer = Some(Viewer { id, token, file: None, saved: None, player: None });
     });
     window.set_viewer_image(Image::default());
     window.set_viewer_has_image(false);
+    window.set_viewer_image_width(0.0);
+    window.set_viewer_image_height(0.0);
     window.set_viewer_status(tr!("Loading…").into());
     window.set_viewer_save_text(SharedString::new());
     window.set_viewer_video(false);
@@ -720,12 +723,18 @@ fn show(id: i32, peer: i64, size: i64, shown: Shown) {
                     }
                 }
                 Ok((path, Some(pixels))) => {
+                    let (pixels_w, pixels_h) = (pixels.width(), pixels.height());
                     let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
                         pixels.as_raw(),
-                        pixels.width(),
-                        pixels.height(),
+                        pixels_w,
+                        pixels_h,
                     );
                     window.set_viewer_image(Image::from_rgba8(buffer));
+                    // Logical px: the image is drawn at exactly this size, so
+                    // a picture smaller than the window is not blown up (which
+                    // made a 1276 px screenshot a pixelated mess on 1080p).
+                    window.set_viewer_image_width(pixels_w as f32 / scale);
+                    window.set_viewer_image_height(pixels_h as f32 / scale);
                     window.set_viewer_has_image(true);
                     window.set_viewer_status(SharedString::new());
                     if shown == Shown::Original {

@@ -3717,6 +3717,10 @@ export component AppWindow inherits Window {
     in property <bool> viewer-open;
     in property <image> viewer-image;
     in property <bool> viewer-has-image;
+    // The size the picture is drawn at, in logical px: Rust sets it to the
+    // decoded size, so the renderer never has to scale (which looks soft).
+    in property <length> viewer-image-width;
+    in property <length> viewer-image-height;
     // "Загрузка…", "1,2 МБ из 3 МБ", or an error
     in property <string> viewer-status;
     // "Сохранить" / "Показать в папке"; empty hides the button
@@ -5879,10 +5883,11 @@ export component AppWindow inherits Window {
             }
         }
         if root.viewer-has-image: Image {
-            x: 28px;
-            y: 56px;
-            width: parent.width - 56px;
-            height: parent.height - (root.viewer-video ? 128px : 84px);
+            // Exactly the size Rust decoded: 1:1 pixels, no rescaling.
+            width: root.viewer-image-width;
+            height: root.viewer-image-height;
+            x: 28px + (parent.width - 56px - self.width) / 2;
+            y: 56px + (parent.height - 140px - self.height) / 2;
             source: root.viewer-image;
             image-fit: contain;
         }
