@@ -1,7 +1,7 @@
 # Maintainer: Timon2306 <https://github.com/Timon2306>
 pkgname=oxigram-bin
 _pkgname=oxigram
-pkgver=0.3.1
+pkgver=0.3.2
 pkgrel=1
 pkgdesc="Native Telegram desktop client in Rust that runs in a few MB of RAM (prebuilt)"
 arch=('x86_64')
@@ -15,7 +15,7 @@ provides=("$_pkgname")
 conflicts=("$_pkgname")
 source=("$_pkgname-$pkgver.deb::$url/releases/download/v$pkgver/oxigram-linux-x64-oxigram-native_${pkgver}_amd64.deb"
         "LICENSE-$pkgver::https://raw.githubusercontent.com/Timon2306/oxigram/v$pkgver/LICENSE")
-sha256sums=('e8fe489237e79ce445e073ad7273efc9f4a2938a72d8d2ef3d1ff23b1230d812'
+sha256sums=('d6bbeb0c0e8f73a309db066bb8699634470469f273673837cc072cac1e8c1c95'
             'SKIP')
 
 package() {
