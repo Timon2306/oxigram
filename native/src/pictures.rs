@@ -620,10 +620,10 @@ enum Shown {
     Player,
 }
 
-/// The picture box in `app.slint`: 28 px on each side, 56 px at the top, and
-/// the bottom taken by the video controls or left as a margin (logical px).
+/// The picture box in `app.slint`: 28 px on each side, and the bottom taken
+/// by the video controls or left as a margin; the picture starts 56 px below
+/// the top edge, which only moves it down, it does not shrink it (logical px).
 const VIEWER_SIDE: f32 = 28.0;
-const VIEWER_TOP: f32 = 56.0;
 const VIEWER_BOTTOM: f32 = 84.0;
 const VIEWER_BOTTOM_VIDEO: f32 = 128.0;
 
@@ -632,7 +632,7 @@ const VIEWER_BOTTOM_VIDEO: f32 = 128.0;
 fn viewer_box(window: (u32, u32), scale: f32, video: bool) -> (u32, u32) {
     let bottom = if video { VIEWER_BOTTOM_VIDEO } else { VIEWER_BOTTOM };
     let width = (window.0 as f32 - 2.0 * VIEWER_SIDE * scale).round().max(1.0) as u32;
-    let height = (window.1 as f32 - (VIEWER_TOP + bottom) * scale).round().max(1.0) as u32;
+    let height = (window.1 as f32 - bottom * scale).round().max(1.0) as u32;
     (width, height)
 }
 
@@ -1014,12 +1014,12 @@ mod tests {
 
     #[test]
     fn the_picture_box_follows_the_viewer_margins() {
-        // 1000x800 at 100%: 28 px on each side, 56 on top, 84 below.
-        assert_eq!(viewer_box((1000, 800), 1.0, false), (944, 660));
-        // A video keeps room for its controls: 128 below.
-        assert_eq!(viewer_box((1000, 800), 1.0, true), (944, 616));
+        // 1000x800 at 100%: 28 px on each side, 84 below for a picture.
+        assert_eq!(viewer_box((1000, 800), 1.0, false), (944, 716));
+        // A video keeps room for its controls: 128 below, that is all.
+        assert_eq!(viewer_box((1000, 800), 1.0, true), (944, 672));
         // Retina: the margins are logical, the window is in device pixels.
-        assert_eq!(viewer_box((2000, 1600), 2.0, false), (1888, 1320));
+        assert_eq!(viewer_box((2000, 1600), 2.0, false), (1888, 1432));
         // Never smaller than a pixel, however small the window.
         assert_eq!(viewer_box((10, 10), 2.0, true), (1, 1));
     }

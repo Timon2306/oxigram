@@ -4643,7 +4643,7 @@ dependencies = [
 
 [[package]]
 name = "oxigram-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "argon2",
  "futures-util",
@@ -4666,7 +4666,7 @@ dependencies = [
 
 [[package]]
 name = "oxigram-native"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "arboard",
  "chrono",

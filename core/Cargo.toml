@@ -1,6 +1,6 @@
-[package]
+﻿[package]
 name = "oxigram-core"
-version = "0.3.1"
+version = "0.3.2"
 description = "Telegram backend of Oxigram (no UI inside)"
 authors = ["Timon2306"]
 license = "MIT"
@@ -19,7 +19,7 @@ tokio-socks = "0.5"
 # No default features: the built-in session storage links libsql, whose bundled
 # SQLite clashes with rusqlite's at link time. `store::session` replaces it.
 grammers-session = { version = "~0.12.0", default-features = false }
-# "Обход блокировок (WebSocket)": the obfuscated transport for grammers, its
+# "РћР±С…РѕРґ Р±Р»РѕРєРёСЂРѕРІРѕРє (WebSocket)": the obfuscated transport for grammers, its
 # cipher for the bridge, and wss to Telegram Web's endpoints. rustls with the
 # ring provider (aws-lc would need cmake and nasm on every build machine).
 grammers-mtproto = "~0.12.0"
