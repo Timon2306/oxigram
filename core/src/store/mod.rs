@@ -14,7 +14,7 @@ use rusqlite::Connection;
 /// serializes writers anyway, and one connection keeps one page cache.
 pub type Db = Arc<Mutex<Connection>>;
 
-const SCHEMA_VERSION: i64 = 14;
+const SCHEMA_VERSION: i64 = 15;
 
 pub fn open(path: impl AsRef<Path>) -> rusqlite::Result<Db> {
     let path = path.as_ref();

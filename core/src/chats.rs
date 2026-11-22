@@ -383,9 +383,25 @@ pub async fn message_file(
     Ok(path_string(path))
 }
 
+/// The discussion group of a channel post: the chat and the message in it
+/// that holds the comments to `message_id`.
+pub async fn discussion(tg: &Telegram, peer_id: i64, message_id: i32) -> Result<(i64, i32), UiError> {
+    let handles = tg.handles().await?;
+    let peer = resolve_peer(&handles, peer_id).await?;
+    let tl::enums::messages::DiscussionMessage::Message(discussion) = handles
+        .client
+        .invoke(&tl::functions::messages::GetDiscussionMessage { peer: peer.into(), msg_id: message_id })
+        .await?;
+    // The first message is the automatic forward of the post that starts the
+    // thread; its chat is the discussion group.
+    let Some(tl::enums::Message::Message(raw)) = discussion.messages.into_iter().next() else {
+        return Err(UiError::new("NO_DISCUSSION", "the post has no discussion group"));
+    };
+    Ok((dialog_id(PeerId::from(raw.peer_id)), raw.id))
+}
+
 /// Videos and audio kept for replay; beyond this the oldest go first.
 const FILE_CACHE_LIMIT: u64 = 500 * 1024 * 1024;
-
 /// Deletes the least recently written files in `dir` until it holds at most
 /// `limit` bytes. `keep` (the file just fetched) is never deleted.
 fn trim_cache(dir: &std::path::Path, limit: u64, keep: &std::path::Path) {
@@ -1160,6 +1176,15 @@ pub fn message_row(message: &Message, peer_id: i64) -> MessageRow {
         reactions: match &message.raw {
             tl::enums::Message::Message(raw) => reactions(raw.reactions.as_ref()),
             _ => Vec::new(),
+        },
+        // A channel post with a discussion group: the comments under it, which
+        // the client opens with `messages.getDiscussionMessage`.
+        comments: match &message.raw {
+            tl::enums::Message::Message(raw) => match &raw.replies {
+                Some(tl::enums::MessageReplies::Replies(replies)) if replies.comments => replies.replies,
+                _ => 0,
+            },
+            _ => 0,
         },
     }
 }

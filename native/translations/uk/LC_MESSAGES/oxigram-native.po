@@ -1519,6 +1519,18 @@ msgstr[0] "{n} учасник"
 msgstr[1] "{n} учасники"
 msgstr[2] "{n} учасників"
 
+msgid "{n} comment"
+msgid_plural "{n} comments"
+msgstr[0] "{n} коментар"
+msgstr[1] "{n} коментарі"
+msgstr[2] "{n} коментарів"
+
+msgid "Incoming call"
+msgstr "Вхідний виклик"
+
+msgid "Answer it in the Telegram app: calls are not supported yet"
+msgstr "Відповісти можна в застосунку Telegram: виклики поки не підтримуються"
+
 msgid "{n} common group"
 msgid_plural "{n} common groups"
 msgstr[0] "{n} спільна група"

@@ -174,6 +174,19 @@ impl UiSink {
         notifier.show(title, body, photo.map(|photo| (message.peer_id, photo)));
     }
 
+    /// Tells the user about an incoming call. Oxigram cannot carry the audio,
+    /// so the call is answered — or not — in Telegram's own app.
+    pub fn notify_call(&self, db: &Db, caller_id: i64) {
+        let Some(notifier) = self.notifier.get() else { return };
+        let peer_id = PeerId::user(caller_id).map(chats::dialog_id);
+        let name = match (peer_id, db.lock()) {
+            (Some(peer_id), Ok(conn)) => cache::dialog_title(&conn, peer_id).unwrap_or_default(),
+            _ => String::new(),
+        };
+        let title = if name.is_empty() { tr!("Incoming call") } else { name };
+        notifier.show(title, tr!("Answer it in the Telegram app: calls are not supported yet"), None);
+    }
+
     pub fn attach(&self, sink: Box<dyn EventSink>) {
         if let Ok(mut slot) = self.channel.lock() {
             *slot = Some(sink);
@@ -237,14 +250,14 @@ pub async fn run(client: Client, receiver: mpsc::Receiver<UpdatesLike>, db: Db, 
             online = true;
             events.push(UiEvent::Connection { online: true });
         }
-        events.extend(apply(&db, first));
+        events.extend(apply(&db, &ui, first));
         notify_new(&ui, &db, &events);
         // Gather whatever else arrives right away into the same batch.
         while events.len() < MAX_BATCH {
             match timeout(BATCH_WINDOW, stream.next()).await {
                 Ok(Ok(update)) => {
                     let start = events.len();
-                    events.extend(apply(&db, update));
+                    events.extend(apply(&db, &ui, update));
                     notify_new(&ui, &db, &events[start..]);
                 }
                 _ => break,
@@ -286,7 +299,7 @@ fn notification_text(message: &MessageRow) -> String {
 }
 
 /// Applies one update to the cache and returns the event for the window.
-fn apply(db: &Db, update: Update) -> Option<UiEvent> {
+fn apply(db: &Db, ui: &UiSink, update: Update) -> Option<UiEvent> {
     match update {
         Update::NewMessage(message) => {
             let peer_id = chats::dialog_id(message.peer_id());
@@ -310,15 +323,23 @@ fn apply(db: &Db, update: Update) -> Option<UiEvent> {
             store(db, |conn| cache::delete_messages(conn, peer_id, &ids));
             Some(UiEvent::Deleted { peer_id, ids })
         }
-        Update::Raw(raw) => raw_event(db, raw.raw),
+        Update::Raw(raw) => raw_event(db, ui, raw.raw),
         _ => None,
     }
 }
 
 /// Updates grammers has no wrapper for yet.
-fn raw_event(db: &Db, update: tl::enums::Update) -> Option<UiEvent> {
+fn raw_event(db: &Db, ui: &UiSink, update: tl::enums::Update) -> Option<UiEvent> {
     use tl::enums::Update as U;
     match update {
+        // A call to this account: Oxigram has no audio stack, so it only says
+        // who is calling; the call itself is answered in Telegram's app.
+        U::PhoneCall(call) => {
+            if let tl::enums::PhoneCall::Requested(request) = call.phone_call {
+                ui.notify_call(db, request.participant_id);
+            }
+            None
+        }
         U::ReadHistoryOutbox(read) => {
             let peer_id = chats::dialog_id(PeerId::from(read.peer));
             read_outbox(db, peer_id, read.max_id)

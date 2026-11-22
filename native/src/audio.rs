@@ -956,6 +956,7 @@ mod tests {
             waveform: Vec::new(),
             track: String::new(),
             buttons: Vec::new(),
+            comments: 0,
             grouped_id: None,
             reactions: Vec::new(),
             reply_to_id: None,

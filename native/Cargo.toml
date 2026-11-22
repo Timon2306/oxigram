@@ -1,6 +1,6 @@
-﻿[package]
+[package]
 name = "oxigram-native"
-version = "0.3.2"
+version = "0.3.3"
 description = "Oxigram with a native window: no WebView"
 authors = ["Timon2306"]
 license = "MIT"

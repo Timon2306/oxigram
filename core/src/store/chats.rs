@@ -92,6 +92,9 @@ pub struct MessageRow {
     pub reactions: Vec<Reaction>,
     /// The message this one answers, in the same chat.
     pub reply_to_id: Option<i32>,
+    /// A channel post's comments: how many there are, 0 when it has no
+    /// discussion group.
+    pub comments: i32,
     /// Formatting and links inside `text` (offsets in UTF-16 units, as in
     /// JavaScript strings).
     pub entities: Vec<Entity>,
@@ -194,6 +197,7 @@ pub const SCHEMA: &str = "
         entities TEXT NOT NULL,
         web TEXT,
         duration INTEGER NOT NULL,
+        comments INTEGER NOT NULL,
         PRIMARY KEY (peer_id, id)) WITHOUT ROWID;";
 
 /// Stores one page of the dialog list. `start` is the position of the first
@@ -379,7 +383,7 @@ pub fn save_messages(conn: &mut Connection, rows: &[MessageRow]) -> rusqlite::Re
     {
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO messages
-             VALUES (?1, ?2, ?3, enc(?4), ?5, enc(?6), ?7, ?8, ?9, ?10, ?11, enc(?12), ?13, ?14, ?15, ?16, ?17, enc(?18), enc(?19), ?20)",
+             VALUES (?1, ?2, ?3, enc(?4), ?5, enc(?6), ?7, ?8, ?9, ?10, ?11, enc(?12), ?13, ?14, ?15, ?16, ?17, enc(?18), enc(?19), ?20, ?21)",
         )?;
         for row in rows {
             stmt.execute(params![
@@ -403,6 +407,7 @@ pub fn save_messages(conn: &mut Connection, rows: &[MessageRow]) -> rusqlite::Re
                 to_json(&row.entities),
                 row.web.as_ref().map(|web| serde_json::to_string(web).unwrap_or_default()),
                 row.duration,
+                row.comments,
             ])?;
         }
     }
@@ -472,7 +477,7 @@ pub fn load_messages(
 ) -> rusqlite::Result<Vec<MessageRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, peer_id, sender_id, dec(sender_name), date, dec(text), kind, outgoing, edited,
-                image_w, image_h, dec(file_name), file_size, playable, grouped_id, reactions, reply_to_id, dec(entities), dec(web), duration
+                image_w, image_h, dec(file_name), file_size, playable, grouped_id, reactions, reply_to_id, dec(entities), dec(web), duration, comments
          FROM messages WHERE peer_id = ?1 AND id < ?2 ORDER BY id DESC LIMIT ?3",
     )?;
     stmt.query_map(
@@ -501,6 +506,7 @@ pub fn load_messages(
                     .get::<_, Option<String>>(18)?
                     .and_then(|text| serde_json::from_str(&text).ok()),
                 duration: row.get(19)?,
+                comments: row.get(20)?,
                 waveform: Vec::new(),
                 track: String::new(),
                 buttons: Vec::new(),
@@ -557,6 +563,7 @@ mod tests {
             grouped_id: None,
             reactions: Vec::new(),
             reply_to_id: None,
+            comments: 0,
             entities: Vec::new(),
             web: None,
             duration: 0,

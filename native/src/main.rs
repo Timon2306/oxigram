@@ -328,6 +328,7 @@ fn main() {
     files::wire(&ui);
     links::wire(&ui);
     buttons::wire(&ui);
+    ui.on_open_discussion(open_discussion);
     let weak = ui.as_weak();
     ui.on_latin_shortcut(move |text| {
         let Some(latin) = latin_shortcut(&text) else { return false };
@@ -827,8 +828,28 @@ fn open_chat(peer: i64) {
 }
 
 /// Opens a chat; with `target`, around that message instead of at the end.
-fn open_chat_at(peer: i64, target: Option<i32>) {
-    pictures::close_viewer();
+/// "12 comments" under a channel post: the discussion group, opened at the
+/// message that holds the thread.
+fn open_discussion(message_id: i32) {
+    let Some(Some(peer)) = with_app(|app| app.chat) else { return };
+    run(
+        async move { oxigram_core::chats::discussion(tg(), peer, message_id).await },
+        |result| match result {
+            Ok((peer_id, id)) => open_chat_at(peer_id, Some(id)),
+            Err(err) => menus::toast(format::error(&err)),
+        },
+    );
+}
+
+/// The comments label of a channel post, empty when it has no discussion.
+fn comments_text(comments: i32) -> String {
+    if comments <= 0 {
+        return String::new();
+    }
+    oxigram_core::trn!("{n} comment", "{n} comments", comments)
+}
+
+fn open_chat_at(peer: i64, target: Option<i32>) {    pictures::close_viewer();
     let Some(generation) = with_app(|app| {
         app.chat = Some(peer);
         app.generation += 1;
@@ -1321,6 +1342,7 @@ impl App {
             media: label.into(),
             media_link: media_link.into(),
             buttons: buttons::rows(m),
+            comments_text: comments_text(m.comments).into(),
             track: track.kind,
             track_title: track.title.into(),
             track_total: track.total.into(),

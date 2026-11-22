@@ -1,6 +1,6 @@
-﻿[package]
+[package]
 name = "oxigram-core"
-version = "0.3.2"
+version = "0.3.3"
 description = "Telegram backend of Oxigram (no UI inside)"
 authors = ["Timon2306"]
 license = "MIT"

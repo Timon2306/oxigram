@@ -197,6 +197,8 @@ export struct MessageItem {
     media-link: string,
     // Inline buttons (bots, channels)
     buttons: [ButtonRow],
+    // A channel post's comments ("12 comments"); empty when there are none
+    comments-text: string,
     // Pictures: one, or an album grid
     cells: [MediaCell],
     media-w: length,
@@ -1437,6 +1439,8 @@ component MessageView inherits VerticalLayout {
     callback open-reply(int);
     // An inline button: message id, row, column.
     callback press-button(int, int, int);
+    // The comments of a channel post: message id.
+    callback open-discussion(int);
     callback react(int, string);
     callback want-emoji(string);
     // Selection mode: a click on the bubble picks it instead of acting.
@@ -1795,6 +1799,28 @@ component MessageView inherits VerticalLayout {
                             vertical-alignment: center;
                             overflow: elide;
                         }
+                    }
+                }
+                // A channel post's comments: how many, and the way into the
+                // discussion group ("12 comments").
+                if root.m.comments-text != "": Rectangle {
+                    height: 24px;
+                    comments-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            if (root.select-mode) {
+                                root.pick(root.m.id);
+                            } else {
+                                root.open-discussion(root.m.id);
+                            }
+                        }
+                    }
+                    Text {
+                        height: parent.height;
+                        text: root.m.comments-text;
+                        color: comments-touch.has-hover ? Theme.accent : Theme.dim;
+                        font-size: 13px * Theme.scale;
+                        vertical-alignment: center;
                     }
                 }
                 if root.m.reactions.length > 0: Reactions {
@@ -3698,6 +3724,8 @@ export component AppWindow inherits Window {
     callback open-reply(int);
     // Inline buttons under messages
     callback press-button(int, int, int);
+    // The comments of a channel post: open its discussion group
+    callback open-discussion(int);
     callback viewer-close();
     callback viewer-save();
     callback viewer-menu(length, length);
@@ -4563,6 +4591,9 @@ export component AppWindow inherits Window {
                                     }
                                     press-button(id, r, c) => {
                                         root.press-button(id, r, c);
+                                    }
+                                    open-discussion(id) => {
+                                        root.open-discussion(id);
                                     }
                                     react(message, key) => {
                                         root.react(message, key);
