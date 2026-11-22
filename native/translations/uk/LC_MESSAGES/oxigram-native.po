@@ -2029,6 +2029,9 @@ msgstr "Відкрити Oxigram"
 msgid "Lock"
 msgstr "Заблокувати"
 
+msgid "Set a passcode first"
+msgstr "Спочатку задайте код-пароль"
+
 msgid "Quit"
 msgstr "Вихід"
 

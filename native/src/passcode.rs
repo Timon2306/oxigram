@@ -149,15 +149,12 @@ fn unlock_error(err: &oxigram_core::error::UiError) -> String {
     }
 }
 
-/// Locks now (Ctrl+L, the tray, auto-lock). Without a passcode, the
-/// settings page that sets one opens instead.
+/// Locks now (Ctrl+L, the tray, auto-lock). Without a passcode there is
+/// nothing to lock, and the tray must not drop the user into the settings:
+/// it says so and stays where it is.
 pub fn lock_now() {
     if !tg().passcode_on() {
-        if let Some(ui) = ui() {
-            crate::settings::fill(&ui);
-            ui.set_settings_page("passcode".into());
-            ui.set_settings_open(true);
-        }
+        crate::menus::toast(tr!("Set a passcode first"));
         return;
     }
     if tg().is_locked() {

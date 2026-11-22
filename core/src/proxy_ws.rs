@@ -171,15 +171,36 @@ fn host(dc: i16) -> String {
     format!("kws{}.web.telegram.org", dc.unsigned_abs())
 }
 
+/// How long the front IP gets before the name is tried instead.
+const IP_FIRST: Duration = Duration::from_secs(3);
+
 /// TLS, then the WebSocket handshake (subprotocol "binary", as Telegram Web).
+///
+/// Telegram's front IP is tried first and the name only second: in the very
+/// networks this bypass is for, DNS for `web.telegram.org` hangs for ~20 s
+/// (longer than a connection is given) or answers with a blocked address,
+/// while the IP of the same front works. The name is still the one the
+/// certificate is checked against, so an answer by IP is as trustworthy as
+/// by name.
 async fn open(dc: i16) -> io::Result<Ws> {
     let host = host(dc);
-    let tcp = match TcpStream::connect((host.as_str(), 443)).await {
-        Ok(tcp) => tcp,
-        Err(_) => TcpStream::connect((FALLBACK_IP, 443)).await?,
+    let by_ip = async {
+        let tcp = TcpStream::connect((FALLBACK_IP, 443)).await?;
+        handshake(&host, tcp).await
     };
+    match tokio::time::timeout(IP_FIRST, by_ip).await {
+        Ok(Ok(ws)) => return Ok(ws),
+        // Refused, blocked or slow: the name may still answer.
+        _ => {}
+    }
+    let tcp = TcpStream::connect((host.as_str(), 443)).await?;
+    handshake(&host, tcp).await
+}
+
+/// The TLS and WebSocket part, once a socket to the front exists.
+async fn handshake(host: &str, tcp: TcpStream) -> io::Result<Ws> {
     tcp.set_nodelay(true)?;
-    let name = ServerName::try_from(host.clone()).map_err(io::Error::other)?;
+    let name = ServerName::try_from(host.to_owned()).map_err(io::Error::other)?;
     let tls = TlsConnector::from(tls_config()).connect(name, tcp).await?;
     let mut request = format!("wss://{host}/apiws").into_client_request().map_err(io::Error::other)?;
     request.headers_mut().insert("Sec-WebSocket-Protocol", HeaderValue::from_static("binary"));
