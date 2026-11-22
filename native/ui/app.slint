@@ -1900,10 +1900,24 @@ component LoginCard inherits Rectangle {
                         font-weight: 600;
                     }
 
-                    if root.stage == "loading": Text {
-                        text: @tr("Connecting…");
-                        color: Theme.dim;
-                        font-size: 15px;
+                    if root.stage == "loading": VerticalLayout {
+                        spacing: 10px;
+                        Text {
+                            text: @tr("Connecting…");
+                            color: Theme.dim;
+                            font-size: 15px;
+                        }
+
+                        // A connection that hangs is usually a blocked
+                        // network: the proxy has to be within reach from
+                        // here too, not only from the keys screen.
+                        Button {
+                            kind: "link";
+                            text: @tr("Set up proxy");
+                            clicked => {
+                                root.open-proxy();
+                            }
+                        }
                     }
 
                     if root.stage == "keys": VerticalLayout {
