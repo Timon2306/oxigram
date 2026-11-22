@@ -349,7 +349,7 @@ pub async fn message_file(
     progress: impl Fn(u64),
 ) -> Result<String, UiError> {
     let dir = tg.cache_dir.join("files");
-    for ext in ["mp4", "webm", "ogg", "mp3", "m4a", "jpg"] {
+    for ext in ["mp4", "webm", "ogg", "mp3", "m4a", "jpg", "png", "webp"] {
         let path = dir.join(format!("{peer_id}_{message_id}.{ext}"));
         if path.is_file() {
             return Ok(path_string(path));

@@ -603,7 +603,7 @@ fn open(id: i32) {
                 crate::menus::toast(tr!("This video format is not supported yet"));
             }
         }
-        "photo" if row.playable => show(id, peer, row.file_size, Shown::Original),
+        "photo" | "document" if row.playable => show(id, peer, row.file_size, Shown::Original),
         // A file with a preview, or a self-destructing photo: the preview is
         // all there is to show.
         _ => show(id, peer, 0, Shown::Thumbnail),
@@ -620,13 +620,30 @@ enum Shown {
     Player,
 }
 
+/// The picture box in `app.slint`: 28 px on each side, 56 px at the top, and
+/// the bottom taken by the video controls or left as a margin (logical px).
+const VIEWER_SIDE: f32 = 28.0;
+const VIEWER_TOP: f32 = 56.0;
+const VIEWER_BOTTOM: f32 = 84.0;
+const VIEWER_BOTTOM_VIDEO: f32 = 128.0;
+
+/// The size a picture is drawn at, in device pixels, from the window's size
+/// in device pixels and its scale factor.
+fn viewer_box(window: (u32, u32), scale: f32, video: bool) -> (u32, u32) {
+    let bottom = if video { VIEWER_BOTTOM_VIDEO } else { VIEWER_BOTTOM };
+    let width = (window.0 as f32 - 2.0 * VIEWER_SIDE * scale).round().max(1.0) as u32;
+    let height = (window.1 as f32 - (VIEWER_TOP + bottom) * scale).round().max(1.0) as u32;
+    (width, height)
+}
+
 fn show(id: i32, peer: i64, size: i64, shown: Shown) {
     let token = VIEWER_TOKEN.fetch_add(1, Ordering::Relaxed) + 1;
     let Some(window) = ui() else { return };
-    // The window's size in device pixels: the most a picture is drawn at.
+    // The box the picture is drawn in, in device pixels: decoding to exactly
+    // this leaves the GPU renderer nothing to rescale, which made it soft.
     let (max_w, max_h) = {
         let size = window.window().size();
-        (size.width.max(1), size.height.max(1))
+        viewer_box((size.width, size.height), window.window().scale_factor(), shown == Shown::Player)
     };
     with_app(|app| {
         app.viewer = Some(Viewer { id, token, file: None, saved: None, player: None });
@@ -993,5 +1010,17 @@ mod tests {
     fn durations_read_like_telegram() {
         assert_eq!(duration(65), "1:05");
         assert_eq!(duration(3601), "1:00:01");
+    }
+
+    #[test]
+    fn the_picture_box_follows_the_viewer_margins() {
+        // 1000x800 at 100%: 28 px on each side, 56 on top, 84 below.
+        assert_eq!(viewer_box((1000, 800), 1.0, false), (944, 660));
+        // A video keeps room for its controls: 128 below.
+        assert_eq!(viewer_box((1000, 800), 1.0, true), (944, 616));
+        // Retina: the margins are logical, the window is in device pixels.
+        assert_eq!(viewer_box((2000, 1600), 2.0, false), (1888, 1320));
+        // Never smaller than a pixel, however small the window.
+        assert_eq!(viewer_box((10, 10), 2.0, true), (1, 1));
     }
 }
