@@ -104,6 +104,20 @@ jobs:
           for f in ${{ matrix.glob }}; do cp "$f" "../../out/oxigram-${{ matrix.name }}-$f"; done
           ls -l ../../out
 
+      # No installer at all: the plain executable plus the `portable` marker,
+      # which keeps the keys, the session and the cache in the same folder.
+      - name: Portable archive
+        if: startsWith(matrix.name, 'windows-')
+        shell: bash
+        run: |
+          mkdir -p portable
+          cp "target/${{ matrix.target }}/release/oxigram-native.exe" portable/Oxigram.exe
+          printf 'Oxigram keeps its data in this folder.\n' > portable/portable
+          cd portable
+          7z a "../out/oxigram-${{ matrix.name }}-portable.zip" . > /dev/null
+          cd ..
+          ls -l out
+
       - uses: actions/upload-artifact@v6
         with:
           name: oxigram-${{ matrix.name }}
@@ -172,6 +186,17 @@ jobs:
           for f in *.{deb,AppImage}; do cp "$f" "../../out/oxigram-linux-x64-$f"; done
           ls -l ../../out
 
+      # The plain binary, no package manager: same shared libraries as the
+      # .deb, and the `portable` marker keeps the data next to it.
+      - name: Portable archive
+        shell: bash
+        run: |
+          mkdir -p portable
+          cp target/x86_64-unknown-linux-gnu/release/oxigram-native portable/Oxigram
+          printf 'Oxigram keeps its data in this folder.\n' > portable/portable
+          tar -czf out/oxigram-linux-x64-portable.tar.gz -C portable .
+          ls -l out
+
       - uses: actions/upload-artifact@v6
         with:
           name: oxigram-linux-x64
@@ -224,6 +249,10 @@ jobs:
             - `oxigram-linux-x64-….AppImage` — другие дистрибутивы (`chmod +x`, затем запустить); нужен glibc 2.31+ (ALT p10, Fedora 33 и новее)
             - `oxigram-macos-apple-silicon-….dmg` — Mac на M1/M2/M3/M4 (macOS 11+)
             - `oxigram-macos-intel-….dmg` — Mac на Intel (macOS 10.13 High Sierra и новее)
+
+            Портативные сборки — без установщика, просто распаковать и запустить:
+            - `oxigram-windows-x64-portable.zip` (и x86 / arm64) — тот же exe, рядом лежит файл `portable`, поэтому ключи API, сессия, настройки и кэш хранятся **в этой же папке**: папку можно положить на флешку и носить с собой;
+            - `oxigram-linux-x64-portable.tar.gz` — бинарник, те же системные библиотеки, что у .deb (GTK 3, libayatana-appindicator, ALSA).
 
             Сборки без цифровой подписи:
             - Windows: если SmartScreen предупреждает — «Подробнее» → «Выполнить в любом случае».

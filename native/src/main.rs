@@ -201,14 +201,23 @@ fn select_renderer() {
     let _ = select("software");
 }
 
+/// The folder the executable sits in, when it holds a `portable` marker: a
+/// portable copy keeps its keys, session and cache there instead of the
+/// per-user folders, so the whole thing can live on a USB stick.
+fn portable_home() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let marked = dir.join("portable").is_file() || dir.join("portable.txt").is_file();
+    marked.then(|| dir.to_path_buf())
+}
+
 fn main() {
-    // OXIGRAM_HOME puts everything in one folder: a clean profile for tests
-    // and measurements that never touches the real account.
-    let dirs = match std::env::var_os("OXIGRAM_HOME") {
-        Some(home) => {
-            let home = std::path::PathBuf::from(home);
-            (Some(home.clone()), Some(home.clone()), Some(home))
-        }
+    // A portable copy keeps everything next to its executable; OXIGRAM_HOME
+    // does the same for tests and measurements that never touch the real
+    // account. Otherwise the usual per-user folders are used.
+    let home = portable_home().or_else(|| std::env::var_os("OXIGRAM_HOME").map(std::path::PathBuf::from));
+    let dirs = match home {
+        Some(home) => (Some(home.clone()), Some(home.clone()), Some(home)),
         None => (dirs::config_dir(), dirs::data_dir(), dirs::cache_dir()),
     };
     let (Some(config), Some(data), Some(cache)) = dirs else {
